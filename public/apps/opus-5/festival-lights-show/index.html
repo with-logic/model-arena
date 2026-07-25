@@ -1,0 +1,1987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Festival Lights Show — Virtual Light Rig Controller</title>
+<style>
+  :root {
+    --bg: #05060c;
+    --panel: rgba(16, 18, 32, 0.72);
+    --panel-solid: #10121f;
+    --edge: rgba(255, 255, 255, 0.10);
+    --edge-hot: rgba(255, 255, 255, 0.22);
+    --text: #eef0ff;
+    --dim: #8e94b8;
+    --dimmer: #5b6082;
+    --accent: #ff2d9b;
+    --accent2: #16e0ff;
+    --accent3: #b14bff;
+    --good: #34e59d;
+    --rail: 336px;
+    --rad: 12px;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  body { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+
+  #app { position: fixed; inset: 0; display: flex; }
+
+  /* ---------- Stage ---------- */
+  #stageWrap {
+    position: relative; flex: 1 1 auto; min-width: 0;
+    background: radial-gradient(120% 90% at 50% 8%, #0d1024 0%, #05060c 62%, #010207 100%);
+    overflow: hidden;
+  }
+  #stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* film grain + vignette overlay */
+  #stageWrap::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 3;
+    background:
+      radial-gradient(130% 100% at 50% 45%, rgba(0,0,0,0) 42%, rgba(0,0,0,0.55) 100%);
+    mix-blend-mode: multiply;
+  }
+  #grain {
+    position: absolute; inset: -50%; pointer-events: none; z-index: 4;
+    opacity: 0.035; background-repeat: repeat;
+    animation: grainShift 0.7s steps(4) infinite;
+  }
+  @keyframes grainShift {
+    0%   { transform: translate(0,0); }
+    25%  { transform: translate(-3%, 2%); }
+    50%  { transform: translate(2%, -3%); }
+    75%  { transform: translate(-2%, -2%); }
+    100% { transform: translate(0,0); }
+  }
+
+  /* ---------- HUD ---------- */
+  .hud { position: absolute; z-index: 6; pointer-events: none; }
+
+  #hudTop {
+    top: 0; left: 0; right: 0; padding: 16px 20px;
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    background: linear-gradient(180deg, rgba(3,4,10,0.82) 0%, rgba(3,4,10,0) 100%);
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brandMark {
+    width: 34px; height: 34px; border-radius: 9px; position: relative; flex: none;
+    background: conic-gradient(from 0deg, #ff2d9b, #ffb020, #16e0ff, #b14bff, #ff2d9b);
+    box-shadow: 0 0 22px rgba(255,45,155,0.5), inset 0 0 0 1px rgba(255,255,255,0.28);
+    animation: spinMark 7s linear infinite;
+  }
+  .brandMark::after {
+    content: ""; position: absolute; inset: 8px; border-radius: 4px;
+    background: #06070f; box-shadow: inset 0 0 8px rgba(0,0,0,0.9);
+  }
+  @keyframes spinMark { to { transform: rotate(360deg); } }
+  .brandText h1 {
+    margin: 0; font-size: 15px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+    background: linear-gradient(90deg, #fff 10%, #ffd7ef 40%, #a8f4ff 75%, #fff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .brandText p {
+    margin: 3px 0 0; font-size: 9.5px; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--dimmer); font-family: var(--mono);
+  }
+
+  #hudStats { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .chip {
+    pointer-events: auto;
+    background: rgba(10,12,24,0.68); border: 1px solid var(--edge);
+    border-radius: 9px; padding: 6px 10px; backdrop-filter: blur(14px);
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    display: flex; align-items: center; gap: 7px; white-space: nowrap;
+  }
+  .chip b { color: #fff; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .chip span.k { color: var(--dimmer); text-transform: uppercase; font-size: 9px; letter-spacing: 0.14em; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--dimmer); flex: none; }
+  .dot.live { background: var(--good); box-shadow: 0 0 9px var(--good); animation: pulseDot 1.1s ease-in-out infinite; }
+  @keyframes pulseDot { 50% { opacity: 0.35; } }
+
+  /* beat ladder */
+  #beatBar { display: flex; gap: 4px; align-items: center; }
+  .beatPip {
+    width: 15px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.13);
+    transition: background 90ms linear, box-shadow 90ms linear, transform 90ms linear;
+  }
+  .beatPip.on { background: var(--accent2); box-shadow: 0 0 12px var(--accent2); transform: scaleY(1.7); }
+  .beatPip.downbeat.on { background: var(--accent); box-shadow: 0 0 16px var(--accent); }
+
+  /* bottom transport */
+  #hudBottom {
+    left: 0; right: 0; bottom: 0; padding: 18px 20px 20px;
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 18px;
+    background: linear-gradient(0deg, rgba(3,4,10,0.9) 0%, rgba(3,4,10,0) 100%);
+  }
+  #patternLabel { pointer-events: none; }
+  #patternLabel .kicker {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.32em; text-transform: uppercase; color: var(--dimmer);
+  }
+  #patternLabel .name {
+    font-size: 27px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.08; margin-top: 3px;
+    text-shadow: 0 0 34px rgba(255,45,155,0.45);
+  }
+  #patternLabel .desc { font-size: 11.5px; color: var(--dim); margin-top: 4px; max-width: 46ch; line-height: 1.45; }
+
+  #transport { display: flex; gap: 10px; align-items: center; pointer-events: auto; }
+
+  .tbtn {
+    -webkit-appearance: none; appearance: none; cursor: pointer; color: var(--text);
+    background: rgba(14,16,30,0.8); border: 1px solid var(--edge); backdrop-filter: blur(14px);
+    border-radius: 11px; padding: 0 14px; height: 44px; display: flex; align-items: center; gap: 8px;
+    font-family: var(--sans); font-size: 11.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    transition: transform 0.12s cubic-bezier(.2,.8,.3,1), border-color 0.18s, background 0.18s, box-shadow 0.18s;
+  }
+  .tbtn:hover { border-color: var(--edge-hot); background: rgba(26,30,52,0.88); transform: translateY(-1px); }
+  .tbtn:active { transform: translateY(1px) scale(0.985); }
+  .tbtn:focus-visible { outline: 2px solid var(--accent2); outline-offset: 2px; }
+  .tbtn.primary {
+    background: linear-gradient(135deg, var(--accent) 0%, #ff5f3d 52%, #ffb020 100%);
+    border-color: transparent; color: #14040d; min-width: 128px; justify-content: center;
+    box-shadow: 0 6px 26px rgba(255,45,155,0.42);
+  }
+  .tbtn.primary:hover { box-shadow: 0 8px 34px rgba(255,45,155,0.6); }
+  .tbtn.primary.playing {
+    background: linear-gradient(135deg, #16e0ff 0%, #6d8dff 52%, #b14bff 100%);
+    color: #04121a; box-shadow: 0 6px 26px rgba(22,224,255,0.4);
+  }
+  .tbtn.ghost { padding: 0 12px; }
+  .tbtn.icon { width: 44px; padding: 0; justify-content: center; }
+  .tbtn svg { width: 15px; height: 15px; fill: currentColor; flex: none; }
+  .tbtn.armed { border-color: var(--accent); color: #fff; box-shadow: 0 0 0 1px var(--accent), 0 0 22px rgba(255,45,155,0.42); }
+
+  /* ---------- Rail ---------- */
+  #rail {
+    width: var(--rail); flex: none; height: 100%; z-index: 8;
+    background: linear-gradient(180deg, rgba(11,13,26,0.97), rgba(7,8,18,0.99));
+    border-left: 1px solid var(--edge);
+    display: flex; flex-direction: column;
+    box-shadow: -30px 0 70px rgba(0,0,0,0.6);
+    transition: margin-right 0.36s cubic-bezier(.4,0,.2,1);
+  }
+  body.rail-hidden #rail { margin-right: calc(var(--rail) * -1); }
+
+  #railScroll { overflow-y: auto; overscroll-behavior: contain; padding: 14px 14px 26px; flex: 1 1 auto; }
+  #railScroll::-webkit-scrollbar { width: 9px; }
+  #railScroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.11); border-radius: 9px; border: 2px solid transparent; background-clip: padding-box; }
+  #railScroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); background-clip: padding-box; }
+
+  .sect { margin-bottom: 18px; }
+  .sectHead {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin: 0 2px 9px; font-family: var(--mono); font-size: 9px;
+    letter-spacing: 0.26em; text-transform: uppercase; color: var(--dimmer);
+  }
+  .sectHead .rule { flex: 1 1 auto; height: 1px; background: linear-gradient(90deg, var(--edge), transparent); }
+
+  /* pattern grid */
+  #patternGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 7px; }
+  .pcard {
+    cursor: pointer; position: relative; overflow: hidden;
+    border: 1px solid var(--edge); border-radius: var(--rad);
+    background: rgba(255,255,255,0.028); padding: 9px 9px 8px;
+    text-align: left; color: var(--text); font-family: var(--sans);
+    transition: transform 0.14s cubic-bezier(.2,.8,.3,1), border-color 0.18s, background 0.18s;
+  }
+  .pcard:hover { transform: translateY(-2px); border-color: var(--edge-hot); background: rgba(255,255,255,0.06); }
+  .pcard:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .pcard .pname { font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em; }
+  .pcard .pkey {
+    position: absolute; top: 7px; right: 7px; font-family: var(--mono); font-size: 8.5px;
+    color: var(--dimmer); border: 1px solid var(--edge); border-radius: 4px; padding: 1px 4px; line-height: 1.3;
+  }
+  .pcard .pbar { margin-top: 7px; height: 3px; border-radius: 3px; background: rgba(255,255,255,0.09); overflow: hidden; }
+  .pcard .pbar i { display: block; height: 100%; width: 0%; border-radius: 3px; transition: width 0.3s ease; }
+  .pcard.active { border-color: transparent; background: rgba(255,255,255,0.075); box-shadow: 0 0 0 1px var(--accent), 0 8px 28px rgba(255,45,155,0.28); }
+  .pcard.active .pbar i { width: 100%; }
+  .pcard.active .pname { color: #fff; }
+
+  /* controls */
+  .ctl { margin-bottom: 13px; }
+  .ctlTop {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 6px;
+  }
+  .ctlLabel { font-size: 11px; font-weight: 600; color: #cfd3ee; letter-spacing: 0.02em; }
+  .ctlVal { font-family: var(--mono); font-size: 10px; color: var(--accent2); font-variant-numeric: tabular-nums; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 22px; background: transparent; cursor: grab; margin: 0;
+  }
+  input[type=range]:active { cursor: grabbing; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 5px; border-radius: 4px;
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent3) var(--pct, 50%), rgba(255,255,255,0.1) var(--pct, 50%));
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: #fff; margin-top: -5px; border: 0;
+    box-shadow: 0 0 0 3px rgba(255,45,155,0.28), 0 2px 8px rgba(0,0,0,0.6);
+    transition: transform 0.12s, box-shadow 0.18s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.16); box-shadow: 0 0 0 5px rgba(255,45,155,0.24), 0 2px 10px rgba(0,0,0,0.6); }
+  input[type=range]::-moz-range-track { height: 5px; border-radius: 4px; background: rgba(255,255,255,0.1); }
+  input[type=range]::-moz-range-progress { height: 5px; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--accent3)); }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border-radius: 50%; background: #fff; border: 0;
+    box-shadow: 0 0 0 3px rgba(255,45,155,0.28);
+  }
+  input[type=range]:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; border-radius: 4px; }
+
+  /* palettes */
+  #paletteList { display: flex; flex-direction: column; gap: 6px; }
+  .swatch {
+    cursor: pointer; display: flex; align-items: center; gap: 9px;
+    border: 1px solid var(--edge); border-radius: 10px; padding: 6px 9px;
+    background: rgba(255,255,255,0.028); transition: transform 0.14s, border-color 0.18s, background 0.18s;
+  }
+  .swatch:hover { transform: translateX(2px); border-color: var(--edge-hot); background: rgba(255,255,255,0.06); }
+  .swatch:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .swatch.active { border-color: transparent; box-shadow: 0 0 0 1px var(--accent2), 0 6px 20px rgba(22,224,255,0.2); background: rgba(255,255,255,0.07); }
+  .swatch .strip { display: flex; height: 18px; width: 82px; border-radius: 5px; overflow: hidden; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.35); }
+  .swatch .strip i { flex: 1 1 0; }
+  .swatch .sname { font-size: 11px; font-weight: 600; color: #c9cdea; }
+  .swatch.active .sname { color: #fff; }
+
+  /* toggles */
+  .toggleRow {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 8px 10px; border: 1px solid var(--edge); border-radius: 10px;
+    background: rgba(255,255,255,0.028); cursor: pointer; margin-bottom: 6px;
+    transition: border-color 0.18s, background 0.18s;
+  }
+  .toggleRow:hover { border-color: var(--edge-hot); background: rgba(255,255,255,0.055); }
+  .toggleRow:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .toggleRow .tl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .toggleRow .tname { font-size: 11px; font-weight: 600; color: #cfd3ee; }
+  .toggleRow .tsub { font-size: 9.5px; color: var(--dimmer); font-family: var(--mono); letter-spacing: 0.04em; }
+  .sw { width: 34px; height: 19px; border-radius: 19px; background: rgba(255,255,255,0.12); position: relative; flex: none; transition: background 0.22s; }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%;
+    background: #fff; transition: transform 0.24s cubic-bezier(.3,1.4,.5,1); box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+  }
+  .toggleRow.on .sw { background: linear-gradient(90deg, var(--accent), var(--accent3)); box-shadow: 0 0 14px rgba(255,45,155,0.42); }
+  .toggleRow.on .sw::after { transform: translateX(15px); }
+
+  /* track picker */
+  #trackList { display: flex; flex-direction: column; gap: 6px; }
+  .track {
+    cursor: pointer; display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    border: 1px solid var(--edge); border-radius: 10px; background: rgba(255,255,255,0.028);
+    transition: transform 0.14s, border-color 0.18s, background 0.18s;
+  }
+  .track:hover { transform: translateX(2px); border-color: var(--edge-hot); background: rgba(255,255,255,0.06); }
+  .track:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+  .track.active { border-color: transparent; box-shadow: 0 0 0 1px var(--accent3), 0 6px 20px rgba(177,75,255,0.22); background: rgba(255,255,255,0.07); }
+  .track .eq { display: flex; align-items: flex-end; gap: 2px; height: 17px; width: 17px; flex: none; }
+  .track .eq i { width: 3px; background: var(--dimmer); border-radius: 2px; height: 30%; }
+  .track.active .eq i { background: var(--accent3); }
+  .track.active.spinning .eq i { animation: eqBounce 0.62s ease-in-out infinite; }
+  .track.active.spinning .eq i:nth-child(2) { animation-delay: 0.14s; }
+  .track.active.spinning .eq i:nth-child(3) { animation-delay: 0.28s; }
+  .track.active.spinning .eq i:nth-child(4) { animation-delay: 0.42s; }
+  @keyframes eqBounce { 0%,100% { height: 22%; } 50% { height: 100%; } }
+  .track .tmeta { min-width: 0; flex: 1 1 auto; }
+  .track .ttitle { font-size: 11.5px; font-weight: 700; color: #d8dbf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track.active .ttitle { color: #fff; }
+  .track .tsub2 { font-size: 9.5px; color: var(--dimmer); font-family: var(--mono); letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* spectrum */
+  #spectrum { width: 100%; height: 58px; display: block; border-radius: 9px; background: rgba(0,0,0,0.36); border: 1px solid var(--edge); }
+
+  /* cue buttons */
+  #cueGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .cue {
+    cursor: pointer; border: 1px solid var(--edge); border-radius: 9px; padding: 9px 4px;
+    background: rgba(255,255,255,0.028); color: #cfd3ee; text-align: center;
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+    transition: transform 0.1s, background 0.16s, color 0.16s, box-shadow 0.16s;
+  }
+  .cue:hover { background: rgba(255,255,255,0.075); color: #fff; }
+  .cue:active, .cue.hit { transform: scale(0.94); background: var(--accent); color: #16040e; box-shadow: 0 0 22px rgba(255,45,155,0.6); }
+  .cue:focus-visible { outline: 2px solid var(--accent2); outline-offset: 1px; }
+
+  .hintRow {
+    margin-top: 6px; font-family: var(--mono); font-size: 9px; color: var(--dimmer);
+    line-height: 1.7; letter-spacing: 0.04em;
+  }
+  .hintRow kbd {
+    display: inline-block; border: 1px solid var(--edge); border-radius: 4px; padding: 0 4px;
+    color: #b6bbdd; background: rgba(255,255,255,0.05); font-size: 9px; margin-right: 2px;
+  }
+
+  /* rail toggle */
+  #railToggle {
+    position: absolute; top: 50%; right: var(--rail); transform: translate(50%, -50%); z-index: 12;
+    width: 24px; height: 58px; border-radius: 8px 0 0 8px; cursor: pointer;
+    background: rgba(18,20,36,0.94); border: 1px solid var(--edge); border-right: none;
+    display: flex; align-items: center; justify-content: center; color: var(--dim);
+    transition: right 0.36s cubic-bezier(.4,0,.2,1), color 0.18s, background 0.18s;
+  }
+  #railToggle:hover { color: #fff; background: rgba(30,33,58,0.96); }
+  body.rail-hidden #railToggle { right: 0; }
+  #railToggle svg { width: 11px; height: 11px; fill: currentColor; transition: transform 0.36s cubic-bezier(.4,0,.2,1); }
+  body.rail-hidden #railToggle svg { transform: rotate(180deg); }
+
+  /* ---------- Start overlay ---------- */
+  #boot {
+    position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 42%, rgba(24,10,44,0.9), rgba(3,4,10,0.98) 62%);
+    backdrop-filter: blur(9px); transition: opacity 0.55s ease, visibility 0.55s;
+  }
+  #boot.gone { opacity: 0; visibility: hidden; pointer-events: none; }
+  #bootCard { text-align: center; padding: 30px; max-width: 500px; }
+  #bootCard .glyph {
+    width: 76px; height: 76px; margin: 0 auto 22px; border-radius: 20px; position: relative;
+    background: conic-gradient(from 0deg, #ff2d9b, #ffb020, #16e0ff, #b14bff, #ff2d9b);
+    box-shadow: 0 0 70px rgba(255,45,155,0.6); animation: spinMark 5.5s linear infinite;
+  }
+  #bootCard .glyph::after { content: ""; position: absolute; inset: 15px; border-radius: 10px; background: #070812; }
+  #bootCard h2 {
+    margin: 0 0 10px; font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1;
+    background: linear-gradient(100deg, #fff, #ffc9e8 34%, #a8f4ff 68%, #fff);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  #bootCard p { margin: 0 auto 26px; color: var(--dim); font-size: 13.5px; line-height: 1.65; max-width: 40ch; }
+  #bootBtn {
+    -webkit-appearance: none; appearance: none; cursor: pointer; border: none;
+    background: linear-gradient(135deg, var(--accent), #ff5f3d 52%, #ffb020);
+    color: #14040d; font-family: var(--sans); font-weight: 800; font-size: 13px;
+    letter-spacing: 0.16em; text-transform: uppercase; padding: 15px 40px; border-radius: 13px;
+    box-shadow: 0 10px 44px rgba(255,45,155,0.5);
+    transition: transform 0.15s cubic-bezier(.2,.8,.3,1), box-shadow 0.2s;
+  }
+  #bootBtn:hover { transform: translateY(-2px) scale(1.025); box-shadow: 0 14px 56px rgba(255,45,155,0.68); }
+  #bootBtn:active { transform: translateY(0) scale(0.99); }
+  #bootNote { margin-top: 17px; font-family: var(--mono); font-size: 9.5px; color: var(--dimmer); letter-spacing: 0.12em; }
+
+  /* toast */
+  #toast {
+    position: absolute; left: 50%; bottom: 108px; transform: translate(-50%, 14px); z-index: 20;
+    background: rgba(10,12,24,0.9); border: 1px solid var(--edge-hot); border-radius: 10px;
+    padding: 9px 17px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #fff; backdrop-filter: blur(14px);
+    opacity: 0; pointer-events: none; transition: opacity 0.24s, transform 0.24s;
+    box-shadow: 0 8px 34px rgba(0,0,0,0.5); white-space: nowrap;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 940px) {
+    :root { --rail: 300px; }
+    #patternLabel .name { font-size: 21px; }
+    #patternLabel .desc { display: none; }
+  }
+  @media (max-width: 720px) {
+    #app { flex-direction: column; }
+    #rail { width: 100%; height: 47%; border-left: none; border-top: 1px solid var(--edge); }
+    body.rail-hidden #rail { margin-right: 0; margin-bottom: -47%; }
+    #railToggle { top: auto; bottom: 47%; right: 50%; transform: translate(50%, 50%) rotate(90deg); }
+    body.rail-hidden #railToggle { right: 50%; bottom: 0; }
+    #hudStats .wide { display: none; }
+    #hudBottom { flex-direction: column; align-items: stretch; gap: 12px; }
+    #transport { justify-content: center; flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #grain, .brandMark, #bootCard .glyph { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="stageWrap">
+    <canvas id="stage"></canvas>
+    <div id="grain"></div>
+
+    <div class="hud" id="hudTop">
+      <div class="brand">
+        <div class="brandMark"></div>
+        <div class="brandText">
+          <h1>Festival Lights</h1>
+          <p>Virtual Rig · MK IV</p>
+        </div>
+      </div>
+      <div id="hudStats">
+        <div class="chip"><span class="dot" id="liveDot"></span><span class="k">Show</span><b id="stShow">Standby</b></div>
+        <div class="chip wide"><span class="k">BPM</span><b id="stBpm">124</b></div>
+        <div class="chip wide"><span class="k">Bar</span><b id="stBar">1.1</b></div>
+        <div class="chip" id="beatBar"></div>
+        <div class="chip wide"><span class="k">FPS</span><b id="stFps">60</b></div>
+      </div>
+    </div>
+
+    <div class="hud" id="hudBottom">
+      <div id="patternLabel">
+        <div class="kicker">Active Pattern</div>
+        <div class="name" id="plName">Rainbow Sweep</div>
+        <div class="desc" id="plDesc">Chromatic wash cascading across the truss.</div>
+      </div>
+      <div id="transport">
+        <button class="tbtn icon" id="btnPrev" title="Previous pattern (←)" aria-label="Previous pattern">
+          <svg viewBox="0 0 24 24"><path d="M18 5v14l-11-7z"/><rect x="4" y="5" width="2.6" height="14" rx="1"/></svg>
+        </button>
+        <button class="tbtn primary" id="btnPlay" title="Play / pause (Space)">
+          <svg viewBox="0 0 24 24" id="playIcon"><path d="M7 4l14 8-14 8z"/></svg>
+          <span id="playLabel">Start Show</span>
+        </button>
+        <button class="tbtn icon" id="btnNext" title="Next pattern (→)" aria-label="Next pattern">
+          <svg viewBox="0 0 24 24"><path d="M6 5v14l11-7z"/><rect x="17.4" y="5" width="2.6" height="14" rx="1"/></svg>
+        </button>
+        <button class="tbtn ghost" id="btnStrobe" title="Hold for strobe (F)">
+          <svg viewBox="0 0 24 24"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg> Strobe
+        </button>
+        <button class="tbtn ghost" id="btnBlack" title="Blackout (B)">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M6 6l12 12" stroke="currentColor" stroke-width="2.2" fill="none"/></svg> Blackout
+        </button>
+        <button class="tbtn ghost" id="btnAuto" title="Auto-pilot: rotate patterns on phrase (A)">
+          <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6a6 6 0 11-6 6H4a8 8 0 108-8z"/></svg> Auto
+        </button>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+    <div id="railToggle" role="button" tabindex="0" aria-label="Toggle control panel">
+      <svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6z"/></svg>
+    </div>
+  </div>
+
+  <aside id="rail">
+    <div id="railScroll">
+
+      <div class="sect">
+        <div class="sectHead"><span>Patterns</span><i class="rule"></i><span id="patCount"></span></div>
+        <div id="patternGrid"></div>
+      </div>
+
+      <div class="sect">
+        <div class="sectHead"><span>Color Palette</span><i class="rule"></i></div>
+        <div id="paletteList"></div>
+        <div class="ctl" style="margin-top:11px">
+          <div class="ctlTop"><span class="ctlLabel">Hue Shift</span><span class="ctlVal" id="vHue">0°</span></div>
+          <input type="range" id="rHue" min="0" max="360" value="0" step="1" />
+        </div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Saturation</span><span class="ctlVal" id="vSat">100%</span></div>
+          <input type="range" id="rSat" min="0" max="140" value="100" step="1" />
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sectHead"><span>Rig Controls</span><i class="rule"></i></div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Master Intensity</span><span class="ctlVal" id="vInt">85%</span></div>
+          <input type="range" id="rInt" min="0" max="100" value="85" step="1" />
+        </div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Speed</span><span class="ctlVal" id="vSpd">1.00×</span></div>
+          <input type="range" id="rSpd" min="10" max="300" value="100" step="1" />
+        </div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Beam Width</span><span class="ctlVal" id="vBeam">1.0×</span></div>
+          <input type="range" id="rBeam" min="20" max="220" value="100" step="1" />
+        </div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Haze / Fog</span><span class="ctlVal" id="vFog">55%</span></div>
+          <input type="range" id="rFog" min="0" max="100" value="55" step="1" />
+        </div>
+        <div class="ctl">
+          <div class="ctlTop"><span class="ctlLabel">Beat Reactivity</span><span class="ctlVal" id="vRea">75%</span></div>
+          <input type="range" id="rRea" min="0" max="100" value="75" step="1" />
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sectHead"><span>Effects</span><i class="rule"></i></div>
+        <div class="toggleRow on" id="tgLasers" role="button" tabindex="0">
+          <div class="tl"><span class="tname">Laser Fans</span><span class="tsub">L</span></div><div class="sw"></div>
+        </div>
+        <div class="toggleRow on" id="tgConfetti" role="button" tabindex="0">
+          <div class="tl"><span class="tname">Pyro &amp; Confetti</span><span class="tsub">P</span></div><div class="sw"></div>
+        </div>
+        <div class="toggleRow on" id="tgCrowd" role="button" tabindex="0">
+          <div class="tl"><span class="tname">Crowd &amp; Phone Lights</span><span class="tsub">C</span></div><div class="sw"></div>
+        </div>
+        <div class="toggleRow on" id="tgSync" role="button" tabindex="0">
+          <div class="tl"><span class="tname">Music Sync</span><span class="tsub">Audio-reactive rig</span></div><div class="sw"></div>
+        </div>
+      </div>
+
+      <div class="sect">
+        <div class="sectHead"><span>Music</span><i class="rule"></i></div>
+        <div id="trackList"></div>
+        <div class="ctl" style="margin-top:11px">
+          <div class="ctlTop"><span class="ctlLabel">Volume</span><span class="ctlVal" id="vVol">70%</span></div>
+          <input type="range" id="rVol" min="0" max="100" value="70" step="1" />
+        </div>
+        <canvas id="spectrum"></canvas>
+      </div>
+
+      <div class="sect">
+        <div class="sectHead"><span>Live Cues</span><i class="rule"></i></div>
+        <div id="cueGrid">
+          <div class="cue" data-cue="flash" role="button" tabindex="0">Flash</div>
+          <div class="cue" data-cue="pyro" role="button" tabindex="0">Pyro</div>
+          <div class="cue" data-cue="sweep" role="button" tabindex="0">Sweep</div>
+          <div class="cue" data-cue="drop" role="button" tabindex="0">Drop</div>
+        </div>
+        <div class="hintRow">
+          <kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> pattern · <kbd>1</kbd>–<kbd>9</kbd> jump<br/>
+          <kbd>F</kbd> strobe · <kbd>B</kbd> blackout · <kbd>A</kbd> auto · <kbd>H</kbd> hide UI
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+
+<div id="boot">
+  <div id="bootCard">
+    <div class="glyph"></div>
+    <h2>Festival Lights Show</h2>
+    <p>A full virtual lighting rig — moving heads, laser fans, strobes and pyro, all locked to a live synthesized soundtrack. Take the console.</p>
+    <button id="bootBtn">Enter the Arena</button>
+    <div id="bootNote">Audio starts on click · Best with sound on</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+(function () {
+
+/* ============================================================
+   Utilities
+   ============================================================ */
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+const $ = id => document.getElementById(id);
+
+function hsl(h, s, l, a) {
+  return "hsla(" + (((h % 360) + 360) % 360).toFixed(1) + "," + clamp(s, 0, 100).toFixed(1) + "%," + clamp(l, 0, 100).toFixed(1) + "%," + (a === undefined ? 1 : clamp(a, 0, 1).toFixed(3)) + ")";
+}
+
+/* ============================================================
+   Palettes  (hue anchors, in degrees)
+   ============================================================ */
+const PALETTES = [
+  { name: "Neon Carnival", hues: [330, 20, 50, 190, 275] },
+  { name: "Ibiza Sunset",  hues: [10, 28, 45, 330, 300] },
+  { name: "Deep Ocean",    hues: [186, 200, 215, 250, 165] },
+  { name: "Toxic Rave",    hues: [95, 140, 165, 65, 285] },
+  { name: "Ultraviolet",   hues: [265, 285, 305, 232, 330] },
+  { name: "Molten Core",   hues: [0, 14, 30, 44, 350] },
+  { name: "Arctic Pulse",  hues: [178, 196, 210, 155, 0, 0], mono: true },
+  { name: "Full Spectrum", hues: [0, 60, 120, 180, 240, 300] }
+];
+
+/* ============================================================
+   Patterns
+   ============================================================ */
+const PATTERNS = [
+  { id: "rainbow",  name: "Rainbow Sweep",  key: "1", desc: "Chromatic wash cascading across the truss." },
+  { id: "chase",    name: "Beat Chase",     key: "2", desc: "Heads fire in sequence, one per sixteenth." },
+  { id: "pulse",    name: "Pulse Wave",     key: "3", desc: "Symmetric bloom radiating from centre stage." },
+  { id: "scanner",  name: "Scanner",        key: "4", desc: "Counter-rotating beams sweeping the crowd." },
+  { id: "strobe",   name: "Strobe Storm",   key: "5", desc: "Hard white hits punched on every kick." },
+  { id: "wave",     name: "Ocean Wave",     key: "6", desc: "Slow sinusoid rolling through the rig." },
+  { id: "kaleido",  name: "Kaleidoscope",   key: "7", desc: "Mirrored fans folding through the haze." },
+  { id: "fireworks",name: "Sky Burst",      key: "8", desc: "Aerial shells detonating on the downbeat." },
+  { id: "matrix",   name: "Grid Matrix",    key: "9", desc: "Pixel-mapped blocks stepping in tempo." },
+  { id: "vortex",   name: "Vortex",         key: "0", desc: "Spiral pull dragging every beam inward." }
+];
+
+/* ============================================================
+   Tracks — each is a synthesized arrangement
+   ============================================================ */
+const TRACKS = [
+  { name: "Mainstage Anthem", genre: "Big Room · 128 BPM", bpm: 128, key: 0,  mode: "anthem" },
+  { name: "Neon Drive",       genre: "Synthwave · 112 BPM", bpm: 112, key: 3,  mode: "wave"   },
+  { name: "Deep Circuit",     genre: "Techno · 138 BPM",    bpm: 138, key: -2, mode: "techno" },
+  { name: "Sunrise Set",      genre: "Melodic · 122 BPM",   bpm: 122, key: 5,  mode: "melodic"}
+];
+
+/* ============================================================
+   State
+   ============================================================ */
+const S = {
+  playing: false,
+  pattern: 0,
+  palette: 0,
+  track: 0,
+  intensity: 0.85,
+  speed: 1,
+  beamWidth: 1,
+  fog: 0.55,
+  reactivity: 0.75,
+  hueShift: 0,
+  sat: 100,
+  volume: 0.7,
+  lasers: true,
+  confetti: true,
+  crowd: true,
+  sync: true,
+  strobeHold: false,
+  blackout: false,
+  auto: false,
+  // musical clock
+  time: 0,           // seconds of show time (advances only while playing)
+  beat: 0,           // fractional beats since start
+  lastBeatIdx: -1,
+  bar: 0, beatInBar: 0,
+  // audio analysis
+  bass: 0, mid: 0, treble: 0, level: 0,
+  bassPeak: 0, flash: 0, kick: 0, snare: 0,
+  // fx
+  patternFade: 1,
+  fps: 60
+};
+
+/* ============================================================
+   Audio engine — WebAudio synthesis (no external assets)
+   ============================================================ */
+const Audio_ = {
+  ctx: null, master: null, analyser: null, freq: null,
+  started: false, startTime: 0, nextNoteTime: 0, step: 0,
+  schedulerId: null,
+  compressor: null, reverb: null,
+
+  init() {
+    if (this.ctx) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    this.ctx = new AC();
+    const ctx = this.ctx;
+
+    this.master = ctx.createGain();
+    this.master.gain.value = S.volume * 0.9;
+
+    this.compressor = ctx.createDynamicsCompressor();
+    this.compressor.threshold.value = -14;
+    this.compressor.knee.value = 22;
+    this.compressor.ratio.value = 5;
+    this.compressor.attack.value = 0.004;
+    this.compressor.release.value = 0.22;
+
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.analyser.smoothingTimeConstant = 0.72;
+    this.freq = new Uint8Array(this.analyser.frequencyBinCount);
+
+    // simple algorithmic reverb (noise impulse)
+    this.reverb = ctx.createConvolver();
+    this.reverb.buffer = this.makeIR(1.9, 2.6);
+    this.reverbGain = ctx.createGain();
+    this.reverbGain.gain.value = 0.22;
+
+    this.master.connect(this.compressor);
+    this.compressor.connect(this.analyser);
+    this.analyser.connect(ctx.destination);
+
+    this.reverbGain.connect(this.reverb);
+    this.reverb.connect(this.compressor);
+  },
+
+  makeIR(dur, decay) {
+    const ctx = this.ctx, rate = ctx.sampleRate, len = Math.floor(rate * dur);
+    const buf = ctx.createBuffer(2, len, rate);
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+      }
+    }
+    return buf;
+  },
+
+  resume() { if (this.ctx && this.ctx.state === "suspended") this.ctx.resume(); },
+
+  start() {
+    this.init(); this.resume();
+    if (this.schedulerId) return;
+    this.nextNoteTime = this.ctx.currentTime + 0.06;
+    this.schedulerId = setInterval(() => this.scheduler(), 25);
+    this.started = true;
+  },
+
+  stop() {
+    if (this.schedulerId) { clearInterval(this.schedulerId); this.schedulerId = null; }
+    this.started = false;
+  },
+
+  reset() { this.step = 0; if (this.ctx) this.nextNoteTime = this.ctx.currentTime + 0.06; },
+
+  scheduler() {
+    const ctx = this.ctx;
+    const spb = 60 / TRACKS[S.track].bpm;
+    const stepDur = spb / 4; // 16th notes
+    while (this.nextNoteTime < ctx.currentTime + 0.14) {
+      this.playStep(this.step, this.nextNoteTime, stepDur);
+      this.nextNoteTime += stepDur;
+      this.step++;
+    }
+  },
+
+  // --- instrument voices ---
+  kick(t, gain) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.frequency.setValueAtTime(150, t);
+    o.frequency.exponentialRampToValueAtTime(42, t + 0.11);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.4);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + 0.45);
+    // click
+    const n = this.noiseBurst(t, 0.03, gain * 0.5, 2400, "highpass");
+    void n;
+  },
+
+  noiseBurst(t, dur, gain, freq, type) {
+    const ctx = this.ctx;
+    const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const f = ctx.createBiquadFilter(); f.type = type || "bandpass"; f.frequency.value = freq; f.Q.value = 1.1;
+    const g = ctx.createGain(); g.gain.value = gain;
+    src.connect(f); f.connect(g); g.connect(this.master);
+    if (this.reverbGain) g.connect(this.reverbGain);
+    src.start(t); src.stop(t + dur + 0.02);
+    return src;
+  },
+
+  synth(t, freq, dur, gain, type, cutoff) {
+    if (!isFinite(freq) || freq <= 0) return;
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(), o2 = ctx.createOscillator();
+    const g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = type || "sawtooth"; o2.type = type || "sawtooth";
+    o.frequency.value = freq; o2.frequency.value = freq * 1.005;
+    o2.detune.value = -8;
+    f.type = "lowpass";
+    f.frequency.setValueAtTime(cutoff || 2200, t);
+    f.frequency.exponentialRampToValueAtTime(Math.max(200, (cutoff || 2200) * 0.36), t + dur);
+    f.Q.value = 6;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.014);
+    g.gain.setValueAtTime(gain, t + dur * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    o.connect(f); o2.connect(f); f.connect(g); g.connect(this.master);
+    if (this.reverbGain) g.connect(this.reverbGain);
+    o.start(t); o2.start(t); o.stop(t + dur + 0.03); o2.stop(t + dur + 0.03);
+  },
+
+  bassNote(t, freq, dur, gain) {
+    if (!isFinite(freq) || freq <= 0) return;
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+    o.type = "sawtooth"; o.frequency.value = freq;
+    f.type = "lowpass"; f.frequency.value = 420; f.Q.value = 4;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(gain, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    o.connect(f); f.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  },
+
+  playStep(step, t, stepDur) {
+    const track = TRACKS[S.track];
+    const s16 = step % 16;
+    const bar = Math.floor(step / 16);
+    const phrase = bar % 8;
+    const root = 55 * Math.pow(2, track.key / 12); // A1-based
+    const scale = [0, 2, 3, 5, 7, 8, 10]; // natural minor
+    const noteHz = (deg, oct) => root * Math.pow(2, (scale[((deg % 7) + 7) % 7] + 12 * (oct || 0)) / 12);
+
+    const build = phrase === 7;             // final bar of phrase = riser
+    const breakdown = (bar % 32) >= 24 && (bar % 32) < 28;
+    const drop = (bar % 32) >= 28 || (bar % 32) < 8;
+    void drop;
+
+    // --- drums ---
+    if (!breakdown) {
+      if (track.mode === "techno") {
+        if (s16 % 4 === 0) this.kick(t, 0.95);
+      } else if (track.mode === "wave") {
+        if (s16 === 0 || s16 === 6 || s16 === 8 || s16 === 14) this.kick(t, 0.85);
+      } else {
+        if (s16 % 4 === 0) this.kick(t, 0.92);
+        if (s16 === 14 && phrase % 2 === 1) this.kick(t, 0.6);
+      }
+      // snare / clap
+      if (s16 === 4 || s16 === 12) {
+        this.noiseBurst(t, 0.16, 0.36, 1900, "bandpass");
+        this.noiseBurst(t + 0.008, 0.1, 0.2, 3200, "highpass");
+      }
+      // hats
+      if (s16 % 2 === 1) this.noiseBurst(t, 0.035, s16 % 4 === 3 ? 0.13 : 0.08, 9000, "highpass");
+      if (track.mode === "techno" && s16 % 4 === 2) this.noiseBurst(t, 0.05, 0.1, 7000, "highpass");
+    }
+
+    // --- riser on build bar ---
+    if (build && s16 % 2 === 0) {
+      const p = s16 / 16;
+      this.noiseBurst(t, stepDur * 1.6, 0.05 + p * 0.16, 900 + p * 6500, "bandpass");
+    }
+
+    // --- bass ---
+    if (!breakdown && track.mode !== "melodic") {
+      if (s16 % 2 === 0) {
+        const seq = [0, 0, 5, 0, 3, 0, 4, 2];
+        const deg = seq[(bar * 2 + Math.floor(s16 / 8)) % seq.length];
+        this.bassNote(t, noteHz(deg, 0) / 2, stepDur * 1.7, 0.34);
+      }
+    } else if (!breakdown) {
+      if (s16 === 0 || s16 === 8) {
+        const seq = [0, 5, 3, 4];
+        this.bassNote(t, noteHz(seq[bar % 4], 0) / 2, stepDur * 6, 0.3);
+      }
+    }
+
+    // --- lead / chords ---
+    const chordSeq = [
+      [0, 2, 4], [5, 0, 2], [3, 5, 0], [4, 6, 1]
+    ];
+    const chord = chordSeq[bar % 4];
+
+    if (track.mode === "wave" || track.mode === "melodic" || breakdown) {
+      if (s16 === 0 || s16 === 8) {
+        for (let i = 0; i < chord.length; i++) {
+          this.synth(t + i * 0.006, noteHz(chord[i], 2), stepDur * 7.2, 0.09, "sawtooth", breakdown ? 1400 : 2400);
+        }
+      }
+    }
+
+    if (!breakdown && (track.mode === "anthem" || track.mode === "melodic")) {
+      const arp = [0, 4, 2, 4, 5, 4, 2, 0];
+      if (s16 % 2 === 0) {
+        const d = chord[0] + arp[(s16 / 2) % arp.length] % 7;
+        this.synth(t, noteHz(d, 3), stepDur * 1.6, 0.075, "square", 3400);
+      }
+    }
+    if (!breakdown && track.mode === "techno" && s16 % 4 === 2) {
+      this.synth(t, noteHz(chord[Math.floor(s16 / 4) % chord.length], 2), stepDur * 1.1, 0.06, "sawtooth", 1500);
+    }
+
+    // --- crash on phrase start ---
+    if (s16 === 0 && bar % 8 === 0) {
+      this.noiseBurst(t, 1.5, 0.22, 6000, "highpass");
+    }
+  },
+
+  analyse() {
+    if (!this.analyser) return;
+    this.analyser.getByteFrequencyData(this.freq);
+    const f = this.freq, n = f.length;
+    let bass = 0, mid = 0, tre = 0;
+    const bEnd = Math.floor(n * 0.055), mEnd = Math.floor(n * 0.28);
+    for (let i = 0; i < bEnd; i++) bass += f[i];
+    for (let i = bEnd; i < mEnd; i++) mid += f[i];
+    for (let i = mEnd; i < n; i++) tre += f[i];
+    bass /= (bEnd * 255); mid /= ((mEnd - bEnd) * 255); tre /= ((n - mEnd) * 255);
+    return { bass, mid, tre };
+  }
+};
+
+/* ============================================================
+   Canvas / rendering
+   ============================================================ */
+const cv = $("stage"), ctx = cv.getContext("2d", { alpha: false });
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+  // This canvas is fill-rate bound (many large additive gradients), so cap DPR
+  // on big viewports — 1.5x is visually indistinguishable here and much cheaper.
+  const raw = window.devicePixelRatio || 1;
+  const big = (window.innerWidth * window.innerHeight) > 1100 * 800;
+  DPR = Math.min(raw, big ? 1.5 : 2);
+  const r = cv.getBoundingClientRect();
+  W = Math.max(1, Math.round(r.width));
+  H = Math.max(1, Math.round(r.height));
+  cv.width = Math.round(W * DPR);
+  cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  buildRig();
+  buildCrowd();
+}
+
+/* --- Rig geometry --- */
+let heads = [], crowd = [], stars = [];
+const NUM_HEADS = 14;
+
+function buildRig() {
+  heads = [];
+  const trussY = H * 0.135;
+  for (let i = 0; i < NUM_HEADS; i++) {
+    const t = NUM_HEADS === 1 ? 0.5 : i / (NUM_HEADS - 1);
+    heads.push({
+      i: i, t: t,
+      x: lerp(W * 0.055, W * 0.945, t),
+      y: trussY,
+      ang: 0, targetAng: 0,
+      hue: 0, bright: 0, targetBright: 0
+    });
+  }
+  stars = [];
+  for (let i = 0; i < 90; i++) {
+    stars.push({ x: Math.random() * W, y: Math.random() * H * 0.42, r: rand(0.4, 1.4), tw: Math.random() * TAU });
+  }
+}
+
+function buildCrowd() {
+  crowd = [];
+  const rows = 5;
+  const horizon = H * 0.74;
+  for (let r = 0; r < rows; r++) {
+    const rt = r / (rows - 1);
+    const y = lerp(horizon, H * 1.02, rt * rt);
+    const scale = lerp(0.42, 1.5, rt);
+    const count = Math.max(8, Math.floor((W / (26 * scale)) * lerp(1.35, 0.85, rt)));
+    for (let i = 0; i < count; i++) {
+      crowd.push({
+        x: (i + rand(-0.36, 0.36)) * (W / count) + rand(-6, 6),
+        y: y + rand(-4, 4),
+        s: scale * rand(0.86, 1.16),
+        row: r, depth: rt,
+        phase: Math.random() * TAU,
+        bob: rand(0.7, 1.5),
+        phone: Math.random() < 0.24,
+        armPhase: Math.random() * TAU
+      });
+    }
+  }
+  crowd.sort((a, b) => a.y - b.y);
+}
+
+/* --- particles --- */
+let sparks = [], shells = [], confetti = [], ripples = [];
+
+function spawnShell(x, y, hue) {
+  shells.push({ x: x, y: H * 1.02, vx: rand(-0.5, 0.5), vy: -rand(8.5, 12.5), tx: x, ty: y, hue: hue, life: 1, exploded: false });
+}
+const MAX_SPARKS = 900, MAX_CONFETTI = 320;
+function explode(x, y, hue, power) {
+  if (sparks.length > MAX_SPARKS) return;
+  const n = Math.floor(46 * (power || 1));
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + rand(-0.06, 0.06);
+    const sp = rand(1.4, 5.6) * (power || 1);
+    sparks.push({
+      x: x, y: y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      life: 1, decay: rand(0.008, 0.019), hue: hue + rand(-22, 22), size: rand(1.1, 2.6)
+    });
+  }
+  ripples.push({ x: x, y: y, r: 4, life: 1, hue: hue });
+}
+function spawnConfetti(n) {
+  n = Math.min(n, Math.max(0, MAX_CONFETTI - confetti.length));
+  for (let i = 0; i < n; i++) {
+    confetti.push({
+      x: rand(0, W), y: rand(-H * 0.35, -10),
+      vx: rand(-0.9, 0.9), vy: rand(1.6, 4.2),
+      w: rand(3.5, 8), h: rand(5, 12),
+      rot: Math.random() * TAU, vr: rand(-0.18, 0.18),
+      hue: paletteHue(Math.random()), life: 1, sway: Math.random() * TAU
+    });
+  }
+}
+
+/* --- color helpers --- */
+function paletteHue(t) {
+  const p = PALETTES[S.palette];
+  const hs = p.hues;
+  const f = (t % 1 + 1) % 1;
+  const idx = f * hs.length;
+  const i0 = Math.floor(idx) % hs.length;
+  const i1 = (i0 + 1) % hs.length;
+  let a = hs[i0], b = hs[i1];
+  // shortest arc
+  let d = b - a;
+  if (d > 180) d -= 360; else if (d < -180) d += 360;
+  return a + d * (idx - Math.floor(idx)) + S.hueShift;
+}
+
+/* ============================================================
+   Pattern engine — returns {hue, bright, ang} per head
+   ============================================================ */
+function evalPattern(h, beat, energy) {
+  const id = PATTERNS[S.pattern].id;
+  const t = h.t;
+  const b = beat;
+  let hue = 0, bright = 0, ang = 0;
+  const sweep = Math.sin(b * 0.5) * 0.55;
+
+  switch (id) {
+    case "rainbow": {
+      hue = paletteHue(t * 0.85 + b * 0.06);
+      bright = 0.55 + 0.45 * Math.sin((t * 3.4 - b * 1.1) * Math.PI);
+      ang = Math.sin(b * 0.34 + t * 1.6) * 0.5;
+      break;
+    }
+    case "chase": {
+      const pos = (b * 2) % NUM_HEADS;
+      const d = Math.abs(((h.i - pos + NUM_HEADS * 1.5) % NUM_HEADS) - NUM_HEADS * 0.5);
+      const near = clamp(1 - d / 2.4, 0, 1);
+      bright = near * near;
+      hue = paletteHue(Math.floor(b * 2 / NUM_HEADS) * 0.34 + t * 0.16);
+      ang = (t - 0.5) * 1.15 + sweep * 0.35;
+      break;
+    }
+    case "pulse": {
+      const c = Math.abs(t - 0.5) * 2;
+      const w = (b * 0.9) % 2;
+      const d = Math.abs(c - (w > 1 ? 2 - w : w));
+      bright = clamp(1 - d * 2.6, 0, 1);
+      hue = paletteHue(c * 0.5 + b * 0.03);
+      ang = (t - 0.5) * (1.5 - c * 0.7);
+      break;
+    }
+    case "scanner": {
+      const s1 = (Math.sin(b * 0.62) * 0.5 + 0.5);
+      const s2 = (Math.sin(b * 0.62 + Math.PI) * 0.5 + 0.5);
+      const d1 = Math.abs(t - s1), d2 = Math.abs(t - s2);
+      const d = Math.min(d1, d2);
+      bright = clamp(1 - d * 5.5, 0, 1);
+      hue = paletteHue(d1 < d2 ? 0.1 : 0.55);
+      ang = (t - 0.5) * 1.7 + Math.sin(b * 0.62) * 0.55;
+      break;
+    }
+    case "strobe": {
+      const on = ((b * 4) % 1) < 0.34;
+      const grp = Math.floor(b * 4) % 3;
+      bright = on && (h.i % 3 === grp) ? 1 : 0.04;
+      hue = paletteHue(0.02 + Math.floor(b) * 0.11);
+      ang = Math.sin(b * 0.9 + h.i) * 0.42;
+      break;
+    }
+    case "wave": {
+      const ph = t * 3.1 - b * 0.72;
+      bright = 0.34 + 0.66 * Math.pow(Math.sin(ph) * 0.5 + 0.5, 2.1);
+      hue = paletteHue(0.14 + Math.sin(ph * 0.5) * 0.22 + b * 0.012);
+      ang = Math.sin(ph) * 0.62;
+      break;
+    }
+    case "kaleido": {
+      const m = t < 0.5 ? t * 2 : (1 - t) * 2;
+      const ph = m * 5.2 + b * 0.85;
+      bright = 0.3 + 0.7 * Math.abs(Math.sin(ph));
+      hue = paletteHue(m * 0.9 + b * 0.05);
+      ang = (t < 0.5 ? -1 : 1) * (0.35 + Math.abs(Math.sin(b * 0.42)) * 0.95);
+      break;
+    }
+    case "fireworks": {
+      const seed = Math.floor(b * 0.5);
+      const rnd = Math.abs(Math.sin(seed * 91.7 + h.i * 13.3)) % 1;
+      const ph = (b * 0.5) % 1;
+      bright = rnd > 0.52 ? clamp(1 - ph * 1.5, 0, 1) * 0.95 : 0.09;
+      hue = paletteHue(rnd + seed * 0.13);
+      ang = (rnd - 0.5) * 1.5;
+      break;
+    }
+    case "matrix": {
+      const col = Math.floor(b * 2 + h.i * 0.5) % 4;
+      const on = (Math.floor(b * 2) + h.i) % 4 < 2;
+      bright = on ? 0.92 : 0.1;
+      hue = paletteHue(col * 0.25 + Math.floor(b * 0.5) * 0.2);
+      ang = ((h.i % 2) ? 1 : -1) * 0.42;
+      break;
+    }
+    case "vortex": {
+      const spin = b * 0.55;
+      const ph = t * TAU * 1.5 + spin;
+      bright = 0.28 + 0.72 * Math.pow(Math.cos(ph) * 0.5 + 0.5, 1.9);
+      hue = paletteHue(t * 0.6 + spin * 0.09);
+      ang = Math.sin(ph) * 1.05;
+      break;
+    }
+  }
+
+  // beat reactivity
+  const react = S.sync ? S.reactivity : 0;
+  bright = bright * (1 - react * 0.42) + bright * energy * react * 1.05;
+  bright = clamp(bright + S.kick * react * 0.32, 0, 1.35);
+  return { hue: hue, bright: bright, ang: ang };
+}
+
+/* ============================================================
+   Draw
+   ============================================================ */
+let lastT = performance.now(), fpsAcc = 0, fpsN = 0;
+
+function frame(now) {
+  requestAnimationFrame(frame);
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (dt > 0.1) dt = 0.1;
+
+  // fps
+  fpsAcc += dt; fpsN++;
+  if (fpsAcc > 0.5) { S.fps = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; $("stFps").textContent = S.fps; }
+
+  // audio analysis
+  if (Audio_.analyser && S.playing) {
+    const a = Audio_.analyse();
+    if (a) {
+      S.bass = lerp(S.bass, a.bass, 0.34);
+      S.mid = lerp(S.mid, a.mid, 0.26);
+      S.treble = lerp(S.treble, a.tre, 0.24);
+      S.level = (S.bass * 1.5 + S.mid + S.treble * 0.6) / 3.1;
+    }
+  } else {
+    S.bass = lerp(S.bass, 0, 0.08);
+    S.mid = lerp(S.mid, 0, 0.08);
+    S.treble = lerp(S.treble, 0, 0.08);
+    S.level = lerp(S.level, 0, 0.08);
+  }
+
+  // clock
+  if (S.playing) {
+    S.time += dt;
+    const bpm = TRACKS[S.track].bpm;
+    S.beat += dt * (bpm / 60) * S.speed;
+  }
+  const beat = S.beat;
+  const beatIdx = Math.floor(beat);
+  if (beatIdx !== S.lastBeatIdx && S.playing) {
+    S.lastBeatIdx = beatIdx;
+    onBeat(beatIdx);
+  }
+  S.beatInBar = ((beat % 4) + 4) % 4;
+  S.bar = Math.floor(beat / 4);
+
+  // envelopes decay
+  S.kick = Math.max(0, S.kick - dt * 4.2);
+  S.snare = Math.max(0, S.snare - dt * 5.5);
+  S.flash = Math.max(0, S.flash - dt * 3.4);
+  S.patternFade = Math.min(1, S.patternFade + dt * 2.6);
+
+  render(dt, beat);
+  updateHud();
+}
+
+function onBeat(idx) {
+  // kick envelope from bass energy (or synthetic when muted)
+  const e = S.sync ? clamp(S.bass * 1.5, 0.25, 1) : 0.8;
+  if (idx % 1 === 0) S.kick = e;
+  if (idx % 2 === 1) S.snare = e * 0.8;
+
+  const inBar = ((idx % 4) + 4) % 4;
+
+  // beat pips
+  const pips = document.querySelectorAll(".beatPip");
+  pips.forEach((p, i) => p.classList.toggle("on", i === inBar));
+
+  // auto pilot: change pattern each 8 bars
+  if (S.auto && idx % 32 === 0 && idx !== 0) {
+    setPattern((S.pattern + 1 + Math.floor(Math.random() * 2)) % PATTERNS.length, true);
+  }
+
+  // phrase-driven effects
+  const bar = Math.floor(idx / 4);
+  if (inBar === 0) {
+    if (S.confetti && bar % 8 === 0) {
+      const px = rand(W * 0.18, W * 0.82);
+      spawnShell(px, rand(H * 0.14, H * 0.4), paletteHue(Math.random()));
+      if (bar % 16 === 0) { spawnShell(rand(W * 0.1, W * 0.9), rand(H * 0.14, H * 0.36), paletteHue(Math.random())); spawnConfetti(60); }
+    }
+    if (bar % 8 === 0) S.flash = 0.5;
+  }
+  if (S.confetti && S.pattern === 7 && inBar % 2 === 0) {
+    spawnShell(rand(W * 0.12, W * 0.88), rand(H * 0.12, H * 0.42), paletteHue(Math.random()));
+  }
+}
+
+function render(dt, beat) {
+  const energy = S.sync ? clamp(S.level * 2.1, 0, 1.25) : 0.62 + Math.sin(beat * 1.7) * 0.16;
+  const master = S.blackout ? 0 : S.intensity;
+
+  // ---------- background ----------
+  // deep blue-violet night sky; palette only tints it slightly
+  const bgHue = ((paletteHue(beat * 0.01) % 360) + 360) % 360;
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  const amb = 0.02 + energy * 0.03 * master;
+  g.addColorStop(0, hsl(lerp(238, bgHue, 0.18), 62, 4 + amb * 46));
+  g.addColorStop(0.55, hsl(lerp(248, bgHue, 0.12), 66, 2.5 + amb * 26));
+  g.addColorStop(1, "#010208");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+
+  // stars
+  ctx.save();
+  for (let i = 0; i < stars.length; i++) {
+    const s = stars[i];
+    const tw = 0.35 + 0.65 * (Math.sin(beat * 1.1 + s.tw) * 0.5 + 0.5);
+    ctx.fillStyle = "rgba(200,215,255," + (0.16 * tw).toFixed(3) + ")";
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+
+  // compute head states
+  const bw = S.beamWidth;
+  const headStates = [];
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    const st = evalPattern(h, beat, energy);
+    h.hue = st.hue;
+    h.targetBright = st.bright;
+    h.targetAng = st.ang;
+    h.bright = lerp(h.bright, h.targetBright, clamp(dt * 16, 0, 1));
+    h.ang = lerp(h.ang, h.targetAng, clamp(dt * 7.5, 0, 1));
+    headStates.push(st);
+  }
+
+  // ---------- laser fans (behind beams) ----------
+  if (S.lasers && master > 0.02) drawLasers(beat, energy, master);
+
+  // ---------- beams ----------
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const fogAmt = 0.16 + S.fog * 0.72;
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    let br = h.bright * master * S.patternFade;
+    if (S.strobeHold) br = (((beat * 8) % 1) < 0.42) ? 1.15 * master : 0.02;
+    if (br < 0.012) continue;
+    drawBeam(h, br, fogAmt, bw, energy);
+  }
+  ctx.restore();
+
+  // ---------- volumetric haze band the beams read through ----------
+  // low saturation on purpose: a tinted haze muddies every palette toward olive
+  if (S.fog > 0.02 && master > 0.02) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const hz = ctx.createLinearGradient(0, H * 0.38, 0, H * 0.84);
+    const hh = paletteHue(beat * 0.015 + 0.3);
+    const ha = S.fog * 0.04 * master * (0.5 + energy * 0.6);
+    hz.addColorStop(0, hsl(hh, 22, 62, 0));
+    hz.addColorStop(0.5, hsl(hh, 22, 60, ha));
+    hz.addColorStop(1, hsl(hh, 22, 54, 0));
+    ctx.fillStyle = hz;
+    ctx.fillRect(0, H * 0.38, W, H * 0.46);
+    ctx.restore();
+  }
+
+  // ---------- stage deck & truss ----------
+  drawStage(beat, energy, master);
+
+  // ---------- crowd ----------
+  if (S.crowd) drawCrowd(beat, energy, master);
+
+  // ---------- particles ----------
+  updateParticles(dt, master);
+
+  // ---------- fixture bodies (drawn over truss) ----------
+  drawFixtures(master);
+
+  // ---------- global flash ----------
+  const flash = Math.max(S.flash * 0.5, S.strobeHold ? (((beat * 8) % 1) < 0.42 ? 0.42 : 0) : 0);
+  if (flash > 0.004 && !S.blackout) {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.fillStyle = "rgba(255,255,255," + (flash * 0.55 * S.intensity).toFixed(3) + ")";
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  if (S.blackout) {
+    ctx.fillStyle = "rgba(0,0,0,0.9)";
+    ctx.fillRect(0, 0, W, H);
+    ctx.save();
+    ctx.globalAlpha = 0.6 + Math.sin(beat * 3) * 0.16;
+    ctx.fillStyle = "#ff2d6b";
+    ctx.font = "600 11px " + getComputedStyle(document.body).getPropertyValue("--mono");
+    ctx.textAlign = "center";
+    ctx.fillText("— BLACKOUT —", W / 2, H / 2);
+    ctx.restore();
+  }
+}
+
+function drawBeam(h, br, fogAmt, bw, energy) {
+  // Beams hang from the truss and project DOWN into the room.
+  // ang = 0 points straight down; positive tilts stage-right.
+  const len = H * 1.16;
+  const spread = (0.05 + 0.058 * bw) * (1 + energy * 0.16);
+  const down = Math.PI / 2;          // +y in canvas space
+  const x0 = h.x, y0 = h.y + 10;
+
+  const aL = down + h.ang - spread;
+  const aR = down + h.ang + spread;
+  const xL = x0 + Math.cos(aL) * len, yL = y0 + Math.sin(aL) * len;
+  const xR = x0 + Math.cos(aR) * len, yR = y0 + Math.sin(aR) * len;
+  const xC = (xL + xR) / 2, yC = (yL + yR) / 2;
+
+  const sat = S.sat;
+  const grad = ctx.createLinearGradient(x0, y0, xC, yC);
+  // fog scatters light INTO the cone, so it must lift the wedge, never suppress it
+  const coreA = clamp(br * (0.62 + fogAmt * 0.68), 0, 1.35);
+  grad.addColorStop(0, hsl(h.hue, sat * 0.45, 95, coreA * 1.0));
+  grad.addColorStop(0.14, hsl(h.hue, sat, 72, coreA * 0.62));
+  grad.addColorStop(0.45, hsl(h.hue, sat, 58, coreA * 0.34));
+  grad.addColorStop(0.75, hsl(h.hue, sat, 50, coreA * 0.14));
+  grad.addColorStop(1, hsl(h.hue, sat, 44, 0));
+
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(x0 - 2.5, y0);
+  ctx.lineTo(xL, yL);
+  ctx.lineTo(xR, yR);
+  ctx.lineTo(x0 + 2.5, y0);
+  ctx.closePath();
+  ctx.fill();
+
+  // hot core shaft — the part that reads as an actual beam
+  const cg = ctx.createLinearGradient(x0, y0, xC, yC);
+  cg.addColorStop(0, hsl(h.hue, sat * 0.3, 98, clamp(br, 0, 1) * 0.85));
+  cg.addColorStop(0.45, hsl(h.hue, sat * 0.75, 80, clamp(br, 0, 1) * 0.4));
+  cg.addColorStop(1, hsl(h.hue, sat, 60, 0));
+  ctx.strokeStyle = cg;
+  ctx.lineWidth = 1.5 + bw * 1.1;
+  ctx.beginPath();
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(xC, yC);
+  ctx.stroke();
+
+  // lens glow
+  const gg = ctx.createRadialGradient(x0, y0, 0, x0, y0, 34 * (0.6 + br));
+  gg.addColorStop(0, hsl(h.hue, sat * 0.5, 96, clamp(br, 0, 1) * 0.95));
+  gg.addColorStop(0.35, hsl(h.hue, sat, 62, clamp(br, 0, 1) * 0.42));
+  gg.addColorStop(1, hsl(h.hue, sat, 50, 0));
+  ctx.fillStyle = gg;
+  ctx.beginPath(); ctx.arc(x0, y0, 34 * (0.6 + br), 0, TAU); ctx.fill();
+
+  // floor pool where the beam meets the deck
+  const floorY = H * 0.79;
+  const tHit = (floorY - y0) / Math.max(1e-3, Math.sin(down + h.ang) * len);
+  if (tHit > 0 && tHit < 1.4) {
+    const fx = x0 + Math.cos(down + h.ang) * len * tHit;
+    const pool = ctx.createRadialGradient(fx, floorY, 0, fx, floorY, 100 * bw);
+    pool.addColorStop(0, hsl(h.hue, sat, 62, clamp(br, 0, 1) * 0.26));
+    pool.addColorStop(0.5, hsl(h.hue, sat, 54, clamp(br, 0, 1) * 0.1));
+    pool.addColorStop(1, hsl(h.hue, sat, 50, 0));
+    ctx.fillStyle = pool;
+    ctx.beginPath(); ctx.ellipse(fx, floorY, 100 * bw, 24 * bw, 0, 0, TAU); ctx.fill();
+  }
+}
+
+function drawLasers(beat, energy, master) {
+  const n = 11;
+  const oy = H * 0.17;
+  const cxs = [W * 0.16, W * 0.84];
+  const spin = beat * 0.4 * S.speed;
+  const spread = 0.5 + Math.sin(beat * 0.33) * 0.26;
+  const a = (0.1 + energy * 0.17) * master;
+  const len = H * 1.2;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+  for (let c = 0; c < cxs.length; c++) {
+    const ox = cxs[c];
+    const dir = c === 0 ? 1 : -1;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1) - 0.5;
+      // fan tilts outward from the emitter and sweeps with the beat
+      const ang = Math.PI * 0.5 + (t * spread + Math.sin(spin * dir + i * 0.2) * 0.22) * dir;
+      const x1 = ox + Math.cos(ang) * len, y1 = oy + Math.sin(ang) * len;
+      const hue = paletteHue(i / n * 0.4 + beat * 0.03 + c * 0.22);
+
+      // soft haze halo around the ray
+      ctx.strokeStyle = hsl(hue, S.sat, 55, a * 0.35);
+      ctx.lineWidth = 5.5;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x1, y1); ctx.stroke();
+      // bright core
+      ctx.strokeStyle = hsl(hue, S.sat * 0.9, 76, a * 1.25);
+      ctx.lineWidth = 1.05;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+    const gr = 30 + energy * 14;
+    const gg = ctx.createRadialGradient(ox, oy, 0, ox, oy, gr);
+    gg.addColorStop(0, hsl(paletteHue(beat * 0.03 + c * 0.22), S.sat * 0.6, 92, 0.6 * master));
+    gg.addColorStop(0.4, hsl(paletteHue(beat * 0.03 + c * 0.22), S.sat, 62, 0.22 * master));
+    gg.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.arc(ox, oy, gr, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawStage(beat, energy, master) {
+  // truss
+  const ty = H * 0.135;
+  ctx.save();
+  ctx.strokeStyle = "rgba(150,160,205,0.3)";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(W * 0.02, ty - 13); ctx.lineTo(W * 0.98, ty - 13); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(W * 0.02, ty + 9); ctx.lineTo(W * 0.98, ty + 9); ctx.stroke();
+  ctx.strokeStyle = "rgba(120,132,175,0.2)";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  for (let x = W * 0.02; x < W * 0.98; x += 26) {
+    ctx.moveTo(x, ty - 13); ctx.lineTo(x + 13, ty + 9);
+    ctx.moveTo(x + 13, ty - 13); ctx.lineTo(x + 26, ty + 9);
+  }
+  ctx.stroke();
+
+  // side towers
+  ctx.fillStyle = "rgba(16,18,30,0.9)";
+  ctx.fillRect(W * 0.015, ty - 22, 12, H * 0.62);
+  ctx.fillRect(W * 0.985 - 12, ty - 22, 12, H * 0.62);
+  ctx.restore();
+
+  // LED backdrop wall behind heads — a screen, not a spreadsheet
+  const wallW = W * 0.62, wallH = H * 0.22;
+  const ox = (W - wallW) / 2, wallY = ty + 26;
+  const cols = 26, rows = 8;
+  const cw = wallW / cols, ch = wallH / rows;
+
+  // dark screen body so unlit pixels read as an off panel
+  ctx.save();
+  ctx.fillStyle = "rgba(4,5,12,0.92)";
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(ox - 6, wallY - 6, wallW + 12, wallH + 12, 5);
+  else ctx.rect(ox - 6, wallY - 6, wallW + 12, wallH + 12);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(140,152,200,0.16)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.globalCompositeOperation = "lighter";
+  const id = PATTERNS[S.pattern].id;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const t = c / cols, v = r / rows;
+      let a;
+      if (id === "matrix") {
+        a = ((Math.floor(beat * 2) + c + r * 3) % 5 < 2) ? 0.62 : 0.04;
+      } else if (id === "vortex") {
+        const dx = t - 0.5, dy = (v - 0.5) * 0.55;
+        const rad = Math.sqrt(dx * dx + dy * dy);
+        a = 0.06 + 0.6 * Math.pow(Math.sin(Math.atan2(dy, dx) * 2 - rad * 12 + beat * 2.2) * 0.5 + 0.5, 2);
+      } else if (id === "strobe") {
+        a = ((beat * 4) % 1) < 0.34 ? 0.7 : 0.03;
+      } else {
+        // travelling bands, with a floor so the panel never looks half-dead
+        a = 0.16 + 0.54 * Math.pow(Math.sin(t * Math.PI * 2 - beat * 1.0 + v * 0.8) * 0.5 + 0.5, 1.7);
+      }
+      a *= (0.45 + energy * 0.8) * master;
+      if (a < 0.015) continue;
+      ctx.fillStyle = hsl(paletteHue(t * 0.7 + beat * 0.02 + v * 0.05), S.sat, 58, a);
+      // near-gapless pixels: thin seam only, so lit content dominates the panel
+      ctx.fillRect(ox + c * cw, wallY + r * ch, cw - 1, ch - 1);
+    }
+  }
+  // screen bloom spilling into the haze
+  const bl = ctx.createRadialGradient(W / 2, wallY + wallH / 2, 0, W / 2, wallY + wallH / 2, wallW * 0.62);
+  bl.addColorStop(0, hsl(paletteHue(beat * 0.02), S.sat, 55, 0.1 * master * (0.4 + energy)));
+  bl.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = bl;
+  ctx.fillRect(0, ty, W, wallH * 2.4);
+  ctx.restore();
+
+  // stage deck — long soft ramp so there is no hard horizon seam
+  const deckY = H * 0.735;
+  const dg = ctx.createLinearGradient(0, deckY - 90, 0, H);
+  dg.addColorStop(0, "rgba(8,9,20,0)");
+  dg.addColorStop(0.45, "rgba(5,6,14,0.42)");
+  dg.addColorStop(0.75, "rgba(3,4,10,0.72)");
+  dg.addColorStop(1, "rgba(1,2,6,0.9)");
+  ctx.fillStyle = dg;
+  ctx.fillRect(0, deckY - 90, W, H - deckY + 90);
+
+  // deck front edge glow
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const eg = ctx.createLinearGradient(0, deckY - 5, 0, deckY + 7);
+  const eh = paletteHue(beat * 0.05);
+  eg.addColorStop(0, hsl(eh, S.sat, 60, 0));
+  eg.addColorStop(0.5, hsl(eh, S.sat, 68, 0.36 * master * (0.5 + energy * 0.7)));
+  eg.addColorStop(1, hsl(eh, S.sat, 60, 0));
+  ctx.fillStyle = eg;
+  ctx.fillRect(0, deckY - 5, W, 12);
+  ctx.restore();
+}
+
+function drawFixtures(master) {
+  for (let i = 0; i < heads.length; i++) {
+    const h = heads[i];
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    // yoke
+    ctx.fillStyle = "#1b1e30";
+    ctx.fillRect(-7, -14, 14, 10);
+    ctx.rotate(h.ang);
+    // head body
+    ctx.fillStyle = "#252a40";
+    ctx.beginPath();
+    ctx.roundRect ? ctx.roundRect(-6, -4, 12, 17, 3) : ctx.rect(-6, -4, 12, 17);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(-6, -4, 12, 2);
+    // lens
+    const br = clamp(h.bright * master, 0, 1);
+    ctx.fillStyle = hsl(h.hue, S.sat * 0.6, 40 + br * 55, 0.35 + br * 0.65);
+    ctx.beginPath(); ctx.ellipse(0, 12, 5, 3, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCrowd(beat, energy, master) {
+  const bounce = Math.sin(beat * Math.PI) * 0.5 + 0.5;
+  ctx.save();
+  for (let i = 0; i < crowd.length; i++) {
+    const p = crowd[i];
+    const bob = Math.sin(beat * Math.PI * p.bob + p.phase) * (2.5 + energy * 4.5) * p.s;
+    const y = p.y + bob;
+    const hgt = 30 * p.s;
+    const wid = 9 * p.s;
+    const shade = lerp(0.06, 0.015, 1 - p.depth);
+    // silhouette
+    ctx.fillStyle = "rgba(3,4,10," + (0.86 + shade).toFixed(2) + ")";
+    ctx.beginPath();
+    ctx.ellipse(p.x, y - hgt, wid * 0.44, wid * 0.5, 0, 0, TAU); // head
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(p.x - wid * 0.5, y);
+    ctx.quadraticCurveTo(p.x - wid * 0.52, y - hgt * 0.72, p.x, y - hgt * 0.78);
+    ctx.quadraticCurveTo(p.x + wid * 0.52, y - hgt * 0.72, p.x + wid * 0.5, y);
+    ctx.closePath();
+    ctx.fill();
+    // arms up on strong beats
+    const armUp = bounce * (0.55 + energy * 0.6);
+    if (armUp > 0.42) {
+      ctx.strokeStyle = "rgba(3,4,10,0.9)";
+      ctx.lineWidth = 2.1 * p.s;
+      ctx.lineCap = "round";
+      const ay = y - hgt * 0.62;
+      const spread = 0.5 + Math.sin(p.armPhase + beat) * 0.22;
+      ctx.beginPath();
+      ctx.moveTo(p.x - wid * 0.42, ay);
+      ctx.lineTo(p.x - wid * 0.42 - 6 * p.s * spread, ay - 11 * p.s * armUp);
+      ctx.moveTo(p.x + wid * 0.42, ay);
+      ctx.lineTo(p.x + wid * 0.42 + 6 * p.s * spread, ay - 11 * p.s * armUp);
+      ctx.stroke();
+    }
+    // phone lights
+    if (p.phone && master > 0.05) {
+      const px = p.x + wid * 0.62, py = y - hgt * 0.92 - 6 * p.s * armUp;
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const gg = ctx.createRadialGradient(px, py, 0, px, py, 9 * p.s);
+      gg.addColorStop(0, "rgba(255,248,220,0.85)");
+      gg.addColorStop(0.35, "rgba(255,230,170,0.28)");
+      gg.addColorStop(1, "rgba(255,220,150,0)");
+      ctx.fillStyle = gg;
+      ctx.beginPath(); ctx.arc(px, py, 9 * p.s, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+  ctx.restore();
+
+  // rim light from stage — subtle wash that fades before the frame edge
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const rg = ctx.createLinearGradient(0, H * 0.68, 0, H * 0.99);
+  const rh = paletteHue(beat * 0.04);
+  rg.addColorStop(0, hsl(rh, S.sat, 58, 0.07 * master * (0.35 + energy * 0.6)));
+  rg.addColorStop(0.45, hsl(rh, S.sat, 52, 0.035 * master * (0.35 + energy * 0.6)));
+  rg.addColorStop(1, hsl(rh, S.sat, 48, 0));
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, H * 0.68, W, H * 0.32);
+  ctx.restore();
+}
+
+function updateParticles(dt, master) {
+  const k = Math.min(dt * 60, 2.4);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+
+  // shells
+  for (let i = shells.length - 1; i >= 0; i--) {
+    const s = shells[i];
+    s.x += s.vx * k; s.y += s.vy * k;
+    s.vy += 0.14 * k;
+    ctx.fillStyle = hsl(s.hue, S.sat, 75, 0.9 * master);
+    ctx.beginPath(); ctx.arc(s.x, s.y, 2.3, 0, TAU); ctx.fill();
+    // trail
+    ctx.strokeStyle = hsl(s.hue, S.sat, 65, 0.35 * master);
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.vx * 5, s.y - s.vy * 5); ctx.stroke();
+    if (s.y <= s.ty || s.vy >= -0.6) {
+      explode(s.x, s.y, s.hue, 1);
+      // keep concurrent shells from stacking into a white-out
+      S.flash = Math.min(0.4, Math.max(S.flash, 0.22));
+      shells.splice(i, 1);
+    }
+  }
+
+  // sparks
+  for (let i = sparks.length - 1; i >= 0; i--) {
+    const p = sparks[i];
+    p.x += p.vx * k; p.y += p.vy * k;
+    p.vy += 0.055 * k; p.vx *= 1 - 0.012 * k; p.vy *= 1 - 0.008 * k;
+    p.life -= p.decay * k * 1.6;
+    if (p.life <= 0) { sparks.splice(i, 1); continue; }
+    const a = p.life * p.life * master;
+    ctx.fillStyle = hsl(p.hue, S.sat, 50 + p.life * 45, a);
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (0.4 + p.life), 0, TAU); ctx.fill();
+  }
+
+  // ripples
+  for (let i = ripples.length - 1; i >= 0; i--) {
+    const r = ripples[i];
+    r.r += 7 * k; r.life -= 0.035 * k;
+    if (r.life <= 0) { ripples.splice(i, 1); continue; }
+    ctx.strokeStyle = hsl(r.hue, S.sat, 70, r.life * 0.32 * master);
+    ctx.lineWidth = 2 * r.life;
+    ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, TAU); ctx.stroke();
+  }
+  ctx.restore();
+
+  // confetti (normal blend)
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const c = confetti[i];
+    c.sway += 0.07 * k;
+    c.x += (c.vx + Math.sin(c.sway) * 0.85) * k;
+    c.y += c.vy * k;
+    c.rot += c.vr * k;
+    if (c.y > H + 30) { confetti.splice(i, 1); continue; }
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.rot);
+    const flip = Math.abs(Math.cos(c.rot * 1.6));
+    ctx.fillStyle = hsl(c.hue, S.sat * 0.95, 52 + flip * 22, (0.55 + flip * 0.4) * master);
+    ctx.fillRect(-c.w / 2, -c.h / 2, c.w, c.h * (0.25 + flip * 0.75));
+    ctx.restore();
+  }
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+let hudAcc = 0;
+function updateHud() {
+  hudAcc++;
+  if (hudAcc % 6 !== 0) return;
+  $("stBar").textContent = (Math.floor(S.beat / 4) % 999 + 1) + "." + (Math.floor(S.beatInBar) + 1);
+  $("stBpm").textContent = Math.round(TRACKS[S.track].bpm * S.speed);
+  drawSpectrum();
+}
+
+const specCv = $("spectrum");
+const sctx = specCv.getContext("2d");
+function sizeSpectrum() {
+  const r = specCv.getBoundingClientRect();
+  specCv.width = Math.max(1, Math.round(r.width * DPR));
+  specCv.height = Math.max(1, Math.round(r.height * DPR));
+}
+function drawSpectrum() {
+  if (!specCv.width) return;
+  const w = specCv.width, h = specCv.height;
+  sctx.clearRect(0, 0, w, h);
+  const bars = 42;
+  const f = Audio_.freq;
+  for (let i = 0; i < bars; i++) {
+    const t = i / bars;
+    let v;
+    if (f && S.playing) {
+      const idx = Math.floor(Math.pow(t, 1.6) * (f.length * 0.62));
+      v = f[idx] / 255;
+    } else {
+      v = 0.04 + Math.max(0, Math.sin(performance.now() / 900 + i * 0.4)) * 0.06;
+    }
+    v = clamp(v, 0.02, 1);
+    const bw = w / bars;
+    const bh = v * h * 0.94;
+    const hue = paletteHue(t * 0.75);
+    const grad = sctx.createLinearGradient(0, h, 0, h - bh);
+    grad.addColorStop(0, hsl(hue, S.sat, 46, 0.95));
+    grad.addColorStop(1, hsl(hue + 24, S.sat, 70, 1));
+    sctx.fillStyle = grad;
+    sctx.fillRect(i * bw + bw * 0.18, h - bh, bw * 0.64, bh);
+  }
+}
+
+function toast(msg) {
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove("show"), 1250);
+}
+
+/* ============================================================
+   UI construction
+   ============================================================ */
+function buildUI() {
+  // beat pips
+  const bb = $("beatBar");
+  for (let i = 0; i < 4; i++) {
+    const d = document.createElement("div");
+    d.className = "beatPip" + (i === 0 ? " downbeat" : "");
+    bb.appendChild(d);
+  }
+
+  // patterns
+  const pg = $("patternGrid");
+  PATTERNS.forEach((p, i) => {
+    const el = document.createElement("button");
+    el.className = "pcard" + (i === 0 ? " active" : "");
+    el.type = "button";
+    el.dataset.i = i;
+    el.innerHTML = '<span class="pkey">' + p.key + '</span><div class="pname">' + p.name + '</div><div class="pbar"><i></i></div>';
+    el.querySelector(".pbar i").style.background = "linear-gradient(90deg, var(--accent), var(--accent3))";
+    el.addEventListener("click", () => setPattern(i));
+    pg.appendChild(el);
+  });
+  $("patCount").textContent = PATTERNS.length + " CUES";
+
+  // palettes
+  const pl = $("paletteList");
+  PALETTES.forEach((p, i) => {
+    const el = document.createElement("div");
+    el.className = "swatch" + (i === 0 ? " active" : "");
+    el.setAttribute("role", "button");
+    el.tabIndex = 0;
+    const strip = p.hues.map(h => '<i style="background:' + hsl(h, 92, 55) + '"></i>').join("");
+    el.innerHTML = '<span class="strip">' + strip + '</span><span class="sname">' + p.name + '</span>';
+    const act = () => {
+      S.palette = i;
+      document.querySelectorAll(".swatch").forEach((s, j) => s.classList.toggle("active", j === i));
+      toast(p.name);
+    };
+    el.addEventListener("click", act);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+    pl.appendChild(el);
+  });
+
+  // tracks
+  const tl = $("trackList");
+  TRACKS.forEach((t, i) => {
+    const el = document.createElement("div");
+    el.className = "track" + (i === 0 ? " active" : "");
+    el.setAttribute("role", "button");
+    el.tabIndex = 0;
+    el.innerHTML = '<span class="eq"><i></i><i></i><i></i><i></i></span>' +
+      '<span class="tmeta"><div class="ttitle">' + t.name + '</div><div class="tsub2">' + t.genre + '</div></span>';
+    const act = () => {
+      S.track = i;
+      document.querySelectorAll(".track").forEach((s, j) => s.classList.toggle("active", j === i));
+      syncTrackSpin();
+      Audio_.reset();
+      toast("Track · " + t.name);
+    };
+    el.addEventListener("click", act);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+    tl.appendChild(el);
+  });
+
+  // sliders
+  bindRange("rInt", "vInt", v => { S.intensity = v / 100; return v + "%"; });
+  bindRange("rSpd", "vSpd", v => { S.speed = v / 100; return (v / 100).toFixed(2) + "×"; });
+  bindRange("rBeam", "vBeam", v => { S.beamWidth = v / 100; return (v / 100).toFixed(1) + "×"; });
+  bindRange("rFog", "vFog", v => { S.fog = v / 100; return v + "%"; });
+  bindRange("rRea", "vRea", v => { S.reactivity = v / 100; return v + "%"; });
+  bindRange("rHue", "vHue", v => { S.hueShift = v; return v + "°"; });
+  bindRange("rSat", "vSat", v => { S.sat = v; return v + "%"; });
+  bindRange("rVol", "vVol", v => {
+    S.volume = v / 100;
+    if (Audio_.master) Audio_.master.gain.setTargetAtTime(S.volume * 0.9, Audio_.ctx.currentTime, 0.03);
+    return v + "%";
+  });
+
+  // toggles
+  bindToggle("tgLasers", v => { S.lasers = v; toast("Lasers " + (v ? "on" : "off")); });
+  bindToggle("tgConfetti", v => { S.confetti = v; toast("Pyro " + (v ? "on" : "off")); });
+  bindToggle("tgCrowd", v => { S.crowd = v; toast("Crowd " + (v ? "on" : "off")); });
+  bindToggle("tgSync", v => { S.sync = v; toast("Music sync " + (v ? "on" : "off")); });
+
+  // cues
+  document.querySelectorAll(".cue").forEach(el => {
+    const fire = () => {
+      el.classList.add("hit");
+      setTimeout(() => el.classList.remove("hit"), 170);
+      fireCue(el.dataset.cue);
+    };
+    el.addEventListener("click", fire);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); fire(); } });
+  });
+}
+
+function bindRange(id, valId, fn) {
+  const el = $(id), lbl = $(valId);
+  const upd = () => {
+    const v = parseFloat(el.value);
+    lbl.textContent = fn(v);
+    const pct = ((v - el.min) / (el.max - el.min)) * 100;
+    el.style.setProperty("--pct", pct + "%");
+  };
+  el.addEventListener("input", upd);
+  upd();
+}
+
+function bindToggle(id, fn) {
+  const el = $(id);
+  const act = () => {
+    el.classList.toggle("on");
+    fn(el.classList.contains("on"));
+  };
+  el.addEventListener("click", act);
+  el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); act(); } });
+}
+
+function setPattern(i, silent) {
+  S.pattern = ((i % PATTERNS.length) + PATTERNS.length) % PATTERNS.length;
+  S.patternFade = 0.15;
+  document.querySelectorAll(".pcard").forEach((el, j) => el.classList.toggle("active", j === S.pattern));
+  const p = PATTERNS[S.pattern];
+  $("plName").textContent = p.name;
+  $("plDesc").textContent = p.desc;
+  if (!silent) toast(p.name);
+  const card = document.querySelectorAll(".pcard")[S.pattern];
+  if (card && card.scrollIntoView) card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+
+function fireCue(kind) {
+  switch (kind) {
+    case "flash": S.flash = 1; break;
+    case "pyro":
+      for (let i = 0; i < 3; i++) spawnShell(rand(W * 0.15, W * 0.85), rand(H * 0.12, H * 0.4), paletteHue(Math.random()));
+      spawnConfetti(70);
+      break;
+    case "sweep": setPattern(3); break;
+    case "drop":
+      S.flash = 1;
+      spawnConfetti(160);
+      for (let i = 0; i < 5; i++) spawnShell(rand(W * 0.1, W * 0.9), rand(H * 0.1, H * 0.42), paletteHue(Math.random()));
+      setPattern(Math.floor(rand(0, PATTERNS.length)), true);
+      toast("DROP!");
+      break;
+  }
+}
+
+function syncTrackSpin() {
+  document.querySelectorAll(".track").forEach(el => el.classList.toggle("spinning", S.playing));
+}
+
+function setPlaying(on) {
+  S.playing = on;
+  const btn = $("btnPlay");
+  btn.classList.toggle("playing", on);
+  $("playLabel").textContent = on ? "Pause" : "Start Show";
+  $("playIcon").innerHTML = on
+    ? '<rect x="6" y="4" width="4.6" height="16" rx="1.4"/><rect x="13.4" y="4" width="4.6" height="16" rx="1.4"/>'
+    : '<path d="M7 4l14 8-14 8z"/>';
+  $("stShow").textContent = on ? "Live" : "Standby";
+  $("liveDot").classList.toggle("live", on);
+  syncTrackSpin();
+  if (on) { Audio_.start(); } else { Audio_.stop(); }
+}
+
+/* ============================================================
+   Events
+   ============================================================ */
+function wire() {
+  $("btnPlay").addEventListener("click", () => setPlaying(!S.playing));
+  $("btnPrev").addEventListener("click", () => setPattern(S.pattern - 1));
+  $("btnNext").addEventListener("click", () => setPattern(S.pattern + 1));
+
+  const strobeOn = () => { S.strobeHold = true; $("btnStrobe").classList.add("armed"); };
+  const strobeOff = () => { S.strobeHold = false; $("btnStrobe").classList.remove("armed"); };
+  const sb = $("btnStrobe");
+  sb.addEventListener("mousedown", strobeOn);
+  sb.addEventListener("touchstart", e => { e.preventDefault(); strobeOn(); }, { passive: false });
+  window.addEventListener("mouseup", strobeOff);
+  window.addEventListener("touchend", strobeOff);
+
+  $("btnBlack").addEventListener("click", () => {
+    S.blackout = !S.blackout;
+    $("btnBlack").classList.toggle("armed", S.blackout);
+    toast(S.blackout ? "Blackout" : "Lights up");
+  });
+
+  $("btnAuto").addEventListener("click", () => {
+    S.auto = !S.auto;
+    $("btnAuto").classList.toggle("armed", S.auto);
+    toast("Auto-pilot " + (S.auto ? "engaged" : "off"));
+  });
+
+  const rt = $("railToggle");
+  const toggleRail = () => { document.body.classList.toggle("rail-hidden"); setTimeout(resize, 380); };
+  rt.addEventListener("click", toggleRail);
+  rt.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleRail(); } });
+
+  // click on stage = flash cue
+  $("stageWrap").addEventListener("click", e => {
+    if (e.target.closest(".tbtn") || e.target.closest("#railToggle")) return;
+    const r = cv.getBoundingClientRect();
+    const x = e.clientX - r.left, y = e.clientY - r.top;
+    explode(x, y, paletteHue(Math.random()), 0.75);
+    S.flash = Math.max(S.flash, 0.3);
+  });
+
+  // keyboard
+  window.addEventListener("keydown", e => {
+    if (e.target.matches("input, textarea")) return;
+    const k = e.key.toLowerCase();
+    if (k === " ") { e.preventDefault(); setPlaying(!S.playing); return; }
+    if (k === "arrowright") { e.preventDefault(); setPattern(S.pattern + 1); return; }
+    if (k === "arrowleft") { e.preventDefault(); setPattern(S.pattern - 1); return; }
+    if (k === "f" && !e.repeat) { strobeOn(); return; }
+    if (k === "b") { $("btnBlack").click(); return; }
+    if (k === "a") { $("btnAuto").click(); return; }
+    if (k === "h") { toggleRail(); return; }
+    if (k === "l") { $("tgLasers").click(); return; }
+    if (k === "p") { $("tgConfetti").click(); return; }
+    if (k === "c") { $("tgCrowd").click(); return; }
+    const idx = PATTERNS.findIndex(p => p.key === e.key);
+    if (idx >= 0) setPattern(idx);
+  });
+  window.addEventListener("keyup", e => { if (e.key.toLowerCase() === "f") strobeOff(); });
+
+  window.addEventListener("resize", () => { resize(); sizeSpectrum(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && S.playing) Audio_.stop();
+    else if (!document.hidden && S.playing) Audio_.start();
+  });
+
+  $("bootBtn").addEventListener("click", () => {
+    $("boot").classList.add("gone");
+    Audio_.init();
+    setPlaying(true);
+    setTimeout(() => toast("Show is live — press H to hide the console"), 700);
+  });
+}
+
+/* ============================================================
+   Boot
+   ============================================================ */
+buildUI();
+wire();
+resize();
+sizeSpectrum();
+setPattern(0, true);
+requestAnimationFrame(frame);
+
+// idle ambience before the show starts: gently drift beat so the stage isn't static
+setInterval(() => { if (!S.playing) S.beat += 0.055; }, 60);
+
+})();
+</script>
+</body>
+</html>

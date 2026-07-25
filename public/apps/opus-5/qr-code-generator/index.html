@@ -1,0 +1,1482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QR — Custom QR Code Generator</title>
+<style>
+  :root{
+    --bg:#0d0f13;
+    --bg-2:#12151b;
+    --panel:#171b22;
+    --panel-2:#1d222b;
+    --line:#262c37;
+    --line-2:#333b48;
+    --txt:#e8ecf3;
+    --txt-2:#9aa5b6;
+    --txt-3:#6b7688;
+    --accent:#6ee7b7;
+    --accent-2:#38bdf8;
+    --danger:#fb7185;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.6);
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f5f7;
+    --bg-2:#eceef2;
+    --panel:#ffffff;
+    --panel-2:#f6f7f9;
+    --line:#e2e5ea;
+    --line-2:#d0d5dd;
+    --txt:#131820;
+    --txt-2:#5a6474;
+    --txt-3:#8b95a5;
+    --accent:#0f9d76;
+    --accent-2:#0284c7;
+    --shadow:0 1px 2px rgba(16,24,40,.06), 0 12px 28px -14px rgba(16,24,40,.22);
+  }
+
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--txt);
+    font-family:var(--sans);
+    font-size:14px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow:hidden;
+  }
+  @media (max-width:900px){ body{overflow:auto} }
+
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer;background:none;border:none;padding:0}
+  ::selection{background:color-mix(in srgb, var(--accent) 35%, transparent)}
+
+  /* ---------- layout ---------- */
+  .app{display:flex;flex-direction:column;height:100dvh}
+  @media (max-width:900px){ .app{height:auto;min-height:100dvh} }
+
+  header.top{
+    display:flex;align-items:center;gap:14px;
+    padding:0 20px;height:56px;flex:0 0 auto;
+    border-bottom:1px solid var(--line);
+    background:color-mix(in srgb, var(--panel) 60%, transparent);
+    backdrop-filter:blur(12px);
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:650;letter-spacing:-.01em}
+  .brand .glyph{
+    width:26px;height:26px;border-radius:7px;flex:0 0 auto;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    display:grid;place-items:center;color:#06121a;
+  }
+  .brand .glyph svg{width:15px;height:15px;display:block}
+  .brand small{display:block;font-weight:450;font-size:11px;color:var(--txt-3);letter-spacing:.02em;margin-top:-3px}
+  .top .spacer{flex:1}
+  .ghost{
+    display:inline-flex;align-items:center;gap:7px;
+    height:32px;padding:0 11px;border-radius:9px;
+    border:1px solid var(--line);color:var(--txt-2);
+    font-size:12.5px;font-weight:500;
+    transition:background .15s,color .15s,border-color .15s;
+  }
+  .ghost:hover{background:var(--panel-2);color:var(--txt);border-color:var(--line-2)}
+  .ghost svg{width:14px;height:14px}
+
+  main{flex:1;display:grid;grid-template-columns:minmax(340px,392px) 1fr;min-height:0}
+  @media (max-width:900px){ main{grid-template-columns:1fr;min-height:0} }
+
+  /* ---------- left panel ---------- */
+  .panel{
+    border-right:1px solid var(--line);
+    background:var(--bg-2);
+    overflow-y:auto;overscroll-behavior:contain;
+    display:flex;flex-direction:column;
+  }
+  @media (max-width:900px){ .panel{border-right:none;border-bottom:1px solid var(--line);order:2;overflow:visible} }
+  .panel::-webkit-scrollbar{width:10px}
+  .panel::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px;border:3px solid var(--bg-2)}
+  .panel::-webkit-scrollbar-thumb:hover{background:var(--line-2)}
+
+  section.grp{padding:18px 20px;border-bottom:1px solid var(--line)}
+  section.grp:last-child{border-bottom:none}
+  .grp-head{
+    display:flex;align-items:center;gap:8px;margin-bottom:12px;
+    font-size:11px;font-weight:650;letter-spacing:.09em;text-transform:uppercase;color:var(--txt-3);
+  }
+  .grp-head .ln{flex:1;height:1px;background:var(--line)}
+
+  label.field{display:block;margin-bottom:13px}
+  label.field:last-child{margin-bottom:0}
+  .lbl{display:flex;align-items:baseline;gap:8px;margin-bottom:6px;font-size:12px;color:var(--txt-2);font-weight:500}
+  .lbl .val{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--txt-3);font-variant-numeric:tabular-nums}
+
+  textarea,input[type=text],input[type=url],select{
+    width:100%;background:var(--panel);border:1px solid var(--line);
+    border-radius:10px;padding:9px 11px;color:var(--txt);
+    outline:none;transition:border-color .15s, box-shadow .15s, background .15s;
+  }
+  textarea:focus,input[type=text]:focus,input[type=url]:focus,select:focus{
+    border-color:color-mix(in srgb,var(--accent) 55%,var(--line));
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent);
+  }
+  textarea{resize:vertical;min-height:96px;font-family:var(--mono);font-size:12.5px;line-height:1.55}
+  textarea::placeholder{color:var(--txt-3)}
+  select{appearance:none;cursor:pointer;padding-right:30px;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238b95a5' stroke-width='2.2' stroke-linecap='round'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat:no-repeat;background-position:right 9px center;background-size:15px}
+
+  /* segmented control */
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+  .seg button{
+    flex:1;height:28px;border-radius:7px;font-size:12px;font-weight:550;color:var(--txt-2);
+    transition:background .15s,color .15s;white-space:nowrap;
+  }
+  .seg button:hover{color:var(--txt)}
+  .seg button[aria-pressed=true]{background:var(--panel-2);color:var(--txt);box-shadow:0 1px 2px rgba(0,0,0,.25),inset 0 0 0 1px var(--line-2)}
+  :root[data-theme=light] .seg button[aria-pressed=true]{background:#fff;box-shadow:0 1px 2px rgba(16,24,40,.1),inset 0 0 0 1px var(--line-2)}
+
+  /* range */
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:20px;background:none;cursor:pointer;margin:0;
+  }
+  input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:99px;background:var(--line-2)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:var(--line-2)}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--txt);
+    margin-top:-5.5px;border:none;box-shadow:0 1px 3px rgba(0,0,0,.45);transition:transform .12s}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--txt);border:none;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+  input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18)}
+
+  /* color rows */
+  .colorrow{display:flex;align-items:center;gap:9px;margin-bottom:9px}
+  .colorrow:last-child{margin-bottom:0}
+  .swatch{
+    position:relative;width:34px;height:34px;border-radius:9px;flex:0 0 auto;overflow:hidden;
+    border:1px solid var(--line-2);box-shadow:inset 0 0 0 2px var(--panel);
+    background-image:linear-gradient(45deg,#8884 25%,transparent 25%,transparent 75%,#8884 75%),linear-gradient(45deg,#8884 25%,transparent 25%,transparent 75%,#8884 75%);
+    background-size:10px 10px;background-position:0 0,5px 5px;
+  }
+  .swatch i{position:absolute;inset:0;display:block}
+  .swatch input{position:absolute;inset:-4px;width:calc(100% + 8px);height:calc(100% + 8px);opacity:0;cursor:pointer;border:none;padding:0}
+  .colorrow .meta{min-width:0;flex:1}
+  .colorrow .name{font-size:12px;color:var(--txt-2);font-weight:500}
+  .colorrow .hex{
+    font-family:var(--mono);font-size:11.5px;color:var(--txt);background:none;border:none;
+    padding:1px 0;width:100%;text-transform:uppercase;outline:none;letter-spacing:.02em;
+  }
+  .colorrow .hex:focus{color:var(--accent)}
+
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+  /* palettes */
+  .palettes{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+  .pal{
+    height:34px;border-radius:9px;border:1px solid var(--line);overflow:hidden;position:relative;
+    display:flex;flex-direction:column;transition:transform .12s,border-color .15s;
+  }
+  .pal:hover{transform:translateY(-2px);border-color:var(--line-2)}
+  .pal:active{transform:translateY(0)}
+  .pal span{flex:1;display:block}
+  .pal[aria-pressed=true]{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 25%,transparent)}
+
+  .toggle{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0}
+  .sw{
+    position:relative;width:38px;height:22px;border-radius:99px;background:var(--line-2);flex:0 0 auto;
+    transition:background .18s;
+  }
+  .sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .18s cubic-bezier(.3,1.4,.5,1);box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .sw[aria-pressed=true]{background:var(--accent)}
+  .sw[aria-pressed=true]::after{transform:translateX(16px)}
+  .toggle .t-lbl{font-size:12.5px;color:var(--txt-2)}
+
+  .hint{font-size:11.5px;color:var(--txt-3);line-height:1.45;margin-top:8px}
+
+  /* ---------- stage ---------- */
+  .stage{
+    position:relative;display:flex;flex-direction:column;min-width:0;min-height:0;
+    background:
+      radial-gradient(900px 600px at 50% -10%, color-mix(in srgb,var(--accent) 7%,transparent), transparent 70%),
+      var(--bg);
+  }
+  @media (max-width:900px){ .stage{order:1;min-height:70vh} }
+  .stage-body{flex:1;display:grid;place-items:center;padding:28px;min-height:0}
+  .canvas-wrap{
+    position:relative;display:grid;place-items:center;
+    width:min(100%, 560px);aspect-ratio:1/1;max-height:100%;
+    border-radius:20px;
+    transition:transform .35s cubic-bezier(.2,.9,.3,1.1);
+  }
+  .canvas-wrap.pulse{transform:scale(1.015)}
+  #preview{
+    display:block;width:100%;height:100%;object-fit:contain;
+    border-radius:18px;box-shadow:var(--shadow);
+    image-rendering:-webkit-optimize-contrast;
+  }
+  .checker{
+    position:absolute;inset:0;border-radius:18px;pointer-events:none;z-index:-1;
+    background-image:linear-gradient(45deg,#8882 25%,transparent 25%,transparent 75%,#8882 75%),linear-gradient(45deg,#8882 25%,transparent 25%,transparent 75%,#8882 75%);
+    background-size:16px 16px;background-position:0 0,8px 8px;opacity:0;transition:opacity .2s;
+  }
+  .checker.on{opacity:1}
+
+  .stage-bar{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:12px 20px;border-top:1px solid var(--line);
+    background:color-mix(in srgb,var(--panel) 55%,transparent);backdrop-filter:blur(12px);
+  }
+  .stats{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--txt-3);font-family:var(--mono);font-variant-numeric:tabular-nums}
+  .stats b{color:var(--txt-2);font-weight:600}
+  .stage-bar .spacer{flex:1}
+
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    height:36px;padding:0 15px;border-radius:10px;font-size:13px;font-weight:600;
+    border:1px solid var(--line-2);color:var(--txt);background:var(--panel-2);
+    transition:transform .1s, filter .15s, background .15s, border-color .15s;
+  }
+  .btn:hover{border-color:var(--txt-3)}
+  .btn:active{transform:translateY(1px)}
+  .btn svg{width:15px;height:15px}
+  .btn.primary{
+    background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 92%,#fff),var(--accent));
+    color:#052018;border-color:transparent;box-shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px -8px color-mix(in srgb,var(--accent) 80%,transparent);
+  }
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+  .dl{position:relative;display:flex}
+  .dl .btn.primary{border-top-right-radius:0;border-bottom-right-radius:0;padding-right:13px}
+  .dl .caret{
+    height:36px;width:30px;border-radius:0 10px 10px 0;border:1px solid transparent;border-left:1px solid rgba(0,0,0,.18);
+    background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 92%,#fff),var(--accent));
+    color:#052018;display:grid;place-items:center;
+    box-shadow:0 1px 2px rgba(0,0,0,.3),0 6px 18px -8px color-mix(in srgb,var(--accent) 80%,transparent);
+  }
+  .dl .caret:hover{filter:brightness(1.06)}
+  .dl .caret svg{width:13px;height:13px}
+  .menu{
+    position:absolute;bottom:calc(100% + 8px);right:0;min-width:186px;z-index:30;
+    background:var(--panel);border:1px solid var(--line-2);border-radius:12px;padding:5px;
+    box-shadow:0 18px 40px -12px rgba(0,0,0,.6);
+    opacity:0;transform:translateY(6px) scale(.97);pointer-events:none;transition:opacity .14s,transform .14s;
+  }
+  .menu.open{opacity:1;transform:none;pointer-events:auto}
+  .menu button{
+    display:flex;width:100%;align-items:center;gap:9px;padding:8px 9px;border-radius:8px;
+    font-size:12.5px;color:var(--txt-2);text-align:left;
+  }
+  .menu button:hover{background:var(--panel-2);color:var(--txt)}
+  .menu button kbd{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3)}
+  .menu hr{border:none;border-top:1px solid var(--line);margin:5px 4px}
+
+  .err{
+    position:absolute;left:50%;bottom:76px;transform:translateX(-50%) translateY(8px);
+    background:color-mix(in srgb,var(--danger) 16%,var(--panel));
+    border:1px solid color-mix(in srgb,var(--danger) 45%,transparent);
+    color:var(--txt);padding:8px 14px;border-radius:10px;font-size:12.5px;
+    opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;max-width:min(90%,420px);text-align:center;
+  }
+  .err.on{opacity:1;transform:translateX(-50%)}
+
+  .toast{
+    position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:var(--panel);border:1px solid var(--line-2);color:var(--txt);
+    padding:9px 16px;border-radius:99px;font-size:12.5px;font-weight:500;z-index:60;
+    box-shadow:0 16px 36px -14px rgba(0,0,0,.7);
+    display:flex;align-items:center;gap:8px;
+    opacity:0;pointer-events:none;transition:opacity .2s, transform .25s cubic-bezier(.2,1.2,.4,1);
+  }
+  .toast.on{opacity:1;transform:translateX(-50%)}
+  .toast svg{width:15px;height:15px;color:var(--accent)}
+
+  .sronly{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .qtypes{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .chip{
+    height:26px;padding:0 10px;border-radius:99px;border:1px solid var(--line);
+    font-size:11.5px;color:var(--txt-2);font-weight:500;transition:.15s;
+  }
+  .chip:hover{border-color:var(--line-2);color:var(--txt);background:var(--panel)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <div class="glyph" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5zm8-2h8v8h-8V3zm2 2v4h4V5h-4zM3 13h8v8H3v-8zm2 2v4h4v-4H5zm8-2h3v3h-3v-3zm5 0h3v3h-3v-3zm-5 5h3v3h-3v-3zm5 0h3v3h-3v-3z"/></svg>
+      </div>
+      <div>QR Studio<small>custom code generator</small></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="ghost" id="themeBtn" title="Toggle theme">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      <span id="themeLabel">Light</span>
+    </button>
+    <button class="ghost" id="resetBtn" title="Reset all settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      Reset
+    </button>
+  </header>
+
+  <main>
+    <!-- ============ CONTROLS ============ -->
+    <aside class="panel">
+      <section class="grp">
+        <div class="grp-head">Content <span class="ln"></span></div>
+        <div class="qtypes">
+          <button class="chip" data-tpl="url">URL</button>
+          <button class="chip" data-tpl="wifi">Wi-Fi</button>
+          <button class="chip" data-tpl="email">Email</button>
+          <button class="chip" data-tpl="tel">Phone</button>
+          <button class="chip" data-tpl="sms">SMS</button>
+          <button class="chip" data-tpl="vcard">vCard</button>
+          <button class="chip" data-tpl="geo">Location</button>
+        </div>
+        <textarea id="text" spellcheck="false" placeholder="Paste a link or type any text…">https://claude.com/product/claude-code</textarea>
+        <div class="hint" id="capHint"></div>
+      </section>
+
+      <section class="grp">
+        <div class="grp-head">Palette <span class="ln"></span></div>
+        <div class="palettes" id="palettes"></div>
+        <div style="height:14px"></div>
+        <div class="colorrow">
+          <span class="swatch"><i id="sw-fg"></i><input type="color" id="fg" value="#0F172A" aria-label="Foreground color"></span>
+          <span class="meta"><span class="name">Foreground</span><input class="hex" id="fgHex" value="#0F172A" spellcheck="false" maxlength="7"></span>
+        </div>
+        <div class="colorrow">
+          <span class="swatch"><i id="sw-fg2"></i><input type="color" id="fg2" value="#0F172A" aria-label="Gradient end color"></span>
+          <span class="meta"><span class="name">Gradient end</span><input class="hex" id="fg2Hex" value="#0F172A" spellcheck="false" maxlength="7"></span>
+        </div>
+        <div class="colorrow">
+          <span class="swatch"><i id="sw-bg"></i><input type="color" id="bg" value="#FFFFFF" aria-label="Background color"></span>
+          <span class="meta"><span class="name">Background</span><input class="hex" id="bgHex" value="#FFFFFF" spellcheck="false" maxlength="7"></span>
+        </div>
+        <div class="colorrow">
+          <span class="swatch"><i id="sw-eye"></i><input type="color" id="eye" value="#0F172A" aria-label="Finder color"></span>
+          <span class="meta"><span class="name">Finder eyes</span><input class="hex" id="eyeHex" value="#0F172A" spellcheck="false" maxlength="7"></span>
+        </div>
+
+        <div style="height:12px"></div>
+        <label class="field">
+          <span class="lbl">Gradient <span class="val" id="gradVal">Off</span></span>
+          <div class="seg" id="gradSeg" role="group" aria-label="Gradient direction">
+            <button data-v="none" aria-pressed="true">None</button>
+            <button data-v="linear" aria-pressed="false">Linear</button>
+            <button data-v="diagonal" aria-pressed="false">Diagonal</button>
+            <button data-v="radial" aria-pressed="false">Radial</button>
+          </div>
+        </label>
+        <div class="toggle">
+          <span class="t-lbl">Transparent background</span>
+          <button class="sw" id="transp" aria-pressed="false" aria-label="Transparent background"></button>
+        </div>
+      </section>
+
+      <section class="grp">
+        <div class="grp-head">Style <span class="ln"></span></div>
+        <label class="field">
+          <span class="lbl">Module shape</span>
+          <div class="seg" id="shapeSeg" role="group" aria-label="Module shape">
+            <button data-v="square" aria-pressed="true">Square</button>
+            <button data-v="rounded" aria-pressed="false">Rounded</button>
+            <button data-v="dot" aria-pressed="false">Dots</button>
+            <button data-v="fluid" aria-pressed="false">Fluid</button>
+          </div>
+        </label>
+        <label class="field">
+          <span class="lbl">Eye shape</span>
+          <div class="seg" id="eyeSeg" role="group" aria-label="Eye shape">
+            <button data-v="square" aria-pressed="true">Square</button>
+            <button data-v="rounded" aria-pressed="false">Rounded</button>
+            <button data-v="circle" aria-pressed="false">Circle</button>
+            <button data-v="leaf" aria-pressed="false">Leaf</button>
+          </div>
+        </label>
+        <div class="row2">
+          <label class="field">
+            <span class="lbl">Quiet zone <span class="val" id="qzVal">4</span></span>
+            <input type="range" id="quiet" min="0" max="8" step="1" value="4">
+          </label>
+          <label class="field">
+            <span class="lbl">Corner radius <span class="val" id="crVal">0%</span></span>
+            <input type="range" id="corner" min="0" max="24" step="1" value="0">
+          </label>
+        </div>
+      </section>
+
+      <section class="grp">
+        <div class="grp-head">Logo <span class="ln"></span></div>
+        <div class="row2">
+          <button class="btn" id="logoBtn" style="width:100%">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10"/><circle cx="9" cy="9" r="2"/><path d="m3 17 5-5 4 4"/></svg>
+            Upload
+          </button>
+          <button class="btn" id="logoClear" style="width:100%" disabled>Remove</button>
+        </div>
+        <input type="file" id="logoInput" accept="image/*" class="sronly">
+        <div style="height:12px"></div>
+        <label class="field">
+          <span class="lbl">Logo size <span class="val" id="lsVal">22%</span></span>
+          <input type="range" id="logoSize" min="10" max="32" step="1" value="22">
+        </label>
+        <div class="toggle">
+          <span class="t-lbl">Clear backdrop behind logo</span>
+          <button class="sw" id="logoPad" aria-pressed="true" aria-label="Logo backdrop"></button>
+        </div>
+      </section>
+
+      <section class="grp">
+        <div class="grp-head">Encoding <span class="ln"></span></div>
+        <label class="field">
+          <span class="lbl">Error correction <span class="val" id="ecHint">~15% recoverable</span></span>
+          <div class="seg" id="ecSeg" role="group" aria-label="Error correction level">
+            <button data-v="L" aria-pressed="false">L</button>
+            <button data-v="M" aria-pressed="true">M</button>
+            <button data-v="Q" aria-pressed="false">Q</button>
+            <button data-v="H" aria-pressed="false">H</button>
+          </div>
+        </label>
+        <div class="row2">
+          <label class="field">
+            <span class="lbl">Version</span>
+            <select id="version">
+              <option value="0">Auto</option>
+            </select>
+          </label>
+          <label class="field">
+            <span class="lbl">Export size</span>
+            <select id="size">
+              <option value="512">512 px</option>
+              <option value="1024" selected>1024 px</option>
+              <option value="2048">2048 px</option>
+              <option value="4096">4096 px</option>
+            </select>
+          </label>
+        </div>
+        <div class="hint">Higher error correction survives more damage — and is required if you place a logo in the centre.</div>
+      </section>
+    </aside>
+
+    <!-- ============ STAGE ============ -->
+    <div class="stage">
+      <div class="stage-body">
+        <div class="canvas-wrap" id="wrap">
+          <div class="checker" id="checker"></div>
+          <canvas id="preview" width="1024" height="1024" aria-label="QR code preview"></canvas>
+        </div>
+      </div>
+      <div class="err" id="err"></div>
+      <div class="stage-bar">
+        <div class="stats">
+          <span>version <b id="stVer">—</b></span>
+          <span>modules <b id="stMod">—</b></span>
+          <span>ecc <b id="stEcc">—</b></span>
+          <span>bytes <b id="stLen">—</b></span>
+          <span>capacity <b id="stCap">—</b></span>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn" id="copyBtn" title="Copy PNG to clipboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copy
+        </button>
+        <div class="dl">
+          <button class="btn primary" id="dlBtn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
+            Download PNG
+          </button>
+          <button class="caret" id="dlCaret" aria-label="More export options">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+          </button>
+          <div class="menu" id="dlMenu">
+            <button data-act="png">Download PNG <kbd>⏎</kbd></button>
+            <button data-act="svg">Download SVG</button>
+            <hr>
+            <button data-act="copy">Copy image to clipboard</button>
+            <button data-act="link">Copy shareable link</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg><span id="toastMsg"></span></div>
+
+<script>
+/* =====================================================================
+   QR encoder — ISO/IEC 18004. Self-contained, no dependencies.
+   Supports numeric / alphanumeric / byte(UTF-8) modes, versions 1-40,
+   all four ECC levels, full mask evaluation.
+   ===================================================================== */
+const QR = (() => {
+  // --- Galois field GF(256), primitive poly 0x11D ---
+  const EXP = new Uint8Array(512), LOG = new Uint8Array(256);
+  (() => { let x = 1;
+    for (let i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11D; }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+  })();
+  const mul = (a, b) => (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+
+  function rsPoly(deg) {
+    let poly = [1];
+    for (let i = 0; i < deg; i++) {
+      const next = new Array(poly.length + 1).fill(0);
+      for (let j = 0; j < poly.length; j++) {
+        next[j] ^= poly[j];
+        next[j + 1] ^= mul(poly[j], EXP[i]);
+      }
+      poly = next;
+    }
+    return poly;
+  }
+  function rsEncode(data, deg) {
+    const gen = rsPoly(deg), res = new Uint8Array(deg);
+    for (const b of data) {
+      const factor = b ^ res[0];
+      res.copyWithin(0, 1); res[deg - 1] = 0;
+      for (let i = 0; i < deg; i++) res[i] ^= mul(gen[i + 1], factor);
+    }
+    return res;
+  }
+
+  // --- capacity tables ---
+  // total codewords per version (index 1..40)
+  const TOTAL_CW = [0,26,44,70,100,134,172,196,242,292,346,404,466,532,581,655,733,815,901,991,
+    1085,1156,1258,1364,1474,1588,1706,1828,1921,2051,2185,2323,2465,2611,2761,2876,3034,3196,3362,3532,3706];
+  // [ecCodewordsPerBlock, group1Blocks, group2Blocks] per version, ordered L,M,Q,H
+  const ECB = {
+    L:[[7,1,0],[10,1,0],[15,1,0],[20,1,0],[26,1,0],[18,2,0],[20,2,0],[24,2,0],[30,2,0],[18,2,2],[20,4,0],[24,2,2],[26,4,0],[30,3,1],[22,5,1],[24,5,1],[28,1,5],[30,5,1],[28,3,4],[28,3,5],[28,4,4],[28,2,7],[30,4,5],[30,6,4],[26,8,4],[28,10,2],[30,8,4],[30,3,10],[30,7,7],[30,5,10],[30,13,3],[30,17,0],[30,17,1],[30,13,6],[30,12,7],[30,6,14],[30,17,4],[30,4,18],[30,20,4],[30,19,6]],
+    M:[[10,1,0],[16,1,0],[26,1,0],[18,2,0],[24,2,0],[16,4,0],[18,4,0],[22,2,2],[22,3,2],[26,4,1],[30,1,4],[22,6,2],[22,8,1],[24,4,5],[24,5,5],[28,7,3],[28,10,1],[26,9,4],[26,3,11],[26,3,13],[26,17,0],[28,17,0],[28,4,14],[28,6,14],[28,8,13],[28,19,4],[28,22,3],[28,3,23],[28,21,7],[28,19,10],[28,2,29],[28,10,23],[28,14,21],[28,14,23],[28,12,26],[28,6,34],[28,29,14],[28,13,32],[28,40,7],[28,18,31]],
+    Q:[[13,1,0],[22,1,0],[18,2,0],[26,2,0],[18,2,2],[24,4,0],[18,2,4],[22,4,2],[20,4,4],[24,6,2],[28,4,4],[26,4,6],[24,8,4],[20,11,5],[30,5,7],[24,15,2],[28,1,15],[28,17,1],[26,17,4],[30,15,5],[28,17,6],[30,7,16],[30,11,14],[30,11,16],[30,7,22],[28,28,6],[30,8,26],[30,4,31],[30,1,37],[30,15,25],[30,42,1],[30,10,35],[30,29,19],[30,44,7],[30,39,14],[30,46,10],[30,49,10],[30,48,14],[30,43,22],[30,34,34]],
+    H:[[17,1,0],[28,1,0],[22,2,0],[16,4,0],[22,2,2],[28,4,0],[26,4,1],[26,4,2],[24,4,4],[28,6,2],[24,3,8],[28,7,4],[22,12,4],[24,11,5],[24,11,7],[30,3,13],[28,2,17],[28,2,19],[26,9,16],[28,15,10],[30,19,6],[24,34,0],[30,16,14],[30,30,2],[30,22,13],[30,33,4],[30,12,28],[30,11,31],[30,19,26],[30,23,25],[30,23,28],[30,19,35],[30,11,46],[30,59,1],[30,22,41],[30,2,64],[30,24,46],[30,42,32],[30,10,67],[30,20,61]]
+  };
+  const ALIGN = [[],[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]];
+  const ECL_BITS = {L:1, M:0, Q:3, H:2};
+
+  const ALNUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+
+  function dataCodewords(ver, ecl) {
+    const [ec, g1, g2] = ECB[ecl][ver - 1];
+    return TOTAL_CW[ver] - ec * (g1 + g2);
+  }
+
+  const isNumeric = s => /^[0-9]*$/.test(s);
+  const isAlnum = s => /^[0-9A-Z $%*+\-./:]*$/.test(s);
+
+  function utf8(str) {
+    const out = [];
+    for (const ch of str) {
+      const cp = ch.codePointAt(0);
+      if (cp < 0x80) out.push(cp);
+      else if (cp < 0x800) out.push(0xC0 | cp >> 6, 0x80 | cp & 63);
+      else if (cp < 0x10000) out.push(0xE0 | cp >> 12, 0x80 | (cp >> 6 & 63), 0x80 | cp & 63);
+      else out.push(0xF0 | cp >> 18, 0x80 | (cp >> 12 & 63), 0x80 | (cp >> 6 & 63), 0x80 | cp & 63);
+    }
+    return out;
+  }
+
+  function pickMode(text) {
+    if (isNumeric(text)) return "numeric";
+    if (isAlnum(text)) return "alnum";
+    return "byte";
+  }
+  function countBits(mode, ver) {
+    const i = ver < 10 ? 0 : ver < 27 ? 1 : 2;
+    return mode === "numeric" ? [10,12,14][i] : mode === "alnum" ? [9,11,13][i] : [8,16,16][i];
+  }
+  function dataBitLength(text, mode, ver) {
+    const cc = countBits(mode, ver);
+    if (mode === "numeric") { const n = text.length; return 4 + cc + 10 * ((n / 3) | 0) + (n % 3 === 1 ? 4 : n % 3 === 2 ? 7 : 0); }
+    if (mode === "alnum") { const n = text.length; return 4 + cc + 11 * ((n / 2) | 0) + (n % 2 ? 6 : 0); }
+    return 4 + cc + 8 * utf8(text).length;
+  }
+
+  /** Smallest version that fits, or 0 if none. */
+  function minVersion(text, ecl, mode) {
+    for (let v = 1; v <= 40; v++) {
+      if (dataBitLength(text, mode, v) <= dataCodewords(v, ecl) * 8) return v;
+    }
+    return 0;
+  }
+  /** Max characters encodable at (version, ecl) for a given mode. */
+  function capacityChars(ver, ecl, mode) {
+    const bits = dataCodewords(ver, ecl) * 8 - 4 - countBits(mode, ver);
+    if (mode === "numeric") { const t = ((bits / 10) | 0) * 3, r = bits % 10; return t + (r >= 7 ? 2 : r >= 4 ? 1 : 0); }
+    if (mode === "alnum") { const t = ((bits / 11) | 0) * 2, r = bits % 11; return t + (r >= 6 ? 1 : 0); }
+    return (bits / 8) | 0;
+  }
+
+  class BitBuf {
+    constructor(){ this.bits = []; }
+    put(val, len){ for (let i = len - 1; i >= 0; i--) this.bits.push((val >>> i) & 1); }
+    get length(){ return this.bits.length; }
+  }
+
+  function encodeData(text, ver, ecl, mode) {
+    const bb = new BitBuf();
+    const cc = countBits(mode, ver);
+    if (mode === "numeric") {
+      bb.put(1, 4); bb.put(text.length, cc);
+      for (let i = 0; i < text.length; i += 3) {
+        const chunk = text.substr(i, 3);
+        bb.put(parseInt(chunk, 10), chunk.length * 3 + 1);
+      }
+    } else if (mode === "alnum") {
+      bb.put(2, 4); bb.put(text.length, cc);
+      for (let i = 0; i < text.length; i += 2) {
+        if (i + 1 < text.length) bb.put(ALNUM.indexOf(text[i]) * 45 + ALNUM.indexOf(text[i + 1]), 11);
+        else bb.put(ALNUM.indexOf(text[i]), 6);
+      }
+    } else {
+      const bytes = utf8(text);
+      bb.put(4, 4); bb.put(bytes.length, cc);
+      for (const b of bytes) bb.put(b, 8);
+    }
+    const capacity = dataCodewords(ver, ecl) * 8;
+    if (bb.length > capacity) return null;
+    // terminator + byte align
+    for (let i = 0; i < 4 && bb.length < capacity; i++) bb.bits.push(0);
+    while (bb.length % 8) bb.bits.push(0);
+    // pad bytes
+    const pads = [0xEC, 0x11];
+    for (let i = 0; bb.length < capacity; i++) bb.put(pads[i % 2], 8);
+
+    const cw = new Uint8Array(bb.length / 8);
+    for (let i = 0; i < cw.length; i++) {
+      let v = 0; for (let j = 0; j < 8; j++) v = (v << 1) | bb.bits[i * 8 + j];
+      cw[i] = v;
+    }
+    return cw;
+  }
+
+  function interleave(cw, ver, ecl) {
+    const [ecLen, g1, g2] = ECB[ecl][ver - 1];
+    const total = g1 + g2;
+    const short = Math.floor(dataCodewords(ver, ecl) / total);
+    const blocks = [], ecBlocks = [];
+    let off = 0;
+    for (let i = 0; i < total; i++) {
+      const len = short + (i >= g1 ? 1 : 0);
+      const blk = cw.slice(off, off + len); off += len;
+      blocks.push(blk);
+      ecBlocks.push(rsEncode(blk, ecLen));
+    }
+    const out = [];
+    const maxLen = short + (g2 ? 1 : 0);
+    for (let i = 0; i < maxLen; i++)
+      for (const b of blocks) if (i < b.length) out.push(b[i]);
+    for (let i = 0; i < ecLen; i++)
+      for (const b of ecBlocks) out.push(b[i]);
+    return out;
+  }
+
+  function buildMatrix(ver, ecl, codewords) {
+    const size = ver * 4 + 17;
+    const m = Array.from({length: size}, () => new Int8Array(size).fill(-1)); // -1 = free
+    const set = (r, c, v) => { m[r][c] = v; };
+
+    // finder patterns + separators
+    const finder = (r0, c0) => {
+      for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++) {
+        const rr = r0 + r, cc = c0 + c;
+        if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
+        const on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                   (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                   (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        set(rr, cc, on ? 1 : 0);
+      }
+    };
+    finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+
+    // timing
+    for (let i = 8; i < size - 8; i++) { const v = i % 2 === 0 ? 1 : 0; set(6, i, v); set(i, 6, v); }
+
+    // alignment
+    const ac = ALIGN[ver];
+    for (const r of ac) for (const c of ac) {
+      if ((r <= 8 && c <= 8) || (r <= 8 && c >= size - 9) || (r >= size - 9 && c <= 8)) continue;
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++)
+        set(r + dr, c + dc, (Math.abs(dr) === 2 || Math.abs(dc) === 2 || (dr === 0 && dc === 0)) ? 1 : 0);
+    }
+
+    // dark module
+    set(size - 8, 8, 1);
+
+    // reserve format areas
+    for (let i = 0; i < 9; i++) { if (m[8][i] === -1) set(8, i, 0); if (m[i][8] === -1) set(i, 8, 0); }
+    for (let i = 0; i < 8; i++) { if (m[8][size - 1 - i] === -1) set(8, size - 1 - i, 0); if (m[size - 1 - i][8] === -1) set(size - 1 - i, 8, 0); }
+
+    // version info (v >= 7)
+    if (ver >= 7) {
+      let rem = ver;
+      for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1F25);
+      const bits = (ver << 12) | rem;
+      for (let i = 0; i < 18; i++) {
+        const b = (bits >>> i) & 1;
+        set(Math.floor(i / 3), size - 11 + (i % 3), b);
+        set(size - 11 + (i % 3), Math.floor(i / 3), b);
+      }
+    }
+
+    // snapshot of function modules (for masking + drawing)
+    const fn = m.map(row => Int8Array.from(row, v => v === -1 ? 0 : 1));
+
+    // place data, zig-zag from bottom-right
+    let bitIdx = 0;
+    const totalBits = codewords.length * 8;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) {
+        for (let j = 0; j < 2; j++) {
+          const c = right - j;
+          const upward = ((right + 1) & 2) === 0;
+          const r = upward ? size - 1 - vert : vert;
+          if (m[r][c] !== -1) continue;
+          let bit = 0;
+          if (bitIdx < totalBits) bit = (codewords[bitIdx >>> 3] >>> (7 - (bitIdx & 7))) & 1;
+          bitIdx++;
+          m[r][c] = bit;
+        }
+      }
+    }
+    return { m, fn, size };
+  }
+
+  const MASKS = [
+    (r,c)=>((r+c)&1)===0,
+    (r,c)=>(r&1)===0,
+    (r,c)=>c%3===0,
+    (r,c)=>(r+c)%3===0,
+    (r,c)=>(((r>>1)+((c/3)|0))&1)===0,
+    (r,c)=>((r*c)&1)+((r*c)%3)===0,
+    (r,c)=>((((r*c)&1)+((r*c)%3))&1)===0,
+    (r,c)=>((((r+c)&1)+((r*c)%3))&1)===0,
+  ];
+
+  function applyMask(mat, fn, size, maskId) {
+    const out = mat.map(r => Int8Array.from(r));
+    const f = MASKS[maskId];
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++)
+      if (!fn[r][c] && f(r, c)) out[r][c] ^= 1;
+    return out;
+  }
+
+  function drawFormat(mat, size, ecl, maskId) {
+    const data = (ECL_BITS[ecl] << 3) | maskId;
+    let rem = data;
+    for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+    const bits = ((data << 10) | rem) ^ 0x5412;
+    // Format bits are placed most-significant-bit first (ISO/IEC 18004 §8.9).
+    const bit = i => (bits >>> (14 - i)) & 1;
+    for (let i = 0; i <= 5; i++) mat[8][i] = bit(i);
+    mat[8][7] = bit(6);
+    mat[8][8] = bit(7);
+    mat[7][8] = bit(8);
+    for (let i = 9; i < 15; i++) mat[14 - i][8] = bit(i);
+    for (let i = 0; i < 8; i++) mat[size - 1 - i][8] = bit(i);
+    for (let i = 8; i < 15; i++) mat[8][size - 15 + i] = bit(i);
+    mat[size - 8][8] = 1;
+  }
+
+  function penalty(m, size) {
+    let p = 0;
+    // rule 1: runs of 5+
+    for (let k = 0; k < 2; k++) {
+      for (let i = 0; i < size; i++) {
+        let run = 1, prev = k ? m[0][i] : m[i][0];
+        for (let j = 1; j < size; j++) {
+          const v = k ? m[j][i] : m[i][j];
+          if (v === prev) { run++; }
+          else { if (run >= 5) p += run - 2; run = 1; prev = v; }
+        }
+        if (run >= 5) p += run - 2;
+      }
+    }
+    // rule 2: 2x2 blocks
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++) {
+      const v = m[r][c];
+      if (v === m[r][c+1] && v === m[r+1][c] && v === m[r+1][c+1]) p += 3;
+    }
+    // rule 3: finder-like patterns
+    const pat1 = [1,0,1,1,1,0,1,0,0,0,0], pat2 = [0,0,0,0,1,0,1,1,1,0,1];
+    const match = (get, i, pat) => { for (let k = 0; k < 11; k++) if (get(i + k) !== pat[k]) return false; return true; };
+    for (let r = 0; r < size; r++) for (let c = 0; c + 11 <= size; c++) {
+      const g = i => m[r][i];
+      if (match(g, c, pat1) || match(g, c, pat2)) p += 40;
+    }
+    for (let c = 0; c < size; c++) for (let r = 0; r + 11 <= size; r++) {
+      const g = i => m[i][c];
+      if (match(g, r, pat1) || match(g, r, pat2)) p += 40;
+    }
+    // rule 4: dark ratio
+    let dark = 0;
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) dark += m[r][c];
+    const pct = dark * 100 / (size * size);
+    p += Math.floor(Math.abs(pct - 50) / 5) * 10;
+    return p;
+  }
+
+  /**
+   * @returns {{modules:boolean[][], fn:boolean[][], size:number, version:number,
+   *            ecl:string, mode:string, mask:number}}
+   */
+  function encode(text, ecl = "M", forcedVersion = 0) {
+    if (!text) text = "";
+    const mode = pickMode(text);
+    let ver = forcedVersion || minVersion(text, ecl, mode);
+    if (!ver) throw new Error("TOO_LONG");
+    if (forcedVersion) {
+      const need = minVersion(text, ecl, mode);
+      if (!need || forcedVersion < need) throw new Error("TOO_LONG_FOR_VERSION");
+    }
+    const cw = encodeData(text, ver, ecl, mode);
+    if (!cw) throw new Error("TOO_LONG");
+    const inter = interleave(cw, ver, ecl);
+    const { m, fn, size } = buildMatrix(ver, ecl, inter);
+
+    let best = null, bestScore = Infinity;
+    for (let mask = 0; mask < 8; mask++) {
+      const cand = applyMask(m, fn, size, mask);
+      drawFormat(cand, size, ecl, mask);
+      const s = penalty(cand, size);
+      if (s < bestScore) { bestScore = s; best = cand; best.__mask = mask; }
+    }
+    return {
+      modules: best.map(r => Array.from(r, v => v === 1)),
+      fn: fn.map(r => Array.from(r, v => v === 1)),
+      size, version: ver, ecl, mode, mask: best.__mask,
+      byteLength: utf8(text).length,
+      capacity: capacityChars(ver, ecl, mode)
+    };
+  }
+
+  return { encode, minVersion, capacityChars, pickMode, dataCodewords };
+})();
+
+/* =====================================================================
+   Renderer
+   ===================================================================== */
+const state = {
+  text: "https://claude.com/product/claude-code",
+  fg: "#0F172A", fg2: "#0F172A", bg: "#FFFFFF", eye: "#0F172A",
+  gradient: "none",
+  transparent: false,
+  shape: "square", eyeShape: "square",
+  quiet: 4, corner: 0,
+  ecl: "M", version: 0, size: 1024,
+  logo: null, logoSize: 22, logoPad: true,
+};
+
+const $ = id => document.getElementById(id);
+const canvas = $("preview"), ctx = canvas.getContext("2d");
+let current = null; // last successful encode
+
+function hex(c) { return /^#[0-9a-f]{6}$/i.test(c) ? c.toUpperCase() : null; }
+
+function fillStyle(g, w, h) {
+  if (state.gradient === "none" || state.fg2.toLowerCase() === state.fg.toLowerCase()) return state.fg;
+  let grad;
+  if (state.gradient === "linear") grad = g.createLinearGradient(0, 0, 0, h);
+  else if (state.gradient === "diagonal") grad = g.createLinearGradient(0, 0, w, h);
+  else grad = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, Math.hypot(w, h) / 2);
+  grad.addColorStop(0, state.fg);
+  grad.addColorStop(1, state.fg2);
+  return grad;
+}
+
+/** True if (r,c) is inside one of the three finder-eye 7x7 blocks. */
+function isEye(r, c, n) {
+  return (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+}
+
+/** Set `addPath` to append a subpath (for even-odd holes) instead of starting a new one. */
+function roundRect(g, x, y, w, h, r, addPath) {
+  const rad = Math.min(r, w / 2, h / 2);
+  if (!addPath) g.beginPath();
+  g.moveTo(x + rad, y);
+  g.arcTo(x + w, y, x + w, y + h, rad);
+  g.arcTo(x + w, y + h, x, y + h, rad);
+  g.arcTo(x, y + h, x, y, rad);
+  g.arcTo(x, y, x + w, y, rad);
+  g.closePath();
+}
+
+/** Draws the QR onto any 2D context sized px × px. */
+function render(g, px, qr, opts = {}) {
+  const forExport = !!opts.export;
+  const n = qr.size, quiet = state.quiet;
+  const total = n + quiet * 2;
+  const unit = px / total;
+  const off = quiet * unit;
+
+  g.clearRect(0, 0, px, px);
+
+  // Background corner rounding, capped to the quiet-zone margin: a radius larger
+  // than the margin would clip the outermost modules and break scanning.
+  const radius = Math.min((state.corner / 100) * px, off * 1.9 + unit * 0.5);
+  if (!state.transparent) {
+    g.save();
+    if (radius > 0) { roundRect(g, 0, 0, px, px, radius); g.clip(); }
+    g.fillStyle = state.bg;
+    g.fillRect(0, 0, px, px);
+    g.restore();
+  }
+
+  const mod = qr.modules;
+  const on = (r, c) => r >= 0 && c >= 0 && r < n && c < n && mod[r][c];
+
+  // reserve logo area so we don't draw modules under it
+  let hole = null;
+  if (state.logo && state.logoPad) {
+    const s = (state.logoSize / 100) * px * 1.16;
+    hole = { x: (px - s) / 2, y: (px - s) / 2, s };
+  }
+  const inHole = (x, y, w) => hole && x + w > hole.x && x < hole.x + hole.s && y + w > hole.y && y < hole.y + hole.s;
+
+  // ---- data modules ----
+  g.save();
+  g.fillStyle = fillStyle(g, px, px);
+  const gap = state.shape === "dot" ? 0.14 : state.shape === "rounded" ? 0.06 : 0;
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      if (!mod[r][c] || isEye(r, c, n)) continue;
+      const x = off + c * unit, y = off + r * unit;
+      if (inHole(x, y, unit)) continue;
+      if (state.shape === "square") {
+        g.fillRect(x, y, unit + 0.6, unit + 0.6);
+      } else if (state.shape === "dot") {
+        const p = gap * unit;
+        g.beginPath();
+        g.arc(x + unit / 2, y + unit / 2, (unit - 2 * p) / 2, 0, Math.PI * 2);
+        g.fill();
+      } else if (state.shape === "rounded") {
+        const p = gap * unit;
+        roundRect(g, x + p, y + p, unit - 2 * p, unit - 2 * p, unit * 0.28);
+        g.fill();
+      } else { // fluid — connect to orthogonal neighbours
+        const up = on(r-1,c), dn = on(r+1,c), lf = on(r,c-1), rt = on(r,c+1);
+        // A corner only rounds when BOTH of its edges are open, so runs of
+        // modules fuse into continuous ribbons instead of separate blobs.
+        const R = unit * 0.5;
+        g.beginPath();
+        const tl = (!up && !lf) ? R : 0, tr = (!up && !rt) ? R : 0;
+        const br = (!dn && !rt) ? R : 0, bl = (!dn && !lf) ? R : 0;
+        const e = 0.35; // overlap to avoid hairlines
+        const x0 = x, y0 = y, w = unit + e, h = unit + e;
+        g.moveTo(x0 + tl, y0);
+        g.lineTo(x0 + w - tr, y0); if (tr) g.arcTo(x0 + w, y0, x0 + w, y0 + tr, tr);
+        g.lineTo(x0 + w, y0 + h - br); if (br) g.arcTo(x0 + w, y0 + h, x0 + w - br, y0 + h, br);
+        g.lineTo(x0 + bl, y0 + h); if (bl) g.arcTo(x0, y0 + h, x0, y0 + h - bl, bl);
+        g.lineTo(x0, y0 + tl); if (tl) g.arcTo(x0, y0, x0 + tl, y0, tl);
+        g.closePath(); g.fill();
+      }
+    }
+  }
+  g.restore();
+
+  // ---- finder eyes ----
+  const eyeColor = state.eye;
+  const drawEye = (r0, c0) => {
+    const x = off + c0 * unit, y = off + r0 * unit, s = 7 * unit;
+    g.save();
+    g.fillStyle = eyeColor;
+    const shape = state.eyeShape;
+    const outerR = shape === "circle" ? s / 2 : shape === "rounded" ? s * 0.26 : shape === "leaf" ? s * 0.42 : 0;
+    const innerS = 3 * unit, ix = x + 2 * unit, iy = y + 2 * unit;
+    const innerR = shape === "circle" ? innerS / 2 : shape === "rounded" ? innerS * 0.3 : shape === "leaf" ? innerS * 0.42 : 0;
+
+    // Which corner points "outward" for each eye, so the leaves mirror each other.
+    const rot = (r0 === 0 && c0 === 0) ? 2 : (r0 === 0 ? 3 : 1);
+
+    // ring (outer minus middle) drawn with even-odd fill
+    g.beginPath();
+    if (shape === "leaf") leafPath(g, x, y, s, s, rot);
+    else roundRect(g, x, y, s, s, outerR);
+    const hs = 5 * unit, hx = x + unit, hy = y + unit;
+    if (shape === "leaf") leafPath(g, hx, hy, hs, hs, rot);
+    else roundRect(g, hx, hy, hs, hs, shape === "circle" ? hs / 2 : shape === "rounded" ? hs * 0.22 : 0, true);
+    g.fill("evenodd");
+
+    // pupil
+    g.beginPath();
+    if (shape === "leaf") leafPath(g, ix, iy, innerS, innerS, rot);
+    else roundRect(g, ix, iy, innerS, innerS, innerR);
+    g.fill();
+    g.restore();
+  };
+  // leaf = rounded square with two opposite corners squared off
+  function leafPath(g, x, y, w, h, rot) {
+    const r = Math.min(w, h) * 0.3;
+    const corners = [r, r, r, r];
+    corners[rot] = 0; corners[(rot + 2) % 4] = 0;
+    const [tl, tr, br, bl] = corners;
+    g.moveTo(x + tl, y);
+    g.lineTo(x + w - tr, y); if (tr) g.arcTo(x + w, y, x + w, y + tr, tr);
+    g.lineTo(x + w, y + h - br); if (br) g.arcTo(x + w, y + h, x + w - br, y + h, br);
+    g.lineTo(x + bl, y + h); if (bl) g.arcTo(x, y + h, x, y + h - bl, bl);
+    g.lineTo(x, y + tl); if (tl) g.arcTo(x, y, x + tl, y, tl);
+    g.closePath();
+  }
+  drawEye(0, 0); drawEye(0, n - 7); drawEye(n - 7, 0);
+
+  // ---- logo ----
+  if (state.logo && state.logo.complete && state.logo.naturalWidth) {
+    const s = (state.logoSize / 100) * px;
+    const x = (px - s) / 2, y = (px - s) / 2;
+    if (state.logoPad) {
+      const p = s * 0.08, bs = s + p * 2;
+      g.save();
+      g.fillStyle = state.transparent ? "#FFFFFF" : state.bg;
+      roundRect(g, x - p, y - p, bs, bs, bs * 0.18);
+      g.fill();
+      g.restore();
+    }
+    const img = state.logo;
+    const ar = img.naturalWidth / img.naturalHeight;
+    let dw = s, dh = s;
+    if (ar > 1) dh = s / ar; else dw = s * ar;
+    g.save();
+    roundRect(g, x + (s - dw) / 2, y + (s - dh) / 2, dw, dh, Math.min(dw, dh) * 0.14);
+    g.clip();
+    g.drawImage(img, x + (s - dw) / 2, y + (s - dh) / 2, dw, dh);
+    g.restore();
+  }
+}
+
+/* ---------- SVG export (vector, mirrors the canvas renderer) ---------- */
+function toSVG(qr, px) {
+  const n = qr.size, quiet = state.quiet, total = n + quiet * 2;
+  const unit = px / total, off = quiet * unit;
+  const f = x => (Math.round(x * 100) / 100);
+  let defs = "", fill = state.fg;
+  if (state.gradient !== "none" && state.fg2.toLowerCase() !== state.fg.toLowerCase()) {
+    const id = "g1";
+    if (state.gradient === "radial") {
+      defs = `<radialGradient id="${id}" cx="50%" cy="50%" r="70%"><stop offset="0" stop-color="${state.fg}"/><stop offset="1" stop-color="${state.fg2}"/></radialGradient>`;
+    } else {
+      const [x2, y2] = state.gradient === "linear" ? [0, 1] : [1, 1];
+      defs = `<linearGradient id="${id}" x1="0" y1="0" x2="${x2}" y2="${y2}"><stop offset="0" stop-color="${state.fg}"/><stop offset="1" stop-color="${state.fg2}"/></linearGradient>`;
+    }
+    fill = `url(#${id})`;
+  }
+  const radius = Math.min((state.corner / 100) * px, off * 1.9 + unit * 0.5);
+  let body = "";
+  if (!state.transparent) body += `<rect width="${px}" height="${px}" rx="${f(radius)}" fill="${state.bg}"/>`;
+
+  const mod = qr.modules;
+  let hole = null;
+  if (state.logo && state.logoPad) { const s = (state.logoSize / 100) * px * 1.16; hole = { x: (px - s) / 2, y: (px - s) / 2, s }; }
+  const inHole = (x, y, w) => hole && x + w > hole.x && x < hole.x + hole.s && y + w > hole.y && y < hole.y + hole.s;
+
+  let path = "", circles = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) {
+    if (!mod[r][c] || isEye(r, c, n)) continue;
+    const x = off + c * unit, y = off + r * unit;
+    if (inHole(x, y, unit)) continue;
+    if (state.shape === "dot") {
+      circles += `<circle cx="${f(x + unit/2)}" cy="${f(y + unit/2)}" r="${f(unit * 0.43)}"/>`;
+    } else if (state.shape === "rounded" || state.shape === "fluid") {
+      const rr = f(unit * (state.shape === "fluid" ? 0.34 : 0.28));
+      path += `<rect x="${f(x)}" y="${f(y)}" width="${f(unit)}" height="${f(unit)}" rx="${rr}"/>`;
+    } else {
+      path += `<rect x="${f(x)}" y="${f(y)}" width="${f(unit + 0.5)}" height="${f(unit + 0.5)}"/>`;
+    }
+  }
+  body += `<g fill="${fill}">${path}${circles}</g>`;
+
+  // eyes
+  const er = { square: 0, rounded: .26, circle: .5, leaf: .3 }[state.eyeShape];
+  const eye = (r0, c0) => {
+    const x = off + c0 * unit, y = off + r0 * unit, s = 7 * unit;
+    return `<path fill-rule="evenodd" d="${rectPath(x,y,s,s,s*er)} ${rectPath(x+unit,y+unit,5*unit,5*unit,5*unit*er*0.85)}"/>` +
+           `<rect x="${f(x+2*unit)}" y="${f(y+2*unit)}" width="${f(3*unit)}" height="${f(3*unit)}" rx="${f(3*unit*er)}"/>`;
+  };
+  function rectPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2);
+    if (r <= 0) return `M${f(x)} ${f(y)}H${f(x+w)}V${f(y+h)}H${f(x)}Z`;
+    return `M${f(x+r)} ${f(y)}H${f(x+w-r)}A${f(r)} ${f(r)} 0 0 1 ${f(x+w)} ${f(y+r)}V${f(y+h-r)}A${f(r)} ${f(r)} 0 0 1 ${f(x+w-r)} ${f(y+h)}H${f(x+r)}A${f(r)} ${f(r)} 0 0 1 ${f(x)} ${f(y+h-r)}V${f(y+r)}A${f(r)} ${f(r)} 0 0 1 ${f(x+r)} ${f(y)}Z`;
+  }
+  body += `<g fill="${state.eye}">${eye(0,0)}${eye(0,n-7)}${eye(n-7,0)}</g>`;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${px} ${px}">${defs ? `<defs>${defs}</defs>` : ""}${body}</svg>`;
+}
+
+/* =====================================================================
+   UI wiring
+   ===================================================================== */
+function showErr(msg) {
+  const e = $("err");
+  if (!msg) { e.classList.remove("on"); return; }
+  e.textContent = msg; e.classList.add("on");
+}
+let toastTimer;
+function toast(msg) {
+  $("toastMsg").textContent = msg;
+  $("toast").classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $("toast").classList.remove("on"), 2000);
+}
+
+function update(opts = {}) {
+  const text = state.text;
+  let qr;
+  try {
+    qr = QR.encode(text, state.ecl, state.version);
+    showErr("");
+  } catch (e) {
+    if (e.message === "TOO_LONG_FOR_VERSION") {
+      const need = QR.minVersion(text, state.ecl, QR.pickMode(text));
+      showErr(`Too much data for version ${state.version} — needs version ${need || "40+"} at level ${state.ecl}.`);
+    } else {
+      showErr(`Too much data for a QR code at level ${state.ecl}. Shorten the text or lower error correction.`);
+    }
+    return;
+  }
+  current = qr;
+
+  const px = Math.min(1024, state.size);
+  if (canvas.width !== px) { canvas.width = px; canvas.height = px; }
+  render(ctx, px, qr);
+
+  $("checker").classList.toggle("on", state.transparent);
+  $("stVer").textContent = qr.version;
+  $("stMod").textContent = `${qr.size}×${qr.size}`;
+  $("stEcc").textContent = qr.ecl;
+  $("stLen").textContent = qr.byteLength;
+  $("stCap").textContent = `${Math.round(text.length / qr.capacity * 100)}%`;
+  $("capHint").textContent = `${QR.pickMode(text) === "byte" ? "Byte" : QR.pickMode(text) === "alnum" ? "Alphanumeric" : "Numeric"} mode · ${text.length} / ${qr.capacity} chars · mask ${qr.mask}`;
+
+  if (opts.pulse) {
+    const w = $("wrap"); w.classList.add("pulse");
+    setTimeout(() => w.classList.remove("pulse"), 260);
+  }
+  syncHash();
+}
+
+/* --- render at export resolution --- */
+function exportCanvas(px) {
+  const c = document.createElement("canvas");
+  c.width = px; c.height = px;
+  render(c.getContext("2d"), px, current, { export: true });
+  return c;
+}
+
+function fileBase() {
+  const t = state.text.trim();
+  let name = t.replace(/^https?:\/\//, "").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 40).toLowerCase();
+  return "qr-" + (name || "code");
+}
+
+function downloadPNG() {
+  if (!current) return;
+  exportCanvas(state.size).toBlob(b => {
+    const url = URL.createObjectURL(b);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${fileBase()}-${state.size}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    toast(`Saved ${state.size}×${state.size} PNG`);
+  }, "image/png");
+}
+
+function downloadSVG() {
+  if (!current) return;
+  const svg = toSVG(current, 1024);
+  const blob = new Blob([svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `${fileBase()}.svg`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("Saved SVG" + (state.logo ? " (logo not embedded)" : ""));
+}
+
+async function copyImage() {
+  if (!current) return;
+  try {
+    const blob = await new Promise(res => exportCanvas(Math.min(1024, state.size)).toBlob(res, "image/png"));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    toast("PNG copied to clipboard");
+  } catch { toast("Clipboard blocked — use Download instead"); }
+}
+
+/* --- shareable state in the URL hash --- */
+let hashLock = false;
+function syncHash() {
+  if (hashLock) return;
+  const p = new URLSearchParams();
+  p.set("t", state.text);
+  p.set("c", [state.fg, state.fg2, state.bg, state.eye].map(x => x.slice(1)).join("-"));
+  p.set("s", [state.shape, state.eyeShape, state.gradient].join("-"));
+  p.set("o", [state.ecl, state.quiet, state.corner, state.transparent ? 1 : 0].join("-"));
+  history.replaceState(null, "", "#" + p.toString());
+}
+function loadHash() {
+  if (!location.hash.length) return false;
+  try {
+    const p = new URLSearchParams(location.hash.slice(1));
+    if (p.get("t") !== null) state.text = p.get("t");
+    if (p.get("c")) { const [a,b,c,d] = p.get("c").split("-"); state.fg = "#"+a; state.fg2 = "#"+b; state.bg = "#"+c; state.eye = "#"+d; }
+    if (p.get("s")) { const [a,b,c] = p.get("s").split("-"); state.shape = a; state.eyeShape = b; state.gradient = c; }
+    if (p.get("o")) { const [a,b,c,d] = p.get("o").split("-"); state.ecl = a; state.quiet = +b; state.corner = +c; state.transparent = d === "1"; }
+    return true;
+  } catch { return false; }
+}
+
+/* --- palettes --- */
+const PALETTES = [
+  { name: "Ink",      fg: "#0F172A", fg2: "#0F172A", bg: "#FFFFFF", eye: "#0F172A", grad: "none" },
+  { name: "Ocean",    fg: "#0EA5E9", fg2: "#4338CA", bg: "#F8FAFF", eye: "#3730A3", grad: "diagonal" },
+  { name: "Sunset",   fg: "#F97316", fg2: "#DB2777", bg: "#FFF7ED", eye: "#BE123C", grad: "diagonal" },
+  { name: "Forest",   fg: "#059669", fg2: "#064E3B", bg: "#F0FDF4", eye: "#065F46", grad: "linear" },
+  { name: "Mono",     fg: "#FFFFFF", fg2: "#CBD5E1", bg: "#0B1120", eye: "#38BDF8", grad: "linear" },
+  { name: "Grape",    fg: "#7C3AED", fg2: "#2563EB", bg: "#FAF5FF", eye: "#5B21B6", grad: "radial" },
+];
+
+function paintPalettes() {
+  const wrap = $("palettes");
+  wrap.innerHTML = "";
+  PALETTES.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.className = "pal"; b.title = p.name; b.type = "button";
+    b.innerHTML = `<span style="background:${p.bg};flex:0 0 34%"></span>` +
+                  `<span style="background:linear-gradient(135deg,${p.fg},${p.fg2})"></span>` +
+                  `<span style="background:${p.eye};flex:0 0 18%"></span>`;
+    b.onclick = () => {
+      Object.assign(state, { fg: p.fg, fg2: p.fg2, bg: p.bg, eye: p.eye, gradient: p.grad, transparent: false });
+      syncColorInputs(); syncSegs(); update({ pulse: true });
+      [...wrap.children].forEach((c, j) => c.setAttribute("aria-pressed", j === i));
+    };
+    wrap.appendChild(b);
+  });
+}
+
+function syncColorInputs() {
+  for (const k of ["fg", "fg2", "bg", "eye"]) {
+    $(k).value = state[k];
+    $(k + "Hex").value = state[k];
+    $("sw-" + k).style.background = state[k];
+  }
+  $("transp").setAttribute("aria-pressed", state.transparent);
+  $("gradVal").textContent = state.gradient === "none" ? "Off" : state.gradient[0].toUpperCase() + state.gradient.slice(1);
+}
+
+function bindSeg(id, key, after) {
+  const seg = $(id);
+  seg.addEventListener("click", e => {
+    const b = e.target.closest("button[data-v]");
+    if (!b) return;
+    state[key] = b.dataset.v;
+    [...seg.children].forEach(c => c.setAttribute("aria-pressed", c === b));
+    after && after();
+    update({ pulse: true });
+  });
+}
+function syncSegs() {
+  const map = { gradSeg: "gradient", shapeSeg: "shape", eyeSeg: "eyeShape", ecSeg: "ecl" };
+  for (const [id, key] of Object.entries(map))
+    [...$(id).children].forEach(c => c.setAttribute("aria-pressed", c.dataset.v === state[key]));
+  $("quiet").value = state.quiet; $("qzVal").textContent = state.quiet;
+  $("corner").value = state.corner; $("crVal").textContent = state.corner + "%";
+  $("logoSize").value = state.logoSize; $("lsVal").textContent = state.logoSize + "%";
+  $("ecHint").textContent = { L: "~7% recoverable", M: "~15% recoverable", Q: "~25% recoverable", H: "~30% recoverable" }[state.ecl];
+  $("text").value = state.text;
+}
+
+/* --- content templates --- */
+const TEMPLATES = {
+  url:   "https://example.com",
+  wifi:  "WIFI:T:WPA;S:MyNetwork;P:supersecret;H:false;;",
+  email: "mailto:hello@example.com?subject=Hello&body=Hi%20there",
+  tel:   "tel:+15551234567",
+  sms:   "SMSTO:+15551234567:See you at 7!",
+  vcard: "BEGIN:VCARD\nVERSION:3.0\nN:Doe;Jane\nFN:Jane Doe\nORG:Acme Inc.\nTITLE:Design Lead\nTEL;TYPE=CELL:+1-555-123-4567\nEMAIL:jane@acme.com\nURL:https://acme.com\nEND:VCARD",
+  geo:   "geo:37.7749,-122.4194?q=San+Francisco",
+};
+
+/* --- init --- */
+function init() {
+  // version dropdown
+  const vs = $("version");
+  for (let v = 1; v <= 40; v++) {
+    const o = document.createElement("option");
+    o.value = v; o.textContent = `${v} — ${v * 4 + 17}×${v * 4 + 17}`;
+    vs.appendChild(o);
+  }
+
+  loadHash();
+  paintPalettes();
+  syncColorInputs();
+  syncSegs();
+
+  // text
+  let debounce;
+  $("text").addEventListener("input", e => {
+    state.text = e.target.value;
+    clearTimeout(debounce);
+    debounce = setTimeout(() => update(), 90);
+  });
+
+  // templates
+  document.querySelectorAll(".chip[data-tpl]").forEach(b => {
+    b.onclick = () => {
+      state.text = TEMPLATES[b.dataset.tpl];
+      $("text").value = state.text;
+      if (b.dataset.tpl === "vcard" && state.ecl === "H") { state.ecl = "M"; syncSegs(); }
+      update({ pulse: true });
+      $("text").focus();
+    };
+  });
+
+  // colors
+  for (const k of ["fg", "fg2", "bg", "eye"]) {
+    $(k).addEventListener("input", e => {
+      state[k] = e.target.value.toUpperCase();
+      $(k + "Hex").value = state[k];
+      $("sw-" + k).style.background = state[k];
+      if (k === "fg" && state.gradient === "none") { state.fg2 = state[k]; $("fg2").value = state.fg2; $("fg2Hex").value = state.fg2; $("sw-fg2").style.background = state.fg2; }
+      update();
+    });
+    $(k + "Hex").addEventListener("input", e => {
+      let v = e.target.value.trim();
+      if (v && v[0] !== "#") v = "#" + v;
+      const h = hex(v);
+      if (h) { state[k] = h; $(k).value = h; $("sw-" + k).style.background = h; update(); }
+    });
+    $(k + "Hex").addEventListener("blur", () => { $(k + "Hex").value = state[k]; });
+  }
+
+  $("transp").onclick = () => {
+    state.transparent = !state.transparent;
+    $("transp").setAttribute("aria-pressed", state.transparent);
+    update();
+  };
+  $("logoPad").onclick = () => {
+    state.logoPad = !state.logoPad;
+    $("logoPad").setAttribute("aria-pressed", state.logoPad);
+    update();
+  };
+
+  bindSeg("gradSeg", "gradient", () => {
+    $("gradVal").textContent = state.gradient === "none" ? "Off" : state.gradient[0].toUpperCase() + state.gradient.slice(1);
+    if (state.gradient !== "none" && state.fg2 === state.fg) {
+      // give the gradient somewhere to go
+      state.fg2 = "#38BDF8";
+      syncColorInputs();
+    }
+  });
+  bindSeg("shapeSeg", "shape");
+  bindSeg("eyeSeg", "eyeShape");
+  bindSeg("ecSeg", "ecl", () => {
+    $("ecHint").textContent = { L: "~7% recoverable", M: "~15% recoverable", Q: "~25% recoverable", H: "~30% recoverable" }[state.ecl];
+  });
+
+  $("quiet").addEventListener("input", e => { state.quiet = +e.target.value; $("qzVal").textContent = state.quiet; update(); });
+  $("corner").addEventListener("input", e => { state.corner = +e.target.value; $("crVal").textContent = state.corner + "%"; update(); });
+  $("logoSize").addEventListener("input", e => { state.logoSize = +e.target.value; $("lsVal").textContent = state.logoSize + "%"; update(); });
+
+  $("version").addEventListener("change", e => { state.version = +e.target.value; update({ pulse: true }); });
+  $("size").addEventListener("change", e => { state.size = +e.target.value; });
+
+  // logo
+  $("logoBtn").onclick = () => $("logoInput").click();
+  $("logoInput").addEventListener("change", e => {
+    const f = e.target.files[0]; if (!f) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        state.logo = img;
+        $("logoClear").disabled = false;
+        if (state.ecl === "L" || state.ecl === "M") {
+          state.ecl = "H"; syncSegs();
+          toast("Bumped error correction to H for the logo");
+        }
+        update({ pulse: true });
+      };
+      img.src = rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+  $("logoClear").onclick = () => {
+    state.logo = null; $("logoClear").disabled = true; $("logoInput").value = "";
+    update({ pulse: true });
+  };
+
+  // export
+  $("dlBtn").onclick = downloadPNG;
+  $("copyBtn").onclick = copyImage;
+  const menu = $("dlMenu");
+  $("dlCaret").onclick = e => { e.stopPropagation(); menu.classList.toggle("open"); };
+  document.addEventListener("click", () => menu.classList.remove("open"));
+  menu.addEventListener("click", e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    menu.classList.remove("open");
+    const act = b.dataset.act;
+    if (act === "png") downloadPNG();
+    else if (act === "svg") downloadSVG();
+    else if (act === "copy") copyImage();
+    else if (act === "link") {
+      syncHash();
+      navigator.clipboard.writeText(location.href).then(() => toast("Link copied")).catch(() => toast("Copy failed"));
+    }
+  });
+
+  // theme
+  const applyTheme = t => {
+    document.documentElement.setAttribute("data-theme", t);
+    $("themeLabel").textContent = t === "light" ? "Dark" : "Light";
+    $("themeIcon").innerHTML = t === "light"
+      ? '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'
+      : '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>';
+  };
+  let theme = "dark";
+  applyTheme(theme);
+  $("themeBtn").onclick = () => { theme = theme === "dark" ? "light" : "dark"; applyTheme(theme); };
+
+  // reset
+  $("resetBtn").onclick = () => {
+    Object.assign(state, {
+      text: "https://claude.com/product/claude-code",
+      fg: "#0F172A", fg2: "#0F172A", bg: "#FFFFFF", eye: "#0F172A",
+      gradient: "none", transparent: false, shape: "square", eyeShape: "square",
+      quiet: 4, corner: 0, ecl: "M", version: 0, logo: null, logoSize: 22, logoPad: true,
+    });
+    $("version").value = "0"; $("logoClear").disabled = true;
+    [...$("palettes").children].forEach(c => c.setAttribute("aria-pressed", false));
+    syncColorInputs(); syncSegs(); update({ pulse: true });
+    toast("Reset to defaults");
+  };
+
+  // keyboard
+  document.addEventListener("keydown", e => {
+    const typing = /input|textarea/i.test(document.activeElement.tagName);
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); downloadPNG(); }
+    else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c" && !typing && !getSelection().toString()) { e.preventDefault(); copyImage(); }
+    else if (e.key === "Enter" && typing && document.activeElement.id !== "text") { downloadPNG(); }
+    else if (e.key === "Escape") menu.classList.remove("open");
+  });
+
+  update();
+}
+
+/* --- self-check: verify the encoder against a known-good fixture --- */
+(function selftest(){
+  try {
+    // "HELLO WORLD" at ECC Q, version 1 → the canonical worked example (mask 4 in the spec).
+    const q = QR.encode("HELLO WORLD", "Q");
+    console.assert(q.version === 1 && q.size === 21, "selftest: unexpected version/size");
+    // numeric mode should compress: 100 digits fit in version 3-L
+    console.assert(QR.pickMode("12345") === "numeric" && QR.pickMode("HELLO") === "alnum" && QR.pickMode("hello") === "byte", "selftest: mode detection");
+  } catch (e) { console.warn("selftest failed", e); }
+})();
+
+init();
+</script>
+</body>
+</html>

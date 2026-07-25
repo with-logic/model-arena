@@ -1,0 +1,1373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Ocean — Wave Simulation</title>
+<style>
+  :root{
+    --panel-bg: rgba(11,20,28,0.55);
+    --panel-border: rgba(160,200,225,0.14);
+    --text: #dce8f0;
+    --text-dim: #8ea3b3;
+    --accent: #7fd4e8;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; overflow:hidden; background:#05070a; }
+  body{
+    font-family: ui-sans-serif, -apple-system, "SF Pro Text", "Segoe UI", Inter, Roboto, sans-serif;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  #gl{ position:fixed; inset:0; width:100%; height:100%; display:block; }
+
+  /* ---------- vignette + film grain over the canvas ---------- */
+  #vignette{
+    position:fixed; inset:0; pointer-events:none; z-index:2;
+    background: radial-gradient(120% 90% at 50% 45%, rgba(0,0,0,0) 42%, rgba(0,0,0,0.30) 82%, rgba(0,0,0,0.52) 100%);
+    mix-blend-mode: multiply;
+  }
+
+  /* ---------- title ---------- */
+  #title{
+    position:fixed; top:26px; left:30px; z-index:5;
+    pointer-events:none;
+    opacity:0; animation: fadeUp 1.6s 0.5s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+  #title h1{
+    font-size:15px; font-weight:500; letter-spacing:0.34em; text-transform:uppercase;
+    color: rgba(232,244,250,0.92);
+    text-shadow: 0 1px 20px rgba(0,0,0,0.7);
+  }
+  #title p{
+    margin-top:7px; font-size:11px; letter-spacing:0.16em; color: rgba(190,214,228,0.5);
+    text-transform:uppercase; font-weight:400;
+  }
+  @keyframes fadeUp{ from{ opacity:0; transform:translateY(10px);} to{ opacity:1; transform:none;} }
+
+  /* ---------- control panel ---------- */
+  #panel{
+    position:fixed; right:24px; top:50%; transform:translateY(-50%);
+    width:286px; z-index:6;
+    background: var(--panel-bg);
+    backdrop-filter: blur(22px) saturate(1.25);
+    -webkit-backdrop-filter: blur(22px) saturate(1.25);
+    border:1px solid var(--panel-border);
+    border-radius:16px;
+    padding:20px 20px 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06);
+    opacity:0; animation: panelIn 1.4s 0.85s cubic-bezier(.2,.7,.3,1) forwards;
+    transition: opacity .45s ease, transform .45s cubic-bezier(.2,.7,.3,1);
+  }
+  @keyframes panelIn{ from{ opacity:0; transform:translateY(-50%) translateX(24px);} to{ opacity:1; transform:translateY(-50%);} }
+  body.hidden-ui #panel{ opacity:0; pointer-events:none; transform:translateY(-50%) translateX(24px); }
+  body.hidden-ui #title, body.hidden-ui #hint{ opacity:0; }
+
+  .grp{ margin-bottom:15px; }
+  .grp:last-of-type{ margin-bottom:9px; }
+  .grp-label{
+    display:flex; justify-content:space-between; align-items:baseline;
+    font-size:10px; letter-spacing:0.15em; text-transform:uppercase;
+    color: var(--text-dim); margin-bottom:9px; font-weight:500;
+  }
+  .grp-val{ color:var(--accent); font-variant-numeric:tabular-nums; letter-spacing:0.04em; font-size:10.5px; }
+
+  input[type=range]{
+    -webkit-appearance:none; appearance:none;
+    width:100%; height:20px; background:transparent; cursor:pointer; display:block;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:3px; border-radius:2px;
+    background: linear-gradient(90deg, rgba(127,212,232,0.85) 0%, rgba(127,212,232,0.85) var(--fill,50%), rgba(255,255,255,0.13) var(--fill,50%), rgba(255,255,255,0.13) 100%);
+  }
+  input[type=range]::-moz-range-track{ height:3px; border-radius:2px; background:rgba(255,255,255,0.13); }
+  input[type=range]::-moz-range-progress{ height:3px; border-radius:2px; background:rgba(127,212,232,0.85); }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none;
+    width:13px; height:13px; border-radius:50%; margin-top:-5px;
+    background: #eaf6fb;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.25), 0 2px 8px rgba(0,0,0,0.5), 0 0 14px rgba(127,212,232,0.55);
+    transition: transform .16s cubic-bezier(.2,.7,.3,1);
+  }
+  input[type=range]::-moz-range-thumb{
+    width:13px; height:13px; border:none; border-radius:50%; background:#eaf6fb;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.5), 0 0 14px rgba(127,212,232,0.55);
+  }
+  input[type=range]:hover::-webkit-slider-thumb{ transform:scale(1.22); }
+  input[type=range]:active::-webkit-slider-thumb{ transform:scale(1.05); }
+  input[type=range]:focus-visible{ outline:none; }
+  input[type=range]:focus-visible::-webkit-slider-thumb{ box-shadow:0 0 0 3px rgba(127,212,232,0.35), 0 2px 8px rgba(0,0,0,0.5); }
+
+  .divider{ height:1px; background:linear-gradient(90deg, transparent, rgba(160,200,225,0.16), transparent); margin:16px 0 15px; }
+
+  .seg-label{
+    font-size:10px; letter-spacing:0.15em; text-transform:uppercase;
+    color:var(--text-dim); margin-bottom:9px; font-weight:500;
+  }
+  .seg{ display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+  .seg button{
+    font-family:inherit; font-size:9.5px; letter-spacing:0.07em; text-transform:uppercase;
+    color: rgba(200,220,232,0.62); font-weight:500;
+    background: rgba(255,255,255,0.045);
+    border:1px solid rgba(160,200,225,0.10);
+    border-radius:8px; padding:8px 2px; cursor:pointer;
+    transition: all .28s cubic-bezier(.2,.7,.3,1);
+  }
+  .seg button:hover{ background:rgba(255,255,255,0.10); color:rgba(225,240,248,0.9); }
+  .seg button.on{
+    background: rgba(127,212,232,0.17);
+    border-color: rgba(127,212,232,0.45);
+    color:#e8f7fc;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), 0 0 16px rgba(127,212,232,0.14);
+  }
+
+  #beaufort{
+    margin-top:2px; font-size:10px; color:rgba(150,178,196,0.75);
+    letter-spacing:0.05em; line-height:1.5; min-height:15px;
+  }
+  #beaufort b{ color:rgba(205,228,240,0.95); font-weight:500; }
+
+  #hint{
+    position:fixed; bottom:22px; left:30px; z-index:5;
+    font-size:10px; letter-spacing:0.13em; text-transform:uppercase;
+    color: rgba(160,186,202,0.42); pointer-events:none;
+    opacity:0; animation: fadeUp 1.6s 1.5s cubic-bezier(.2,.7,.3,1) forwards;
+    transition: opacity .4s ease;
+  }
+  #hint kbd{
+    font-family:inherit; border:1px solid rgba(160,200,225,0.22); border-radius:4px;
+    padding:1px 5px; font-size:9.5px; color:rgba(190,214,228,0.62);
+  }
+
+  #err{
+    position:fixed; inset:0; display:none; place-items:center; z-index:20;
+    background:#070b10; color:#9fb6c4; font-size:13px; letter-spacing:0.06em; text-align:center; padding:40px; line-height:1.7;
+  }
+
+  @media (max-width: 720px){
+    #panel{ right:12px; left:12px; width:auto; top:auto; bottom:12px; transform:none; padding:15px 16px 12px; animation:none; opacity:1; }
+    body.hidden-ui #panel{ transform:translateY(20px); }
+    .grp{ margin-bottom:11px; }
+    .divider{ margin:12px 0 11px; }
+    #title{ top:16px; left:18px; }
+    #title h1{ font-size:12px; letter-spacing:0.28em; }
+    #title p{ font-size:9.5px; }
+    #hint{ display:none; }
+  }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="vignette"></div>
+
+<div id="title">
+  <h1>Ocean</h1>
+  <p>Real-time wave simulation</p>
+</div>
+
+<div id="panel">
+  <div class="grp">
+    <div class="grp-label"><span>Wind Speed</span><span class="grp-val" id="v-wind">12.0 m/s</span></div>
+    <input type="range" id="s-wind" min="0" max="28" step="0.1" value="12">
+    <div id="beaufort"></div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-label"><span>Wave Height</span><span class="grp-val" id="v-height">1.00×</span></div>
+    <input type="range" id="s-height" min="0.05" max="2.4" step="0.01" value="1">
+  </div>
+
+  <div class="grp">
+    <div class="grp-label"><span>Wind Direction</span><span class="grp-val" id="v-dir">135°</span></div>
+    <input type="range" id="s-dir" min="0" max="360" step="1" value="135">
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grp">
+    <div class="seg-label">Lighting</div>
+    <div class="seg" id="seg-light">
+      <button data-i="0">Dawn</button>
+      <button data-i="1" class="on">Day</button>
+      <button data-i="2">Sunset</button>
+      <button data-i="3">Night</button>
+    </div>
+  </div>
+
+  <div class="grp">
+    <div class="grp-label"><span>Sun Elevation</span><span class="grp-val" id="v-sun">24°</span></div>
+    <input type="range" id="s-sun" min="-8" max="80" step="0.5" value="24">
+  </div>
+
+  <div class="grp">
+    <div class="grp-label"><span>Haze</span><span class="grp-val" id="v-haze">0.45</span></div>
+    <input type="range" id="s-haze" min="0" max="1" step="0.01" value="0.45">
+  </div>
+</div>
+
+<div id="hint"><kbd>Drag</kbd> look &nbsp;·&nbsp; <kbd>Scroll</kbd> zoom &nbsp;·&nbsp; <kbd>H</kbd> hide UI</div>
+<div id="err"></div>
+
+<script>
+(function(){
+"use strict";
+
+const canvas = document.getElementById('gl');
+const gl = canvas.getContext('webgl2', {
+  antialias: true, alpha: false, depth: true,
+  powerPreference: 'high-performance', preserveDrawingBuffer: false
+});
+
+if(!gl){
+  const e = document.getElementById('err');
+  e.style.display = 'grid';
+  e.textContent = 'This ocean requires WebGL 2. Please try a modern browser with hardware acceleration enabled.';
+  return;
+}
+
+/* ==========================================================================
+   Wave model
+   --------------------------------------------------------------------------
+   The surface is a sum of Gerstner (trochoidal) waves. Each wave contributes a
+   horizontal pinch toward its crest in addition to vertical displacement, which
+   is what gives real swell its sharp peaks and broad troughs.
+
+   Amplitudes follow a Phillips-like spectrum driven by wind speed: energy grows
+   with U^2 and the spectral peak migrates toward longer wavelengths as the wind
+   builds, so a stiff breeze produces long rolling swell rather than simply
+   taller ripples. Directions are spread around the wind vector with a cosine
+   lobe; short waves scatter more widely than long swell, as they do at sea.
+   ========================================================================== */
+
+const NWAVES = 24;
+
+// Deterministic hash so the sea state is reproducible across reloads.
+function rand(seed){
+  let s = seed * 16807 % 2147483647;
+  return function(){ s = s * 16807 % 2147483647; return (s - 1) / 2147483646; };
+}
+
+const WAVES = (function(){
+  const R = rand(9137);
+  const out = [];
+  for(let i = 0; i < NWAVES; i++){
+    const t = i / (NWAVES - 1);
+    // Wavelengths spread geometrically from long swell to short chop.
+    const wavelength = 62.0 * Math.pow(0.80, i * 0.85 + R() * 0.5) + 0.55;
+    // Short waves fan out from the wind direction much more than long ones.
+    const spread = (0.28 + t * 1.05) * (R() * 2 - 1);
+    out.push({ len: wavelength, ang: spread, phase: R() * Math.PI * 2, seed: R() });
+  }
+  return out;
+})();
+
+// Packed per-wave data uploaded to the GPU: dirX, dirY, amplitude, frequency,
+// speed, steepness. Rebuilt whenever wind or height changes.
+const waveBuf = new Float32Array(NWAVES * 6);
+
+// Characteristic crest amplitude of the current sea state, used by the shader
+// to judge foam relative to the waves actually present.
+let waveScale = 1.0;
+
+function buildWaves(windSpeed, heightScale, windDir){
+  const g = 9.81;
+  // Peak wavelength grows with wind, but is compressed relative to the true
+  // fetch-limited value: a real 20 m/s sea peaks near 60 m, which is wider
+  // than the visible near-field, so the dominant swell would fill the screen
+  // as a single slab. Keeping the peak in the 10-30 m range puts several
+  // wave crests in view at once.
+  const peakLen = Math.max(2.5, 0.62 * windSpeed * windSpeed / g * 0.85 + 3.5);
+  let totalAmp = 0;
+  const amps = new Float32Array(NWAVES);
+
+  for(let i = 0; i < NWAVES; i++){
+    const w = WAVES[i];
+    const L = w.len;
+    const r = L / peakLen;
+    // Broad-shouldered spectrum peaked at peakLen. A textbook Phillips
+    // exp(-1/r^2) cutoff drives everything shorter than the peak to exactly
+    // zero, leaving only two or three waves longer than the viewport and a
+    // surface with no visible structure. The gentler falloff keeps mid-scale
+    // chop alive, which is what actually reads as "sea" on screen.
+    const spec = Math.pow(r, 2.2) / (1.0 + Math.pow(r, 4.2)) * Math.exp(-0.42 / Math.max(r, 1e-3));
+    // Wind must actually be blowing for short chop to exist.
+    const windGate = Math.min(1.0, windSpeed / (1.2 + L * 0.05));
+    const a = Math.sqrt(Math.max(spec, 0.0)) * windGate * (0.55 + w.seed * 0.9);
+    amps[i] = a;
+    totalAmp += a;
+  }
+
+  // Normalize so total significant height tracks wind speed predictably,
+  // then apply the user's height multiplier.
+  const sigHeight = (0.021 * windSpeed * windSpeed / g * 4.0 + 0.10) * heightScale;
+  const norm = totalAmp > 1e-5 ? sigHeight / totalAmp : 0;
+  waveScale = sigHeight;
+
+  // Gerstner steepness budget. The surface self-intersects once the summed
+  // horizontal pinch sum(q_i * k_i * a_i) exceeds 1, so we compute that sum
+  // first and scale every wave by a single factor to land just under the
+  // limit. Dividing each wave independently (by NWAVES, say) collapses q to
+  // near zero and yields flat sine swell with no trochoidal crests at all.
+  let pinch = 0;
+  for(let i = 0; i < NWAVES; i++){
+    const k = 2.0 * Math.PI / WAVES[i].len;
+    pinch += amps[i] * norm * k;
+  }
+  // Target pinch rises with wind: calm seas are near-sinusoidal, a blow gives
+  // sharp peaks and long flat troughs.
+  const targetPinch = Math.min(0.86, 0.16 + windSpeed * 0.030);
+  const qScale = pinch > 1e-5 ? targetPinch / pinch : 0;
+
+  for(let i = 0; i < NWAVES; i++){
+    const w = WAVES[i];
+    const L = w.len;
+    const k = 2.0 * Math.PI / L;              // wave number
+    const c = Math.sqrt(g / k);               // deep-water phase speed
+    const ang = windDir + w.ang;
+    const amp = amps[i] * norm;
+
+    // Per-wave steepness, capped below the individual breaking limit (ka<=1).
+    const steep = Math.min(0.95, qScale);
+
+    const o = i * 6;
+    waveBuf[o    ] = Math.cos(ang);
+    waveBuf[o + 1] = Math.sin(ang);
+    waveBuf[o + 2] = amp;
+    waveBuf[o + 3] = k;
+    waveBuf[o + 4] = c * k;                   // angular frequency
+    waveBuf[o + 5] = steep;
+  }
+}
+
+/* ==========================================================================
+   CPU-side surface evaluation — mirrors the vertex shader exactly so the
+   camera can float on the water instead of clipping through it.
+   ========================================================================== */
+function surfaceHeight(x, z, t){
+  let y = 0;
+  for(let i = 0; i < NWAVES; i++){
+    const o = i * 6;
+    const dx = waveBuf[o], dz = waveBuf[o+1], a = waveBuf[o+2];
+    const k = waveBuf[o+3], w = waveBuf[o+4];
+    if(a < 1e-5) continue;
+    y += a * Math.sin((dx * x + dz * z) * k - t * w + WAVES[i].phase);
+  }
+  return y;
+}
+
+/* ==========================================================================
+   Shaders
+   ========================================================================== */
+
+const COMMON = `
+const int NW = ${NWAVES};
+uniform vec4 uW0[NW];   // dirX, dirY, amp, k
+uniform vec2 uW1[NW];   // omega, steepness
+uniform float uPhase[NW];
+uniform float uTime;
+`;
+
+// ---- Ocean ----------------------------------------------------------------
+
+const OCEAN_VS = `#version 300 es
+precision highp float;
+in vec2 aPos;
+${COMMON}
+uniform mat4 uViewProj;
+uniform vec3 uCam;
+uniform float uGridScale;
+
+out vec3 vWorld;
+out vec3 vNormal;
+out float vJacobian;   // <1 where the surface is compressed → foam forms
+out float vDist;
+
+// Evaluate the Gerstner sum: position offset, normal, and horizontal
+// compression (Jacobian determinant of the xz displacement map).
+void gerstner(vec2 p, out vec3 disp, out vec3 nrm, out float jac){
+  disp = vec3(0.0);
+  vec3 tangent = vec3(1.0, 0.0, 0.0);
+  vec3 binorm  = vec3(0.0, 0.0, 1.0);
+  float jxx = 1.0, jzz = 1.0, jxz = 0.0;
+
+  for(int i = 0; i < NW; i++){
+    vec2  d = uW0[i].xy;
+    float a = uW0[i].z;
+    float k = uW0[i].w;
+    float w = uW1[i].x;
+    float q = uW1[i].y;
+
+    float f = dot(d, p) * k - uTime * w + uPhase[i];
+    float s = sin(f), c = cos(f);
+    float qa = q * a;
+
+    disp.xz += qa * d * c;
+    disp.y  += a * s;
+
+    float ka = k * a;
+    float wa = ka * c;           // d(height)/d(phase) scaled
+    tangent += vec3(-q * d.x * d.x * ka * s, d.x * wa, -q * d.x * d.y * ka * s);
+    binorm  += vec3(-q * d.x * d.y * ka * s, d.y * wa, -q * d.y * d.y * ka * s);
+
+    // Horizontal Jacobian terms for foam detection.
+    float qks = q * k * a * s;
+    jxx -= d.x * d.x * qks;
+    jzz -= d.y * d.y * qks;
+    jxz -= d.x * d.y * qks;
+  }
+  nrm = normalize(cross(binorm, tangent));
+  jac = jxx * jzz - jxz * jxz;
+}
+
+void main(){
+  // The grid is a camera-locked radial mesh; aPos.x is radius^ (pre-warped),
+  // aPos.y is angle. Snapping to world space keeps detail near the viewer.
+  vec2 base = aPos * uGridScale + uCam.xz;
+
+  vec3 disp, nrm; float jac;
+  gerstner(base, disp, nrm, jac);
+
+  vec3 world = vec3(base.x + disp.x, disp.y, base.y + disp.z);
+
+  vWorld = world;
+  vNormal = nrm;
+  vJacobian = jac;
+  vDist = length(world.xz - uCam.xz);
+
+  gl_Position = uViewProj * vec4(world, 1.0);
+}
+`;
+
+const SKY_FN = `
+float skyHash(vec2 p){
+  p = fract(p * vec2(233.34, 851.73));
+  p += dot(p, p + 23.45);
+  return fract(p.x * p.y);
+}
+float skyNoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(skyHash(i), skyHash(i + vec2(1,0)), f.x),
+             mix(skyHash(i + vec2(0,1)), skyHash(i + vec2(1,1)), f.x), f.y);
+}
+float cloudFbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for(int i = 0; i < 5; i++){ v += a * skyNoise(p); p *= 2.11; a *= 0.5; }
+  return v;
+}
+
+// Thin high cloud on a plane above the viewer, compressing toward the horizon.
+// Shared by the sky dome and the ocean's reflection so the two always agree.
+vec3 applyClouds(vec3 col, vec3 d, vec3 sunDir, vec3 horizC, vec3 sunC,
+                 float nightAmt, vec2 drift){
+  if(d.y <= 0.002) return col;
+  // Larger scale factor => the cloud plane sits higher, so its features stay
+  // broad instead of collapsing into noise near the horizon.
+  vec2 cp = d.xz / (d.y + 0.055) * 0.16 + drift * 0.6;
+  float c = smoothstep(0.48, 0.80, cloudFbm(cp * 0.9));
+  float horizonFade = smoothstep(0.002, 0.07, d.y);
+  float lit = pow(max(dot(normalize(d), sunDir), 0.0), 5.0);
+  vec3 cloudCol = mix(horizC * 0.92, sunC * 0.55 + horizC * 0.5, lit * 0.75);
+  cloudCol = mix(cloudCol, cloudCol * 0.72, nightAmt * 0.5);
+  return mix(col, cloudCol, c * horizonFade * 0.55 * (1.0 - nightAmt * 0.55));
+}
+
+// Analytic sky: Rayleigh-ish gradient + Mie forward-scatter halo around the sun.
+vec3 skyColor(vec3 dir, vec3 sunDir, vec3 zenithC, vec3 horizC, vec3 sunC, float haze){
+  float up = clamp(dir.y, -1.0, 1.0);
+  // A high exponent keeps the horizon tint confined to a band near y=0 so the
+  // sky retains a real zenith-to-horizon gradient instead of reading as one
+  // flat wall of colour.
+  float t = pow(clamp(1.0 - abs(up), 0.0, 1.0), 6.0);
+  vec3 col = mix(zenithC, horizC, t);
+
+  // Mie halo — broad glow that tightens as haze drops. The phase function is
+  // unbounded in the forward direction, which at a low sun would otherwise
+  // hand back a ~27x overbright value for most of the sky and wash the whole
+  // scene (and everything reflecting it) orange.
+  float cosT = clamp(dot(normalize(dir), sunDir), -1.0, 1.0);
+  float g = mix(0.76, 0.42, haze);
+  float gg = g * g;
+  float mie = (1.0 - gg) / (4.0 * 3.14159 * pow(1.0 + gg - 2.0 * g * cosT, 1.5));
+  mie = min(mie, 0.22);
+  col += sunC * mie * (0.45 + haze * 1.1);
+
+  // Tight solar disc bloom — narrow enough to read as the sun itself.
+  col += sunC * pow(max(cosT, 0.0), 1400.0) * 12.0;
+  col += sunC * pow(max(cosT, 0.0), 120.0) * 0.30;
+
+  // Horizon haze band. Kept subtle: a strong band draws a bright seam exactly
+  // where the sea meets the sky.
+  float band = exp(-abs(up) * mix(18.0, 7.0, haze));
+  col = mix(col, horizC * 0.96, band * haze * 0.30);
+
+  return col;
+}
+`;
+
+const OCEAN_FS = `#version 300 es
+precision highp float;
+
+in vec3 vWorld;
+in vec3 vNormal;
+in float vJacobian;
+in float vDist;
+
+uniform vec3  uCam;
+uniform vec3  uSunDir;
+uniform vec3  uSunColor;
+uniform vec3  uZenith;
+uniform vec3  uHorizon;
+uniform vec3  uDeepColor;
+uniform vec3  uShallowColor;
+uniform float uHaze;
+uniform float uTime;
+uniform float uWind;
+uniform float uExposure;
+uniform vec2  uWindVec;
+uniform float uFoamAmt;
+uniform float uNightAmt;
+uniform float uWaveScale;   // characteristic crest amplitude, for normalising height
+uniform vec2  uWindDrift;   // slow cloud advection, matches the sky dome
+
+out vec4 fragColor;
+
+${SKY_FN}
+
+// --- value noise ------------------------------------------------------------
+float hash(vec2 p){
+  p = fract(p * vec2(233.34, 851.73));
+  p += dot(p, p + 23.45);
+  return fract(p.x * p.y);
+}
+float vnoise(vec2 p){
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(hash(i), hash(i + vec2(1,0)), f.x),
+             mix(hash(i + vec2(0,1)), hash(i + vec2(1,1)), f.x), f.y);
+}
+float fbm(vec2 p){
+  float v = 0.0, a = 0.5;
+  for(int i = 0; i < 5; i++){ v += a * vnoise(p); p *= 2.03; a *= 0.5; }
+  return v;
+}
+
+// Fine-scale capillary ripple normal — detail the vertex grid can't resolve.
+vec3 detailNormal(vec2 p, float strength, float dist){
+  float fade = exp(-dist * 0.0032);
+  if(fade < 0.004 || strength < 0.001) return vec3(0.0, 1.0, 0.0);
+  vec2 drift = uWindVec * uTime;
+  float e = 0.55;
+  vec2 q1 = p * 0.55 + drift * 0.30;
+  vec2 q2 = p * 1.90 - drift * 0.62;
+  float h  = fbm(q1) * 0.62 + fbm(q2) * 0.38;
+  float hx = fbm(q1 + vec2(e,0.0)) * 0.62 + fbm(q2 + vec2(e,0.0)) * 0.38;
+  float hz = fbm(q1 + vec2(0.0,e)) * 0.62 + fbm(q2 + vec2(0.0,e)) * 0.38;
+  float s = strength * fade;
+  return normalize(vec3(-(hx - h) * s, 1.0, -(hz - h) * s));
+}
+
+// GGX specular — gives the sun a physically-shaped glitter path on the water.
+float ggx(vec3 n, vec3 v, vec3 l, float rough){
+  vec3 h = normalize(v + l);
+  float a = max(rough * rough, 1e-3);
+  float a2 = a * a;
+  float ndh = max(dot(n, h), 0.0);
+  float ndv = max(dot(n, v), 1e-4);
+  float ndl = max(dot(n, l), 0.0);
+  float d = ndh * ndh * (a2 - 1.0) + 1.0;
+  float D = a2 / (3.14159 * d * d);
+  float k = a * 0.5;
+  float G = (ndl / (ndl * (1.0 - k) + k)) * (ndv / (ndv * (1.0 - k) + k));
+  return D * G / (4.0 * ndv * ndl + 1e-4);
+}
+
+void main(){
+  // Geometric normal from the Gerstner sum alone. Foam is derived from this,
+  // never from the detail-perturbed normal — capillary ripples tilt the
+  // surface everywhere and would speckle whitecaps across the whole sea.
+  vec3 Ng = normalize(vNormal);
+
+  vec3 N = Ng;
+  // Blend in capillary detail, attenuating with distance to avoid aliasing.
+  float ripple = (0.35 + uWind * 0.085);
+  vec3 dn = detailNormal(vWorld.xz, ripple, vDist);
+  N = normalize(vec3(N.x + dn.x, N.y * 0.82, N.z + dn.z));
+
+  vec3 V = normalize(uCam - vWorld);
+  vec3 L = normalize(uSunDir);
+
+  // Distance-based normal flattening keeps the far field calm and readable,
+  // but flattening too hard turns everything past the near waves into a
+  // single mirrored sky colour with no tonal variation.
+  float flat_ = smoothstep(140.0, 1800.0, vDist);
+  N = normalize(mix(N, vec3(0.0, 1.0, 0.0), flat_ * 0.55));
+
+  float ndv = max(dot(N, V), 0.0);
+  float ndl = max(dot(N, L), 0.0);
+
+  // --- Fresnel (Schlick, F0 = 0.02 for water) ---
+  // Schlick, F0 = 0.02. The grazing-angle tail is deliberately held back:
+  // a mathematically pure F->1 mirrors our bright analytic horizon into every
+  // mid-field pixel and the sea turns into a sheet of white. Real water looks
+  // blue at these angles because it reflects a sky with far more tonal
+  // structure than a smooth gradient, so we cap reflectance and let the
+  // water's own absorption colour dominate.
+  float F = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+  F = clamp(F, 0.0, 0.46);
+
+  // --- Reflection: sample the analytic sky along the mirror direction ---
+  vec3 R = reflect(-V, N);
+  // Below-horizon rays bend back up shallowly rather than mirroring, so
+  // grazing angles sample dimmer near-horizon sky, not the bright zenith.
+  R.y = max(R.y, 0.0) * 0.75 + 0.012;
+  vec3 reflected = skyColor(R, L, uZenith, uHorizon, uSunColor, uHaze);
+  reflected = applyClouds(reflected, R, L, uHorizon, uSunColor, uNightAmt, uWindDrift);
+  // Reflected skylight is nudged toward the water's own hue and dimmed. The
+  // tint is normalised to unit luminance first: multiplying by the raw water
+  // colour would scale reflected *energy* by it, so a warm low sun (whose
+  // colour channels exceed 1) drags the whole sea toward orange.
+  vec3 tint = uShallowColor * 2.4 + uDeepColor * 3.0;
+  tint /= max(dot(tint, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+  reflected = mix(reflected, reflected * tint, 0.34);
+  reflected *= 0.70;
+
+  // --- Refraction / body colour with depth-dependent absorption ---
+  // Height relative to the current sea state, so a calm ripple and a storm
+  // crest shade consistently instead of tall seas washing out to neon.
+  float depthFade = smoothstep(-1.0, 1.6, vWorld.y / max(uWaveScale, 0.25));
+  vec3 body = mix(uDeepColor, uShallowColor, depthFade * 0.62);
+
+  // Subsurface scattering: light transmitted through the back of a wave crest.
+  // Strongest when looking toward the sun through a raised, steep face.
+  // Normalised against the sea state so tall waves don't saturate to neon.
+  float lift = smoothstep(-0.35, 1.4, vWorld.y / max(uWaveScale, 0.25));
+  float backLit = pow(max(dot(V, -normalize(L - N * 0.55)), 0.0), 3.0);
+  float sss = backLit * lift * (0.45 + 0.55 * (1.0 - flat_));
+  // Transmitted light is filtered by the water, so it keeps the sea's green-
+  // blue cast regardless of how warm the sun is. Scaling by the sun's overall
+  // brightness (not a single channel) avoids tinting the surface at sunset.
+  float sunLum = dot(uSunColor, vec3(0.2126, 0.7152, 0.0722));
+  vec3 sssColor = uShallowColor * 1.7 + vec3(0.015, 0.10, 0.075);
+  body += sssColor * sss * 1.35 * clamp(sunLum, 0.05, 1.4);
+
+  // Ambient sky light entering the water. Kept low — water absorbs most
+  // downwelling light within a metre, so a bright ambient term reads as milk.
+  body += uHorizon * 0.045 * (0.4 + 0.6 * ndl);
+
+  vec3 col = mix(body, reflected, F);
+
+  // --- Sun specular ---
+  // ggx() already carries the 1/(4 ndv ndl) denominator, so the BRDF is
+  // multiplied by ndl exactly once here.
+  float rough = clamp(0.045 + uWind * 0.0075, 0.03, 0.30);
+  float spec = ggx(N, V, L, rough) * ndl;
+  // Clamped because a near-mirror surface produces an unbounded lobe that
+  // blows a hole in the tonemap along the sun's glitter path.
+  spec = min(spec, 12.0);
+  col += uSunColor * spec * F * 3.4 * (1.0 - uNightAmt * 0.55);
+
+  // --- Foam ------------------------------------------------------------
+  // Whitecaps form only where the surface is genuinely collapsing: the
+  // Gerstner Jacobian falling toward zero means neighbouring points are
+  // folding into each other. Steepness alone is a weak signal (most of a
+  // swell face is tilted without breaking), so it only nudges the mask.
+  // Whitecaps live on the upper part of a wave that is both raised and tilted.
+  // The Jacobian only collapses in near-storm conditions, so on its own it
+  // gives an all-or-nothing result; height and slope provide the smooth ramp
+  // from the first whitecaps around Force 4 up to a fully covered storm sea.
+  float compress = smoothstep(0.90, 0.42, vJacobian);
+  float steepness = smoothstep(0.9995, 0.985, Ng.y);
+  float relHeight = smoothstep(0.15, 0.75, vWorld.y / max(uWaveScale, 0.05));
+  float foamMask = clamp(relHeight * (0.55 + steepness * 1.5) + compress * 0.9, 0.0, 1.5);
+  foamMask *= uFoamAmt;
+
+  // Geometry decides WHERE foam can exist; noise only erodes it into filaments
+  // within that region. Multiplying the mask by noise instead lets the fbm
+  // paint blotches across flat water wherever the mask is merely nonzero.
+  vec2 fp = vWorld.xz * 0.85 - uWindVec * uTime * 0.55;
+  float ftex = fbm(fp) * 0.6 + fbm(fp * 3.1 + 11.0) * 0.4;
+  float foam = smoothstep(0.30, 0.85, foamMask);
+  foam *= smoothstep(0.30, 0.62, ftex);
+  // Distant foam is sub-pixel; fading it prevents a grey haze at the horizon.
+  foam *= (1.0 - flat_ * 0.88);
+
+  // Foam is bright, slightly warm where the sun strikes it, and picks up a
+  // little skylight in shadow — not flat grey.
+  vec3 foamCol = (uSunColor * 0.62 * max(ndl, 0.30) + uHorizon * 0.42 + vec3(0.14))
+                 * (1.0 - uNightAmt * 0.42);
+  col = mix(col, foamCol, clamp(foam, 0.0, 0.90));
+
+  // --- Distance fog into the sky --------------------------------------
+  // Fog resolves to the sky sampled along this pixel's own view ray, so the
+  // farthest water converges on exactly the colour the sky dome draws just
+  // above it. Using a fixed horizon colour instead leaves a visible seam.
+  vec3 viewRay = normalize(vWorld - uCam);
+  vec3 horizonSky = skyColor(vec3(viewRay.x, max(viewRay.y, -0.004) + 0.010, viewRay.z),
+                             L, uZenith, uHorizon, uSunColor, uHaze);
+  float fog = 1.0 - exp(-vDist * mix(0.00045, 0.0022, uHaze));
+  fog = clamp(fog, 0.0, 1.0);
+  col = mix(col, horizonSky, fog);
+
+  // Exposure + filmic tonemap (ACES approximation).
+  col *= uExposure;
+  vec3 x = col;
+  col = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+  col = pow(col, vec3(1.0 / 2.2));
+
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+// ---- Sky dome -------------------------------------------------------------
+
+const SKY_VS = `#version 300 es
+precision highp float;
+in vec2 aPos;
+uniform mat4 uInvVP;
+uniform vec3 uCam;
+out vec3 vDir;
+void main(){
+  vec4 p = uInvVP * vec4(aPos, 1.0, 1.0);
+  vDir = p.xyz / p.w - uCam;
+  gl_Position = vec4(aPos, 1.0, 1.0);
+}
+`;
+
+const SKY_FS = `#version 300 es
+precision highp float;
+in vec3 vDir;
+uniform vec3 uSunDir, uSunColor, uZenith, uHorizon;
+uniform float uHaze, uExposure, uNightAmt, uTime;
+uniform vec2 uWindDrift;   // slow cloud advection, follows the wind
+out vec4 fragColor;
+
+${SKY_FN}
+
+float hash(vec2 p){
+  p = fract(p * vec2(233.34, 851.73));
+  p += dot(p, p + 23.45);
+  return fract(p.x * p.y);
+}
+
+void main(){
+  vec3 d = normalize(vDir);
+  vec3 col = skyColor(d, normalize(uSunDir), uZenith, uHorizon, uSunColor, uHaze);
+  col = applyClouds(col, d, normalize(uSunDir), uHorizon, uSunColor, uNightAmt, uWindDrift);
+
+  // Stars, faded in only at night and only above the horizon.
+  if(uNightAmt > 0.01 && d.y > 0.0){
+    vec2 sp = d.xz / (d.y + 0.30) * 34.0;
+    vec2 cell = floor(sp);
+    float h = hash(cell);
+    if(h > 0.965){
+      vec2 f = fract(sp) - 0.5 - (vec2(hash(cell + 3.1), hash(cell + 7.7)) - 0.5) * 0.55;
+      float star = exp(-dot(f, f) * 190.0);
+      float tw = 0.65 + 0.35 * sin(uTime * 2.1 + h * 90.0);
+      col += vec3(0.86, 0.91, 1.0) * star * tw * uNightAmt * smoothstep(0.0, 0.24, d.y) * 6.5;
+    }
+  }
+
+  col *= uExposure;
+  vec3 x = col;
+  col = clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+  col = pow(col, vec3(1.0 / 2.2));
+  fragColor = vec4(col, 1.0);
+}
+`;
+
+/* ==========================================================================
+   GL helpers
+   ========================================================================== */
+
+function compile(type, src){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    throw new Error(gl.getShaderInfoLog(s) + '\n' + src.split('\n').map((l,i)=>(i+1)+': '+l).join('\n'));
+  }
+  return s;
+}
+function program(vs, fs){
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+  gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'aPos');
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+
+let oceanProg, skyProg;
+try{
+  oceanProg = program(OCEAN_VS, OCEAN_FS);
+  skyProg   = program(SKY_VS, SKY_FS);
+}catch(err){
+  const e = document.getElementById('err');
+  e.style.display = 'grid';
+  e.textContent = 'Shader compilation failed: ' + err.message;
+  console.error(err);
+  return;
+}
+
+function uniforms(p, names){
+  const u = {};
+  for(const n of names) u[n] = gl.getUniformLocation(p, n);
+  return u;
+}
+
+const OU = uniforms(oceanProg, ['uViewProj','uCam','uTime','uGridScale','uSunDir','uSunColor',
+  'uZenith','uHorizon','uDeepColor','uShallowColor','uHaze','uWind','uExposure','uWindVec',
+  'uFoamAmt','uNightAmt','uWaveScale','uWindDrift','uW0','uW1','uPhase']);
+const SU = uniforms(skyProg, ['uInvVP','uCam','uSunDir','uSunColor','uZenith','uHorizon','uHaze','uExposure','uNightAmt','uTime','uWindDrift']);
+
+/* ==========================================================================
+   Radial projected grid
+   --------------------------------------------------------------------------
+   A polar mesh centred on the camera. Radius is warped by a power curve so
+   vertex density is highest near the viewer, where wave detail matters, and
+   stretches out toward the horizon where it doesn't.
+   ========================================================================== */
+
+// Dense enough that steep crests at high wave-height settings stay smooth
+// rather than showing triangle facets. ~180k verts costs little on the GPU.
+const RINGS = 420, SPOKES = 430;
+
+function buildGrid(){
+  const verts = new Float32Array(RINGS * SPOKES * 2);
+  let v = 0;
+  for(let r = 0; r < RINGS; r++){
+    const rt = r / (RINGS - 1);
+    // A gentler exponent than a pure cubic spreads vertices into the mid-field
+    // where the largest crests are, instead of packing them under the camera.
+    const radius = Math.pow(rt, 2.35) * 1.0 + rt * 0.0018;
+    for(let s = 0; s < SPOKES; s++){
+      const a = s / SPOKES * Math.PI * 2;
+      verts[v++] = Math.cos(a) * radius;
+      verts[v++] = Math.sin(a) * radius;
+    }
+  }
+
+  const idx = [];
+  for(let r = 0; r < RINGS - 1; r++){
+    for(let s = 0; s < SPOKES; s++){
+      const s2 = (s + 1) % SPOKES;
+      const a = r * SPOKES + s, b = r * SPOKES + s2;
+      const c = (r + 1) * SPOKES + s, d = (r + 1) * SPOKES + s2;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  return { verts, idx: new Uint32Array(idx) };
+}
+
+const grid = buildGrid();
+
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+gl.bufferData(gl.ARRAY_BUFFER, grid.verts, gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+const ibo = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, grid.idx, gl.STATIC_DRAW);
+gl.bindVertexArray(null);
+
+// Fullscreen triangle for the sky.
+const skyVao = gl.createVertexArray();
+gl.bindVertexArray(skyVao);
+const skyVbo = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, skyVbo);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.bindVertexArray(null);
+
+/* ==========================================================================
+   Matrix math
+   ========================================================================== */
+
+function perspective(out, fovy, aspect, near, far){
+  const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far);
+  out[0]=f/aspect; out[1]=0; out[2]=0; out[3]=0;
+  out[4]=0; out[5]=f; out[6]=0; out[7]=0;
+  out[8]=0; out[9]=0; out[10]=(far+near)*nf; out[11]=-1;
+  out[12]=0; out[13]=0; out[14]=2*far*near*nf; out[15]=0;
+  return out;
+}
+function lookAt(out, eye, center, up){
+  let z0=eye[0]-center[0], z1=eye[1]-center[1], z2=eye[2]-center[2];
+  let len = 1/Math.hypot(z0,z1,z2); z0*=len; z1*=len; z2*=len;
+  let x0=up[1]*z2-up[2]*z1, x1=up[2]*z0-up[0]*z2, x2=up[0]*z1-up[1]*z0;
+  len = Math.hypot(x0,x1,x2);
+  if(len){ len=1/len; x0*=len; x1*=len; x2*=len; } else { x0=x1=x2=0; }
+  const y0=z1*x2-z2*x1, y1=z2*x0-z0*x2, y2=z0*x1-z1*x0;
+  out[0]=x0; out[1]=y0; out[2]=z0; out[3]=0;
+  out[4]=x1; out[5]=y1; out[6]=z1; out[7]=0;
+  out[8]=x2; out[9]=y2; out[10]=z2; out[11]=0;
+  out[12]=-(x0*eye[0]+x1*eye[1]+x2*eye[2]);
+  out[13]=-(y0*eye[0]+y1*eye[1]+y2*eye[2]);
+  out[14]=-(z0*eye[0]+z1*eye[1]+z2*eye[2]);
+  out[15]=1;
+  return out;
+}
+function multiply(out, a, b){
+  for(let i=0;i<4;i++){
+    const b0=b[i*4], b1=b[i*4+1], b2=b[i*4+2], b3=b[i*4+3];
+    out[i*4  ]=b0*a[0]+b1*a[4]+b2*a[8]+b3*a[12];
+    out[i*4+1]=b0*a[1]+b1*a[5]+b2*a[9]+b3*a[13];
+    out[i*4+2]=b0*a[2]+b1*a[6]+b2*a[10]+b3*a[14];
+    out[i*4+3]=b0*a[3]+b1*a[7]+b2*a[11]+b3*a[15];
+  }
+  return out;
+}
+function invert(out, m){
+  const a00=m[0],a01=m[1],a02=m[2],a03=m[3], a10=m[4],a11=m[5],a12=m[6],a13=m[7],
+        a20=m[8],a21=m[9],a22=m[10],a23=m[11], a30=m[12],a31=m[13],a32=m[14],a33=m[15];
+  const b00=a00*a11-a01*a10, b01=a00*a12-a02*a10, b02=a00*a13-a03*a10,
+        b03=a01*a12-a02*a11, b04=a01*a13-a03*a11, b05=a02*a13-a03*a12,
+        b06=a20*a31-a21*a30, b07=a20*a32-a22*a30, b08=a20*a33-a23*a30,
+        b09=a21*a32-a22*a31, b10=a21*a33-a23*a31, b11=a22*a33-a23*a32;
+  let det = b00*b11-b01*b10+b02*b09+b03*b08-b04*b07+b05*b06;
+  if(!det) return out;
+  det = 1/det;
+  out[0]=(a11*b11-a12*b10+a13*b09)*det;  out[1]=(a02*b10-a01*b11-a03*b09)*det;
+  out[2]=(a31*b05-a32*b04+a33*b03)*det;  out[3]=(a22*b04-a21*b05-a23*b03)*det;
+  out[4]=(a12*b08-a10*b11-a13*b07)*det;  out[5]=(a00*b11-a02*b08+a03*b07)*det;
+  out[6]=(a32*b02-a30*b05-a33*b01)*det;  out[7]=(a20*b05-a22*b02+a23*b01)*det;
+  out[8]=(a10*b10-a11*b08+a13*b06)*det;  out[9]=(a01*b08-a00*b10-a03*b06)*det;
+  out[10]=(a30*b04-a31*b02+a33*b00)*det; out[11]=(a21*b02-a20*b04-a23*b00)*det;
+  out[12]=(a11*b07-a10*b09-a12*b06)*det; out[13]=(a00*b09-a01*b07+a02*b06)*det;
+  out[14]=(a31*b01-a30*b03-a32*b00)*det; out[15]=(a20*b03-a21*b01-a22*b00)*det;
+  return out;
+}
+
+const matProj = new Float32Array(16);
+const matView = new Float32Array(16);
+const matVP   = new Float32Array(16);
+const matInvVP= new Float32Array(16);
+
+/* ==========================================================================
+   Lighting presets
+   ========================================================================== */
+
+const PRESETS = [
+  { // Dawn — cool blue hour warming at the horizon
+    name:'Dawn', sunElev: 6,
+    sun:[1.45,0.92,0.68], zenith:[0.050,0.098,0.205], horizon:[0.46,0.38,0.40],
+    deep:[0.006,0.022,0.050], shallow:[0.024,0.095,0.140],
+    exposure:1.28, haze:0.55, night:0.16
+  },
+  { // Day — high sun, saturated tropical water
+    name:'Day', sunElev: 42,
+    sun:[1.80,1.70,1.52], zenith:[0.065,0.200,0.470], horizon:[0.470,0.610,0.760],
+    deep:[0.004,0.028,0.070], shallow:[0.016,0.140,0.205],
+    exposure:1.08, haze:0.30, night:0.0
+  },
+  { // Sunset — low warm sun, long specular path
+    name:'Sunset', sunElev: 3,
+    sun:[2.40,0.88,0.34], zenith:[0.045,0.070,0.180], horizon:[0.520,0.270,0.190],
+    deep:[0.004,0.012,0.030], shallow:[0.020,0.055,0.085],
+    exposure:1.05, haze:0.55, night:0.16
+  },
+  { // Night — moonlight, cold and dim
+    name:'Night', sunElev: 30,
+    sun:[0.140,0.180,0.270], zenith:[0.004,0.009,0.024], horizon:[0.028,0.045,0.082],
+    deep:[0.001,0.004,0.011], shallow:[0.005,0.020,0.036],
+    exposure:2.10, haze:0.18, night:1.0
+  }
+];
+
+// Live (interpolated) lighting state — presets are eased into, never snapped.
+const light = {
+  sun:[0,0,0], zenith:[0,0,0], horizon:[0,0,0],
+  deep:[0,0,0], shallow:[0,0,0],
+  exposure:1, night:0
+};
+let targetPreset = PRESETS[1];
+let blend = 1.0;
+let fromLight = null;
+
+function snapLight(p){
+  light.sun = p.sun.slice(); light.zenith = p.zenith.slice(); light.horizon = p.horizon.slice();
+  light.deep = p.deep.slice(); light.shallow = p.shallow.slice();
+  light.exposure = p.exposure; light.night = p.night;
+}
+snapLight(PRESETS[1]);
+
+function lerpArr(a, b, t){ return a.map((v,i) => v + (b[i]-v)*t); }
+
+function updateLight(dt){
+  if(blend >= 1) return;
+  blend = Math.min(1, blend + dt / 1.15);
+  const t = blend < 0.5 ? 4*blend*blend*blend : 1 - Math.pow(-2*blend+2, 3)/2; // easeInOutCubic
+  light.sun      = lerpArr(fromLight.sun,      targetPreset.sun,      t);
+  light.zenith   = lerpArr(fromLight.zenith,   targetPreset.zenith,   t);
+  light.horizon  = lerpArr(fromLight.horizon,  targetPreset.horizon,  t);
+  light.deep     = lerpArr(fromLight.deep,     targetPreset.deep,     t);
+  light.shallow  = lerpArr(fromLight.shallow,  targetPreset.shallow,  t);
+  light.exposure = fromLight.exposure + (targetPreset.exposure - fromLight.exposure) * t;
+  light.night    = fromLight.night + (targetPreset.night - fromLight.night) * t;
+}
+
+function setPreset(i){
+  fromLight = {
+    sun: light.sun.slice(), zenith: light.zenith.slice(), horizon: light.horizon.slice(),
+    deep: light.deep.slice(), shallow: light.shallow.slice(),
+    exposure: light.exposure, night: light.night
+  };
+  targetPreset = PRESETS[i];
+  blend = 0;
+  // Sun elevation follows the preset, but the user can override afterwards.
+  sunElevTarget = PRESETS[i].sunElev;
+  setSlider(sSun, PRESETS[i].sunElev);
+  setSlider(sHaze, PRESETS[i].haze);
+  params.haze = PRESETS[i].haze;
+  updateReadouts();
+}
+
+/* ==========================================================================
+   Controls / parameters
+   ========================================================================== */
+
+const params = {
+  wind: 12.0,
+  height: 1.0,
+  dir: 135,
+  haze: 0.32,
+};
+let sunElev = 42, sunElevTarget = 42;
+let sunAzimuth = 0;   // tracks wind direction so the light sits believably
+
+const sWind = document.getElementById('s-wind');
+const sHeight = document.getElementById('s-height');
+const sDir = document.getElementById('s-dir');
+const sSun = document.getElementById('s-sun');
+const sHaze = document.getElementById('s-haze');
+
+function setSlider(el, v){
+  el.value = v;
+  paintSlider(el);
+}
+function paintSlider(el){
+  const min = parseFloat(el.min), max = parseFloat(el.max);
+  const pct = (parseFloat(el.value) - min) / (max - min) * 100;
+  el.style.setProperty('--fill', pct + '%');
+}
+
+const BEAUFORT = [
+  [0.3, 0, 'Calm', 'glassy, mirror-like'],
+  [1.6, 1, 'Light air', 'ripples without crests'],
+  [3.4, 2, 'Light breeze', 'small wavelets, glassy crests'],
+  [5.5, 3, 'Gentle breeze', 'crests begin to break'],
+  [8.0, 4, 'Moderate breeze', 'frequent white horses'],
+  [10.8, 5, 'Fresh breeze', 'moderate waves, many whitecaps'],
+  [13.9, 6, 'Strong breeze', 'large waves, spray forming'],
+  [17.2, 7, 'Near gale', 'sea heaps up, foam streaks'],
+  [20.8, 8, 'Gale', 'moderately high waves, breaking crests'],
+  [24.5, 9, 'Strong gale', 'high waves, dense foam'],
+  [99, 10, 'Storm', 'very high tumbling waves']
+];
+
+function beaufortFor(v){
+  for(const b of BEAUFORT) if(v <= b[0]) return b;
+  return BEAUFORT[BEAUFORT.length-1];
+}
+
+const vWind = document.getElementById('v-wind');
+const vHeight = document.getElementById('v-height');
+const vDir = document.getElementById('v-dir');
+const vSun = document.getElementById('v-sun');
+const vHaze = document.getElementById('v-haze');
+const beaufortEl = document.getElementById('beaufort');
+
+function updateReadouts(){
+  vWind.textContent = params.wind.toFixed(1) + ' m/s';
+  vHeight.textContent = params.height.toFixed(2) + '×';
+  vDir.textContent = Math.round(params.dir) + '°';
+  vSun.textContent = Math.round(sunElevTarget) + '°';
+  vHaze.textContent = params.haze.toFixed(2);
+
+  const b = beaufortFor(params.wind);
+  // Significant wave height: by definition ~2x the characteristic amplitude
+  // used to build the spectrum. The height slider is an artistic multiplier,
+  // so it is damped here rather than applied linearly — otherwise the readout
+  // claims a 30 m sea at settings that plainly aren't one.
+  const amp = 0.021 * params.wind * params.wind / 9.81 * 4.0 + 0.10;
+  const hs = amp * 1.15 * Math.pow(params.height, 0.5);
+  beaufortEl.innerHTML = '<b>Force ' + b[1] + '</b> · ' + b[2] + ' — ' + b[3] +
+    ' &nbsp;·&nbsp; H<sub>s</sub> ≈ ' + hs.toFixed(1) + ' m';
+}
+
+let wavesDirty = true;
+
+sWind.addEventListener('input', e => { params.wind = parseFloat(e.target.value); paintSlider(e.target); wavesDirty = true; updateReadouts(); });
+sHeight.addEventListener('input', e => { params.height = parseFloat(e.target.value); paintSlider(e.target); wavesDirty = true; updateReadouts(); });
+sDir.addEventListener('input', e => { params.dir = parseFloat(e.target.value); paintSlider(e.target); wavesDirty = true; updateReadouts(); });
+sSun.addEventListener('input', e => { sunElevTarget = parseFloat(e.target.value); paintSlider(e.target); updateReadouts(); });
+sHaze.addEventListener('input', e => { params.haze = parseFloat(e.target.value); paintSlider(e.target); updateReadouts(); });
+
+document.querySelectorAll('#seg-light button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#seg-light button').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    setPreset(parseInt(btn.dataset.i, 10));
+  });
+});
+
+[sWind, sHeight, sDir, sSun, sHaze].forEach(paintSlider);
+updateReadouts();
+
+/* ==========================================================================
+   Camera — orbiting/floating observer that rides the swell
+   ========================================================================== */
+
+const cam = {
+  yaw: 0.6, pitch: -0.055, dist: 0,
+  height: 4.2, heightTarget: 4.2,
+  yawTarget: 0.6, pitchTarget: -0.055,
+  pos: [0, 4.2, 0]
+};
+
+let dragging = false, lastX = 0, lastY = 0, lastMove = 0;
+
+canvas.addEventListener('pointerdown', e => {
+  dragging = true; lastX = e.clientX; lastY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+  canvas.style.cursor = 'grabbing';
+});
+canvas.addEventListener('pointermove', e => {
+  if(!dragging) return;
+  const dx = e.clientX - lastX, dy = e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+  cam.yawTarget -= dx * 0.0034;
+  cam.pitchTarget = Math.max(-0.42, Math.min(0.30, cam.pitchTarget - dy * 0.0022));
+  lastMove = performance.now();
+});
+function endDrag(e){
+  if(!dragging) return;
+  dragging = false;
+  try{ canvas.releasePointerCapture(e.pointerId); }catch(_){}
+  canvas.style.cursor = 'grab';
+}
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+canvas.style.cursor = 'grab';
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  cam.heightTarget = Math.max(1.1, Math.min(48, cam.heightTarget * (1 + Math.sign(e.deltaY) * 0.10)));
+}, { passive:false });
+
+// Pinch to zoom on touch.
+let pinchDist = 0;
+canvas.addEventListener('touchstart', e => {
+  if(e.touches.length === 2){
+    pinchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+}, {passive:true});
+canvas.addEventListener('touchmove', e => {
+  if(e.touches.length === 2 && pinchDist > 0){
+    const d = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    cam.heightTarget = Math.max(1.1, Math.min(48, cam.heightTarget * (pinchDist / Math.max(d, 1))));
+    pinchDist = d;
+  }
+}, {passive:true});
+
+document.addEventListener('keydown', e => {
+  if(e.key === 'h' || e.key === 'H') document.body.classList.toggle('hidden-ui');
+});
+
+/* ==========================================================================
+   Resize
+   ========================================================================== */
+
+let W = 0, H = 0, dpr = 1;
+function resize(){
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.floor(canvas.clientWidth * dpr);
+  const h = Math.floor(canvas.clientHeight * dpr);
+  if(w !== W || h !== H){
+    W = w; H = h;
+    canvas.width = w; canvas.height = h;
+    gl.viewport(0, 0, W, H);
+  }
+}
+window.addEventListener('resize', resize);
+
+/* ==========================================================================
+   Render loop
+   ========================================================================== */
+
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL);
+gl.disable(gl.CULL_FACE);
+gl.clearColor(0.02, 0.04, 0.06, 1);
+
+const phases = new Float32Array(NWAVES);
+for(let i = 0; i < NWAVES; i++) phases[i] = WAVES[i].phase;
+
+const w0 = new Float32Array(NWAVES * 4);
+const w1 = new Float32Array(NWAVES * 2);
+
+function packWaves(){
+  for(let i = 0; i < NWAVES; i++){
+    const o = i * 6;
+    w0[i*4  ] = waveBuf[o];
+    w0[i*4+1] = waveBuf[o+1];
+    w0[i*4+2] = waveBuf[o+2];
+    w0[i*4+3] = waveBuf[o+3];
+    w1[i*2  ] = waveBuf[o+4];
+    w1[i*2+1] = waveBuf[o+5];
+  }
+}
+
+let simTime = 0;
+let prev = performance.now();
+let idleTimer = 0;
+
+// Slow automatic drift so a stationary viewer still feels motion.
+let autoYaw = 0;
+
+function frame(now){
+  const rawDt = Math.min((now - prev) / 1000, 0.05);
+  prev = now;
+  resize();
+
+  if(wavesDirty){
+    buildWaves(params.wind, params.height, params.dir * Math.PI / 180);
+    packWaves();
+    wavesDirty = false;
+  }
+
+  // Waves advance faster in strong wind; keep a floor so calm seas still breathe.
+  simTime += rawDt * (0.55 + params.wind * 0.030);
+  updateLight(rawDt);
+
+  // Ease sun elevation.
+  sunElev += (sunElevTarget - sunElev) * Math.min(1, rawDt * 3.0);
+
+  // Gentle idle drift when the user isn't dragging.
+  idleTimer = dragging ? 0 : idleTimer + rawDt;
+  if(idleTimer > 2.5) autoYaw += rawDt * 0.0075;
+
+  // Smooth camera.
+  cam.yaw   += (cam.yawTarget + autoYaw - cam.yaw) * Math.min(1, rawDt * 5.0);
+  cam.pitch += (cam.pitchTarget - cam.pitch) * Math.min(1, rawDt * 5.0);
+  cam.height += (cam.heightTarget - cam.height) * Math.min(1, rawDt * 3.2);
+
+  // The observer rides the actual water surface beneath them. The eye is held
+  // a fixed distance above the local surface rather than above mean sea level,
+  // so in a heavy sea the viewer rises with the swell instead of being buried
+  // in a trough while waves tower overhead.
+  const eyeX = 0, eyeZ = 0;
+  const waterY = surfaceHeight(eyeX, eyeZ, simTime);
+  const follow = Math.max(0.0, 1.0 - (cam.height - 1.1) / 40.0);
+  const eyeY = cam.height + waterY * follow + waveScale * 1.15 * follow;
+
+  cam.pos[0] = eyeX; cam.pos[1] = eyeY; cam.pos[2] = eyeZ;
+
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const target = [
+    eyeX + Math.sin(cam.yaw) * cp,
+    eyeY + sp,
+    eyeZ + Math.cos(cam.yaw) * cp
+  ];
+
+  const aspect = W / Math.max(H, 1);
+  // Widen the vertical field on tall/portrait screens so the sea fills the
+  // frame instead of leaving most of it empty sky.
+  const fov = aspect < 1.0 ? 68 : 50;
+  perspective(matProj, fov * Math.PI / 180, aspect, 0.10, 6000);
+  lookAt(matView, cam.pos, target, [0,1,0]);
+  multiply(matVP, matProj, matView);
+  invert(matInvVP, matVP);
+
+  // Sun direction: elevation from the slider, azimuth fixed slightly off the
+  // default camera heading so the glitter path is in view on load. Deriving
+  // it from wind direction instead put the sun behind the viewer at the
+  // default settings, which made the low-sun presets read as a flat wash.
+  const az = 0.6 + 0.30 + sunAzimuth;
+  const el = sunElev * Math.PI / 180;
+  const sunDir = [Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
+  const sl = Math.hypot(sunDir[0], sunDir[1], sunDir[2]);
+  sunDir[0]/=sl; sunDir[1]/=sl; sunDir[2]/=sl;
+
+  // Whitecaps appear around Force 3-4 (~5 m/s) and saturate in a gale, which
+  // is what the Beaufort readout beside the slider describes.
+  const foamAmt = Math.min(1.25, Math.max(0, (params.wind - 4.5) / 13.0)) * (0.6 + params.height * 0.5);
+
+  // Clouds drift far slower than the waves themselves.
+  const driftRate = simTime * 0.0016 * (0.4 + params.wind * 0.05);
+  const cloudDriftX = Math.cos(params.dir * Math.PI / 180) * driftRate;
+  const cloudDriftZ = Math.sin(params.dir * Math.PI / 180) * driftRate;
+
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  // ---- sky ----
+  gl.useProgram(skyProg);
+  gl.depthMask(false);
+  gl.uniformMatrix4fv(SU.uInvVP, false, matInvVP);
+  gl.uniform3fv(SU.uCam, cam.pos);
+  gl.uniform3fv(SU.uSunDir, sunDir);
+  gl.uniform3fv(SU.uSunColor, light.sun);
+  gl.uniform3fv(SU.uZenith, light.zenith);
+  gl.uniform3fv(SU.uHorizon, light.horizon);
+  gl.uniform1f(SU.uHaze, params.haze);
+  gl.uniform1f(SU.uExposure, light.exposure);
+  gl.uniform1f(SU.uNightAmt, light.night);
+  gl.uniform1f(SU.uTime, simTime);
+  gl.uniform2f(SU.uWindDrift, cloudDriftX, cloudDriftZ);
+  gl.bindVertexArray(skyVao);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.depthMask(true);
+
+  // ---- ocean ----
+  gl.useProgram(oceanProg);
+  gl.uniformMatrix4fv(OU.uViewProj, false, matVP);
+  gl.uniform3fv(OU.uCam, cam.pos);
+  gl.uniform1f(OU.uTime, simTime);
+  gl.uniform1f(OU.uGridScale, 2600.0);
+  gl.uniform3fv(OU.uSunDir, sunDir);
+  gl.uniform3fv(OU.uSunColor, light.sun);
+  gl.uniform3fv(OU.uZenith, light.zenith);
+  gl.uniform3fv(OU.uHorizon, light.horizon);
+  gl.uniform3fv(OU.uDeepColor, light.deep);
+  gl.uniform3fv(OU.uShallowColor, light.shallow);
+  gl.uniform1f(OU.uHaze, params.haze);
+  gl.uniform1f(OU.uWind, params.wind);
+  gl.uniform1f(OU.uExposure, light.exposure);
+  gl.uniform2f(OU.uWindVec, Math.cos(params.dir*Math.PI/180)*0.10, Math.sin(params.dir*Math.PI/180)*0.10);
+  gl.uniform1f(OU.uFoamAmt, foamAmt);
+  gl.uniform1f(OU.uNightAmt, light.night);
+  gl.uniform1f(OU.uWaveScale, waveScale);
+  gl.uniform2f(OU.uWindDrift, cloudDriftX, cloudDriftZ);
+  gl.uniform4fv(OU.uW0, w0);
+  gl.uniform2fv(OU.uW1, w1);
+  gl.uniform1fv(OU.uPhase, phases);
+
+  gl.bindVertexArray(vao);
+  gl.drawElements(gl.TRIANGLES, grid.idx.length, gl.UNSIGNED_INT, 0);
+  gl.bindVertexArray(null);
+
+  requestAnimationFrame(frame);
+}
+
+resize();
+// On portrait screens start with the view angled down so the horizon sits in
+// the upper third and the water carries the composition.
+if(W / Math.max(H, 1) < 1.0){
+  cam.pitch = cam.pitchTarget = -0.20;
+  cam.height = cam.heightTarget = 6.0;
+}
+buildWaves(params.wind, params.height, params.dir * Math.PI / 180);
+packWaves();
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

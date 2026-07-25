@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Weather Theatre — A Forecast in Three Acts</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#f4ece0;
+    --ink-dim:#b9ad9b;
+    --gold:#e3b96b;
+    --gold-deep:#a8813a;
+    --velvet:#4a0d18;
+    --velvet-dark:#2a0710;
+    --stage-frame:#120a10;
+    --panel:rgba(18,10,16,.72);
+    --hair:rgba(227,185,107,.22);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;height:100%}
+  body{
+    background:
+      radial-gradient(120% 90% at 50% -10%, #2b1420 0%, #16090f 45%, #0a0508 100%);
+    color:var(--ink);
+    font-family:"Cormorant Garamond",Georgia,serif;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    /* house texture */
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+    background-image:radial-gradient(rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size:3px 3px;
+  }
+  #root{position:relative;z-index:1;height:100%}
+
+  .house{
+    height:100%;
+    display:grid;
+    grid-template-columns: minmax(0,1fr) 340px;
+    gap:0;
+  }
+  /* Narrow: stack the booth beneath the stage and scroll the page as a whole.
+     The stage needs an explicit height here — inside a scrolling column an
+     auto-height row collapses the canvas to nothing. */
+  @media (max-width: 1080px){
+    body{overflow:auto}
+    .house{
+      display:block;height:auto;min-height:100%;
+    }
+    .stage-wrap{height:auto}
+    .proscenium{height:min(56vh,460px);flex:none}
+    .booth{max-height:none;overflow:visible}
+  }
+
+  /* ───────── stage ───────── */
+  .stage-wrap{
+    position:relative;
+    display:flex;flex-direction:column;
+    min-width:0;min-height:0;
+    padding:26px 20px 18px 30px;
+  }
+  @media (max-width:1080px){ .stage-wrap{padding:16px 14px 8px} }
+
+  .marquee{
+    display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+    margin:0 0 14px 2px;
+  }
+  .marquee h1{
+    font-family:"Playfair Display",serif;
+    font-weight:700;font-size:clamp(20px,2.1vw,30px);
+    letter-spacing:.055em;margin:0;
+    color:var(--gold);
+    text-shadow:0 0 18px rgba(227,185,107,.28), 0 1px 0 #000;
+  }
+  .marquee .sub{
+    font-size:12px;letter-spacing:.34em;text-transform:uppercase;
+    color:var(--ink-dim);font-family:"JetBrains Mono",monospace;font-weight:300;
+  }
+  .bulbs{display:flex;gap:7px;margin-left:auto;align-items:center}
+  .bulb{width:7px;height:7px;border-radius:50%;background:var(--gold);
+    box-shadow:0 0 8px 2px rgba(227,185,107,.7);animation:chase 2.4s infinite}
+  @keyframes chase{0%,100%{opacity:.25;box-shadow:0 0 3px rgba(227,185,107,.3)}50%{opacity:1;box-shadow:0 0 10px 3px rgba(227,185,107,.75)}}
+
+  .proscenium{
+    position:relative;flex:1;min-height:0;
+    border-radius:10px 10px 4px 4px;
+    background:#05030a;
+    box-shadow:
+      0 0 0 1px rgba(227,185,107,.18),
+      0 0 0 9px var(--stage-frame),
+      0 0 0 10px rgba(227,185,107,.16),
+      0 40px 80px -30px rgba(0,0,0,.95),
+      inset 0 0 120px rgba(0,0,0,.7);
+    overflow:hidden;
+    cursor:crosshair;
+  }
+  canvas#stage{display:block;width:100%;height:100%}
+
+  /* vignette + glass */
+  .proscenium::after{
+    content:"";position:absolute;inset:0;pointer-events:none;
+    background:
+      radial-gradient(110% 80% at 50% 40%, transparent 40%, rgba(0,0,0,.55) 100%),
+      linear-gradient(105deg, rgba(255,255,255,.055) 0%, transparent 32%);
+    mix-blend-mode:normal;
+  }
+
+  /* curtains */
+  .curtain{
+    position:absolute;top:-2%;bottom:-2%;width:56%;pointer-events:none;z-index:6;
+    transition:transform 1.5s cubic-bezier(.7,.02,.24,1);
+    will-change:transform;
+  }
+  .curtain .cloth{
+    position:absolute;inset:0;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,.55) 0px, rgba(0,0,0,.05) 14px,
+        rgba(255,255,255,.09) 26px, rgba(0,0,0,.05) 38px, rgba(0,0,0,.55) 52px),
+      linear-gradient(180deg,#63111f 0%, var(--velvet) 42%, var(--velvet-dark) 100%);
+    box-shadow: inset 0 30px 60px rgba(0,0,0,.5);
+  }
+  .curtain.left{left:0;transform-origin:left center}
+  .curtain.right{right:0;transform-origin:right center}
+  .curtain .edge{
+    position:absolute;top:0;bottom:0;width:22px;
+    background:linear-gradient(90deg, rgba(0,0,0,.65), rgba(227,185,107,.35));
+  }
+  .curtain.left .edge{right:0}
+  .curtain.right .edge{left:0;background:linear-gradient(270deg, rgba(0,0,0,.65), rgba(227,185,107,.35))}
+  .open .curtain.left{transform:translateX(-101%) skewX(-1.2deg)}
+  .open .curtain.right{transform:translateX(101%) skewX(1.2deg)}
+
+  /* The pelmet across the top of the proscenium. It must not carry a mask of
+     its own — a small radial mask here erased the whole valance. */
+  .valance{
+    position:absolute;left:-2%;right:-2%;top:0;height:8.5%;z-index:7;pointer-events:none;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(0,0,0,.42) 0px, rgba(0,0,0,.02) 13px,
+        rgba(255,255,255,.07) 24px, rgba(0,0,0,.02) 35px, rgba(0,0,0,.42) 48px),
+      linear-gradient(180deg,#7a1628 0%, #61111f 46%, var(--velvet) 100%);
+    box-shadow:inset 0 -26px 44px rgba(0,0,0,.62), 0 10px 26px rgba(0,0,0,.6);
+  }
+  /* scalloped lower edge, punched out of the valance with a repeating mask */
+  .valance .scallops{
+    position:absolute;left:0;right:0;bottom:-19px;height:22px;
+    background:inherit;
+    -webkit-mask-image:radial-gradient(19px 19px at 19px 0, #000 97%, transparent 100%);
+    mask-image:radial-gradient(19px 19px at 19px 0, #000 97%, transparent 100%);
+    -webkit-mask-size:38px 22px; mask-size:38px 22px;
+    -webkit-mask-repeat:repeat-x; mask-repeat:repeat-x;
+    filter:drop-shadow(0 5px 7px rgba(0,0,0,.55));
+  }
+  /* gold bullion fringe following the scalloped hem */
+  .valance .fringe{
+    position:absolute;left:0;right:0;bottom:-25px;height:10px;
+    background:linear-gradient(180deg,var(--gold) 0%, var(--gold-deep) 55%, #6b4c16 100%);
+    -webkit-mask-image:
+      radial-gradient(19px 19px at 19px -10px, transparent 97%, #000 100%),
+      repeating-linear-gradient(90deg,#000 0 2px, transparent 2px 4px);
+    mask-image:
+      radial-gradient(19px 19px at 19px -10px, transparent 97%, #000 100%),
+      repeating-linear-gradient(90deg,#000 0 2px, transparent 2px 4px);
+    -webkit-mask-size:38px 19px, auto; mask-size:38px 19px, auto;
+    -webkit-mask-repeat:repeat-x, repeat; mask-repeat:repeat-x, repeat;
+    -webkit-mask-composite:source-in; mask-composite:intersect;
+    opacity:.9;
+  }
+
+  /* subtitle plate */
+  .subtitle-plate{
+    position:absolute;left:0;right:0;bottom:0;z-index:5;
+    padding:34px 6% 20px;
+    background:linear-gradient(180deg, transparent, rgba(3,2,6,.82) 55%);
+    pointer-events:none;
+    display:flex;flex-direction:column;align-items:center;gap:7px;
+  }
+  .scene-tag{
+    font-family:"JetBrains Mono",monospace;font-size:10px;font-weight:400;
+    letter-spacing:.3em;text-transform:uppercase;color:var(--gold);opacity:.8;
+  }
+  .typewriter{
+    font-family:"Cormorant Garamond",serif;font-style:italic;
+    font-size:clamp(15px,1.55vw,22px);line-height:1.5;
+    text-align:center;max-width:min(88%,940px);text-wrap:balance;
+    color:#fbf4e8;text-shadow:0 2px 14px rgba(0,0,0,.9);
+    min-height:2.9em;
+  }
+  .caret{display:inline-block;width:.5ch;background:var(--gold);
+    animation:blink .95s steps(1,end) infinite;margin-left:.06em;
+    transform:translateY(2px)}
+  @keyframes blink{50%{opacity:0}}
+
+  /* readout strip */
+  .readout{
+    display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;
+  }
+  .chip{
+    flex:1 1 96px;min-width:88px;
+    background:var(--panel);
+    border:1px solid var(--hair);border-radius:6px;
+    padding:8px 11px 9px;
+    backdrop-filter:blur(6px);
+  }
+  .chip .k{font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--ink-dim);opacity:.85}
+  .chip .v{font-family:"Playfair Display",serif;font-size:19px;color:var(--gold);margin-top:2px;
+    letter-spacing:.01em}
+  .chip .v small{font-size:11px;color:var(--ink-dim);letter-spacing:.06em}
+
+  /* ───────── booth (right rail) ───────── */
+  .booth{
+    background:linear-gradient(180deg, rgba(20,10,16,.9), rgba(9,5,9,.96));
+    border-left:1px solid rgba(227,185,107,.14);
+    padding:26px 24px 30px;
+    overflow-y:auto;
+    display:flex;flex-direction:column;gap:22px;
+    box-shadow:inset 22px 0 40px -30px rgba(0,0,0,.9);
+  }
+  .booth::-webkit-scrollbar{width:7px}
+  .booth::-webkit-scrollbar-thumb{background:rgba(227,185,107,.22);border-radius:4px}
+  @media (max-width:1080px){
+    .booth{border-left:none;border-top:1px solid rgba(227,185,107,.14)}
+    .readout{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .chip{min-width:0}
+  }
+  @media (max-width:560px){
+    .readout{grid-template-columns:repeat(2,1fr)}
+    /* the plate must not eat a short stage */
+    .subtitle-plate{padding:22px 4% 12px;gap:4px}
+    .scene-tag{font-size:8.5px;letter-spacing:.18em}
+    .typewriter{font-size:14px;line-height:1.4;min-height:2.7em;max-width:96%}
+    .marquee{gap:6px}
+    .marquee .sub{font-size:10px;letter-spacing:.22em}
+    .presets{grid-template-columns:1fr}
+  }
+
+  .booth h2{
+    font-family:"JetBrains Mono",monospace;font-size:9.5px;font-weight:400;
+    letter-spacing:.34em;text-transform:uppercase;color:var(--gold);
+    margin:0 0 12px;padding-bottom:8px;
+    border-bottom:1px solid rgba(227,185,107,.16);
+    display:flex;justify-content:space-between;align-items:center;
+  }
+  .booth h2 em{font-style:normal;color:var(--ink-dim);letter-spacing:.16em;font-size:9px}
+
+  /* dial */
+  .dial{margin-bottom:19px}
+  .dial:last-child{margin-bottom:4px}
+  .dial-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+  .dial-name{font-family:"Playfair Display",serif;font-size:15px;letter-spacing:.05em}
+  .dial-val{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--ink-dim)}
+  .dial-note{font-size:12.5px;color:var(--ink-dim);font-style:italic;margin-top:6px;line-height:1.35;
+    min-height:2.5em;opacity:.9}
+
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;
+    cursor:grab;display:block;
+  }
+  input[type=range]:active{cursor:grabbing}
+  input[type=range]::-webkit-slider-runnable-track{
+    height:4px;border-radius:3px;
+    background:linear-gradient(90deg,var(--trk,#e3b96b) 0%,var(--trk,#e3b96b) var(--pct,50%),rgba(255,255,255,.11) var(--pct,50%),rgba(255,255,255,.11) 100%);
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #fff8ea, var(--trk,#e3b96b) 62%, #6d4a15);
+    border:none;margin-top:-6px;
+    box-shadow:0 0 0 1px rgba(0,0,0,.6), 0 0 14px var(--glow,rgba(227,185,107,.65));
+    transition:transform .12s ease;
+  }
+  input[type=range]:hover::-webkit-slider-thumb{transform:scale(1.14)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:3px;background:rgba(255,255,255,.11)}
+  input[type=range]::-moz-range-progress{height:4px;border-radius:3px;background:var(--trk,#e3b96b)}
+  input[type=range]::-moz-range-thumb{width:15px;height:15px;border:none;border-radius:50%;
+    background:radial-gradient(circle at 34% 30%, #fff8ea, var(--trk,#e3b96b) 62%, #6d4a15);
+    box-shadow:0 0 12px var(--glow,rgba(227,185,107,.6))}
+
+  /* toggle */
+  .toggle-row{display:flex;align-items:center;gap:12px}
+  .toggle{
+    position:relative;width:100%;height:38px;border-radius:20px;
+    background:rgba(255,255,255,.05);border:1px solid var(--hair);
+    display:flex;cursor:pointer;padding:3px;user-select:none;
+    overflow:hidden;
+  }
+  .toggle .knob{
+    position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);
+    border-radius:17px;
+    background:linear-gradient(160deg,#f0d79c,#c1913f);
+    box-shadow:0 2px 14px rgba(227,185,107,.4);
+    transition:transform .42s cubic-bezier(.65,.05,.36,1), background .42s ease;
+  }
+  .toggle.night .knob{transform:translateX(100%);
+    background:linear-gradient(160deg,#8ea6d8,#37456e);box-shadow:0 2px 16px rgba(120,150,220,.4)}
+  .toggle span{
+    position:relative;z-index:2;flex:1;display:grid;place-items:center;
+    font-family:"JetBrains Mono",monospace;font-size:9.5px;letter-spacing:.22em;
+    text-transform:uppercase;transition:color .35s ease;color:var(--ink-dim);
+  }
+  .toggle span.on{color:#1b0d06;font-weight:500}
+  .toggle.night span.on{color:#080d1c}
+
+  /* presets */
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .preset{
+    background:rgba(255,255,255,.035);border:1px solid var(--hair);
+    color:var(--ink);border-radius:5px;padding:9px 8px 10px;cursor:pointer;
+    font-family:"Cormorant Garamond",serif;font-size:13.5px;letter-spacing:.03em;
+    transition:all .2s ease;text-align:left;line-height:1.15;
+  }
+  .preset b{display:block;font-family:"JetBrains Mono",monospace;font-size:8.5px;
+    letter-spacing:.2em;text-transform:uppercase;color:var(--gold);opacity:.72;
+    font-weight:400;margin-bottom:3px}
+  .preset:hover{background:rgba(227,185,107,.13);border-color:rgba(227,185,107,.5);transform:translateY(-1px)}
+  .preset.active{background:rgba(227,185,107,.18);border-color:var(--gold);
+    box-shadow:0 0 18px -4px rgba(227,185,107,.45)}
+
+  /* forecast strip */
+  .forecast{display:flex;flex-direction:column;gap:2px}
+  .frow{
+    display:grid;grid-template-columns:44px 1fr auto;align-items:center;gap:9px;
+    padding:6px 8px;border-radius:5px;cursor:pointer;
+    transition:background .18s ease;
+    border:1px solid transparent;
+  }
+  .frow:hover{background:rgba(255,255,255,.05)}
+  .frow.sel{background:rgba(227,185,107,.13);border-color:rgba(227,185,107,.35)}
+  .frow .day{font-family:"JetBrains Mono",monospace;font-size:10px;letter-spacing:.14em;
+    color:var(--ink-dim);text-transform:uppercase}
+  .frow .bar{height:5px;border-radius:3px;background:rgba(255,255,255,.08);position:relative;overflow:hidden}
+  .frow .bar i{position:absolute;inset:0;border-radius:3px;transform-origin:left;
+    transition:transform .5s cubic-bezier(.4,0,.2,1)}
+  .frow .tmp{font-family:"Playfair Display",serif;font-size:13.5px;color:var(--ink);min-width:52px;text-align:right}
+  .frow .tmp small{color:var(--ink-dim);font-size:10.5px}
+  .frow .gl{font-size:13px;width:16px;text-align:center;filter:saturate(.9)}
+
+  .credits{
+    margin-top:auto;font-size:11.5px;color:var(--ink-dim);opacity:.6;line-height:1.5;
+    font-style:italic;border-top:1px solid rgba(227,185,107,.12);padding-top:12px;
+  }
+  .credits kbd{font-family:"JetBrains Mono",monospace;font-style:normal;font-size:9.5px;
+    background:rgba(255,255,255,.07);border:1px solid var(--hair);border-radius:3px;
+    padding:1px 4px;color:var(--ink)}
+
+  .hint{
+    position:absolute;top:14px;left:16px;z-index:5;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.2em;
+    text-transform:uppercase;color:rgba(244,236,224,.32);pointer-events:none;
+    transition:opacity .6s ease;
+  }
+  .act-badge{
+    position:absolute;top:13px;right:16px;z-index:5;
+    font-family:"JetBrains Mono",monospace;font-size:9px;letter-spacing:.24em;
+    text-transform:uppercase;color:var(--gold);opacity:.62;pointer-events:none;
+    text-align:right;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<script>
+/* ============================================================================
+   WEATHER THEATRE
+   A mock 7-day forecast, staged three ways. Everything is drawn by hand into
+   one canvas: parallax scenery, spotlight sweeps, precipitation, aurora, fog.
+   The mood dials (cosy / eerie / heroic) are weights that blend palettes,
+   scenery geometry, particle behaviour, and the narrator's script.
+   ========================================================================== */
+const {useState,useEffect,useRef,useMemo,useCallback} = React;
+const h = React.createElement;
+
+/* ── mock forecast ─────────────────────────────────────────────────────── */
+const FORECAST = [
+  {day:'Mon', kind:'drizzle', hi:14, lo: 9, wind:11, precip:62, cloud:.78, humid:88, glyph:'🌧'},
+  {day:'Tue', kind:'fog',     hi:12, lo: 7, wind: 4, precip:18, cloud:.92, humid:96, glyph:'🌫'},
+  {day:'Wed', kind:'clear',   hi:21, lo:11, wind: 7, precip: 3, cloud:.12, humid:44, glyph:'☀'},
+  {day:'Thu', kind:'storm',   hi:18, lo:13, wind:34, precip:91, cloud:.96, humid:82, glyph:'⛈'},
+  {day:'Fri', kind:'wind',    hi:16, lo: 8, wind:27, precip:12, cloud:.44, humid:51, glyph:'🌬'},
+  {day:'Sat', kind:'snow',    hi: 2, lo:-4, wind:15, precip:74, cloud:.86, humid:79, glyph:'❄'},
+  {day:'Sun', kind:'clear',   hi:24, lo:13, wind: 5, precip: 1, cloud:.08, humid:38, glyph:'🌤'},
+];
+
+/* ── the three stage sets ───────────────────────────────────────────────
+   Each mood owns a full look: sky ramp, silhouette colour, light colour,
+   scenery generator id, particle temperament, and vocabulary.           */
+const MOODS = {
+  cosy: {
+    label:'Cosy', accent:'#f0a663', glow:'rgba(240,166,99,.7)',
+    day:  {sky:['#ffd9a0','#f2a86b','#c9714f','#7c3f3a'], hill:'#59262f', mist:'rgba(255,214,170,.14)', light:'#ffd9a8'},
+    night:{sky:['#3c2340','#2a1730','#1b0f22','#100a17'], hill:'#1d1120', mist:'rgba(255,190,140,.10)', light:'#ffc07a'},
+    scenery:'village', windMul:.45, dropMul:.65, warmth:1,
+  },
+  eerie: {
+    label:'Eerie', accent:'#7fe0c8', glow:'rgba(127,224,200,.7)',
+    day:  {sky:['#9fb3ab','#7d938d','#4f625f','#2c3a3a'], hill:'#22302f', mist:'rgba(180,255,235,.13)', light:'#c9fff0'},
+    night:{sky:['#132724','#0d1c1e','#081215','#04080a'], hill:'#08110f', mist:'rgba(120,255,215,.10)', light:'#7fe0c8'},
+    scenery:'marsh', windMul:.85, dropMul:.95, warmth:-1,
+  },
+  heroic: {
+    label:'Heroic', accent:'#ffcf4d', glow:'rgba(255,207,77,.7)',
+    day:  {sky:['#cfe8ff','#8ec2f2','#4d84c8','#1f4a80'], hill:'#1b3358', mist:'rgba(255,255,255,.16)', light:'#ffffff'},
+    night:{sky:['#20305e','#182446','#0e1730','#060a18'], hill:'#0a1128', mist:'rgba(190,215,255,.12)', light:'#ffe9a8'},
+    scenery:'peaks', windMul:1.35, dropMul:1.25, warmth:.2,
+  },
+};
+const MOOD_KEYS = ['cosy','eerie','heroic'];
+
+const DIAL_NOTES = {
+  cosy:[
+    'The stage sits cold. No lamps, no hearth.',
+    'A single window glows. Someone is home.',
+    'Chimneys smoke. The valley hums with kettles.',
+    'Every pane is amber. The rain is invited in.',
+  ],
+  eerie:[
+    'Nothing watches from the wings.',
+    'The fog has opinions.',
+    'Reeds bend the wrong way. Lanterns drift, unheld.',
+    'The marsh has learned your name and repeats it.',
+  ],
+  heroic:[
+    'Flat light. No one is destined for anything.',
+    'A banner stirs. The horns are being tuned.',
+    'Peaks catch fire. The score swells past reason.',
+    'The heavens open on cue. Fate is fully orchestrated.',
+  ],
+};
+
+/* ── the script: how each mood narrates each weather kind ───────────────── */
+const SCRIPT = {
+  drizzle:{
+    cosy:'A soft grey drizzle taps the panes like a friend who knows the knock. Inside, the wool blanket wins.',
+    eerie:'The drizzle does not fall so much as hover, patient, waiting for you to look away from the window.',
+    heroic:'Rain sweeps the field in silver sheets — the kind of rain that arrives before something is decided.',
+  },
+  fog:{
+    cosy:'The valley is packed in cotton. Bells sound closer than they are; nothing hurries.',
+    eerie:'Fog erases the road behind you first, then everything else, and keeps only the sound of your steps.',
+    heroic:'Cloud rolls across the pass like a curtain — and behind it, the shape of the thing you came to face.',
+  },
+  clear:{
+    cosy:'Not a scrap of cloud. Bread cooling on the sill, low sun through the honey-coloured dust.',
+    eerie:'An empty sky, too polished to be innocent. The light does not warm anything it touches.',
+    heroic:'The sky is scrubbed to a blue that dares you. Perfect visibility, no excuses left.',
+  },
+  storm:{
+    cosy:'Thunder rearranges the furniture upstairs. Candles lit, doors bolted, chapter three by lamplight.',
+    eerie:'Lightning shows the marsh in still photographs, and in each one something has moved nearer.',
+    heroic:'The storm is a full orchestra. Every strike lands on the downbeat; the horizon keeps time.',
+  },
+  wind:{
+    cosy:'Wind fusses at the eaves, harmless as an aunt. The chimney answers in its low voice.',
+    eerie:'The wind carries a second sound underneath it, half a word long, on repeat.',
+    heroic:'A gale takes the ridge broadside. Cloaks snap; banners hold; the pass will be crossed today.',
+  },
+  snow:{
+    cosy:'Snow arrives politely, in slow spirals, muffling the whole parish. Stew is on.',
+    eerie:'The snow falls without weather, straight down in dead air, and leaves no print but yours.',
+    heroic:'Snow crowns the peaks in white fire. The summit is close now; the theme returns in brass.',
+  },
+};
+
+/* ── utils ─────────────────────────────────────────────────────────────── */
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const easeIO=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+
+function hexRGB(hx){
+  hx=hx.replace('#','');
+  if(hx.length===3) hx=hx.split('').map(c=>c+c).join('');
+  return [parseInt(hx.slice(0,2),16),parseInt(hx.slice(2,4),16),parseInt(hx.slice(4,6),16)];
+}
+function mixHex(a,b,t){
+  const A=hexRGB(a),B=hexRGB(b);
+  return `rgb(${Math.round(lerp(A[0],B[0],t))},${Math.round(lerp(A[1],B[1],t))},${Math.round(lerp(A[2],B[2],t))})`;
+}
+function mixMany(cols,weights){ // weighted average of hex colours
+  let r=0,g=0,b=0,W=0;
+  cols.forEach((c,i)=>{const w=weights[i]; if(w<=0)return; const p=hexRGB(c); r+=p[0]*w;g+=p[1]*w;b+=p[2]*w;W+=w;});
+  if(W===0)W=1;
+  return [r/W,g/W,b/W];
+}
+const rgbStr=(a,al)=>al==null?`rgb(${a[0]|0},${a[1]|0},${a[2]|0})`:`rgba(${a[0]|0},${a[1]|0},${a[2]|0},${al})`;
+const lerp3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+
+// deterministic pseudo random — scenery must not shimmer between frames
+function mulberry(seed){
+  let a=seed>>>0;
+  return function(){
+    a=(a+0x6D2B79F5)>>>0;
+    let t=a;
+    t=Math.imul(t^(t>>>15),t|1);
+    t^=t+Math.imul(t^(t>>>7),t|61);
+    return ((t^(t>>>14))>>>0)/4294967296;
+  };
+}
+
+/* ── layered scenery: generated once per (mood, day) and cached ────────── */
+function ridgeline(seed,pts,rough,base,amp){
+  const rnd=mulberry(seed);
+  const arr=[];
+  for(let i=0;i<=pts;i++){
+    const t=i/pts;
+    let y=base;
+    y+=Math.sin(t*Math.PI*(1.2+rough))*amp*.55;
+    y+=Math.sin(t*Math.PI*(4.3+rough*2)+seed%7)*amp*.22;
+    y+=(rnd()-.5)*amp*.30;
+    arr.push({x:t,y});
+  }
+  return arr;
+}
+
+function buildScenery(kind,seed){
+  const S={layers:[],props:[]};
+  if(kind==='village'){
+    S.layers=[
+      {depth:.10,pts:ridgeline(seed+1,26,.4,.62,.10),shade:.30},
+      {depth:.26,pts:ridgeline(seed+2,22,.9,.72,.13),shade:.55},
+      {depth:.52,pts:ridgeline(seed+3,18,1.6,.84,.10),shade:.78},
+    ];
+    const rnd=mulberry(seed+90);
+    for(let i=0;i<11;i++){
+      const x=.06+rnd()*.88;
+      S.props.push({type:'house',x,depth:.52,w:.028+rnd()*.03,hh:.05+rnd()*.055,
+        roof:rnd()>.45?'gable':'hip',lit:rnd(),chim:rnd()>.35,jit:rnd()});
+    }
+    for(let i=0;i<7;i++) S.props.push({type:'tree',x:rnd(),depth:.34,s:.5+rnd()*.7,jit:rnd()});
+  } else if(kind==='marsh'){
+    S.layers=[
+      {depth:.08,pts:ridgeline(seed+11,30,.25,.60,.055),shade:.34},
+      {depth:.22,pts:ridgeline(seed+12,24,.5,.70,.045),shade:.60},
+      {depth:.46,pts:ridgeline(seed+13,20,.7,.80,.035),shade:.84},
+    ];
+    const rnd=mulberry(seed+70);
+    for(let i=0;i<9;i++) S.props.push({type:'deadtree',x:.04+rnd()*.92,depth:.46,s:.55+rnd()*.85,jit:rnd()});
+    for(let i=0;i<5;i++) S.props.push({type:'lantern',x:.08+rnd()*.84,depth:.30+rnd()*.3,ph:rnd()*6.28,amp:.02+rnd()*.05});
+    for(let i=0;i<34;i++) S.props.push({type:'reed',x:rnd(),depth:.6,s:.45+rnd()*1.1,ph:rnd()*6.28});
+  } else { // peaks
+    S.layers=[
+      {depth:.09,pts:ridgeline(seed+21,16,2.2,.52,.24),shade:.26},
+      {depth:.24,pts:ridgeline(seed+22,14,3.0,.64,.26),shade:.50},
+      {depth:.50,pts:ridgeline(seed+23,12,3.8,.80,.20),shade:.80},
+    ];
+    const rnd=mulberry(seed+50);
+    for(let i=0;i<3;i++) S.props.push({type:'banner',x:.14+i*.34+rnd()*.08,depth:.5,s:.7+rnd()*.5,ph:rnd()*6.28});
+    for(let i=0;i<5;i++) S.props.push({type:'bird',x:rnd(),y:.18+rnd()*.2,depth:.16,s:.6+rnd()*.7,ph:rnd()*6.28});
+  }
+  return S;
+}
+const sceneryCache=new Map();
+function getScenery(kind,seed){
+  const k=kind+':'+seed;
+  if(!sceneryCache.has(k)) sceneryCache.set(k,buildScenery(kind,seed));
+  return sceneryCache.get(k);
+}
+
+function ridgeY(pts,t){ // sample a ridgeline at normalized x
+  const n=pts.length-1, f=clamp(t,0,1)*n, i=Math.floor(f), fr=f-i;
+  const a=pts[i].y, b=pts[Math.min(i+1,n)].y;
+  return lerp(a,b,fr);
+}
+
+/* ── particle engine ───────────────────────────────────────────────────── */
+function makeParticles(n){
+  const P=[];
+  for(let i=0;i<n;i++) P.push({x:Math.random(),y:Math.random(),z:.25+Math.random()*.95,
+    v:.4+Math.random()*.8,sw:Math.random()*6.28,life:Math.random()});
+  return P;
+}
+
+/* ============================================================================
+   THE CANVAS STAGE
+   ========================================================================== */
+function Stage({mix,night,day,curtainOpen,pointer,onReady}){
+  const cv=useRef(null), raf=useRef(0), st=useRef(null);
+
+  // live refs so the animation loop never restarts (it must stay smooth)
+  const live=useRef({mix,night,day,pointer,curtainOpen});
+  live.current={mix,night,day,pointer,curtainOpen};
+
+  useEffect(()=>{
+    const canvas=cv.current, ctx=canvas.getContext('2d',{alpha:false});
+    let W=0,Hh=0,DPR=1;
+
+    st.current={
+      rain:makeParticles(420), snow:makeParticles(260), leaves:makeParticles(46),
+      stars:Array.from({length:180},()=>({x:Math.random(),y:Math.random()*.62,
+        m:.25+Math.random()*.75,tw:Math.random()*6.28})),
+      flash:0, flashHold:0, nextBolt:2.2, bolt:null,
+      // smoothed values so transitions never snap
+      sm:{cosy:0,eerie:0,heroic:0,night:0,cloud:.5,precip:.3,wind:.2,temp:.5,storm:0,fogK:0,snowK:0,windK:0,clearK:0},
+      spot:[{ph:0.0,sp:.11,base:.30},{ph:2.1,sp:-.07,base:.62},{ph:4.4,sp:.05,base:.46}],
+      t:0, dustSeed:mulberry(1234), reveal:0,
+    };
+
+    function resize(){
+      DPR=Math.min(window.devicePixelRatio||1,2);
+      const r=canvas.getBoundingClientRect();
+      W=Math.max(320,r.width); Hh=Math.max(220,r.height);
+      canvas.width=Math.round(W*DPR); canvas.height=Math.round(Hh*DPR);
+      ctx.setTransform(DPR,0,0,DPR,0,0);
+    }
+    resize();
+    const ro=new ResizeObserver(resize); ro.observe(canvas);
+    if(onReady) onReady();
+
+    let prev=performance.now();
+
+    function frame(now){
+      const dtRaw=(now-prev)/1000; prev=now;
+      const dt=Math.min(dtRaw,.05);
+      const L=live.current, S=st.current;
+      S.t+=dt;
+
+      /* ---- smooth all driving values ---- */
+      const k=1-Math.pow(.0016,dt); // ~critically damped follow
+      const tgt={
+        cosy:L.mix.cosy, eerie:L.mix.eerie, heroic:L.mix.heroic,
+        night:L.night?1:0,
+        cloud:L.day.cloud,
+        precip:L.day.precip/100,
+        wind:clamp(L.day.wind/36,0,1),
+        temp:clamp((L.day.hi+6)/32,0,1),
+        storm:L.day.kind==='storm'?1:0,
+        fogK:L.day.kind==='fog'?1:0,
+        snowK:L.day.kind==='snow'?1:0,
+        windK:L.day.kind==='wind'?1:0,
+        clearK:L.day.kind==='clear'?1:0,
+      };
+      for(const key in tgt) S.sm[key]=lerp(S.sm[key],tgt[key],k);
+      const M=S.sm;
+      S.reveal=lerp(S.reveal,L.curtainOpen?1:0,1-Math.pow(.02,dt));
+
+      /* Weight curve: a raw normalised average turns three saturated palettes
+         into mud. Raising each dial to a power makes the leading mood own the
+         look while the others tint it — 78/22/30 should read amber, not grey. */
+      const pw=v=>Math.pow(clamp(v,0,1),2.4)+1e-4;
+      const rC=pw(M.cosy), rE=pw(M.eerie), rH=pw(M.heroic);
+      const wsum=rC+rE+rH;
+      const wC=rC/wsum, wE=rE/wsum, wH=rH/wsum;
+      const wgt=[wC,wE,wH];
+      // overall dial energy: with everything near zero the stage goes bare/dim
+      const energy=clamp(Math.max(M.cosy,M.eerie,M.heroic),0,1);
+      // blend day and night palettes continuously by M.night
+      const pal=name=>{
+        const d=mixMany(MOOD_KEYS.map(mk=>MOODS[mk].day[name]),wgt);
+        const n=mixMany(MOOD_KEYS.map(mk=>MOODS[mk].night[name]),wgt);
+        return [lerp(d[0],n[0],M.night),lerp(d[1],n[1],M.night),lerp(d[2],n[2],M.night)];
+      };
+      const skyRamp=[0,1,2,3].map(i=>{
+        const d=mixMany(MOOD_KEYS.map(mk=>MOODS[mk].day.sky[i]),wgt);
+        const n=mixMany(MOOD_KEYS.map(mk=>MOODS[mk].night.sky[i]),wgt);
+        return [lerp(d[0],n[0],M.night),lerp(d[1],n[1],M.night),lerp(d[2],n[2],M.night)];
+      });
+      const hillC=pal('hill'), lightC=pal('light'), mistBase=pal('mist');
+      const windMul=wC*MOODS.cosy.windMul+wE*MOODS.eerie.windMul+wH*MOODS.heroic.windMul;
+      const dropMul=wC*MOODS.cosy.dropMul+wE*MOODS.eerie.dropMul+wH*MOODS.heroic.dropMul;
+
+      const px=(L.pointer.x-.5), py=(L.pointer.y-.5);
+      const horizon=Hh*(.60+py*.05);
+
+      /* ---- 1. SKY ----
+         Heavy cloud plus night drives the ramp toward black, which is accurate
+         but unreadable as a stage picture. Lift the whole ramp off pure black so
+         silhouettes always have something to sit against. */
+      const FLOOR=[13,11,20];
+      for(let i=0;i<4;i++) skyRamp[i]=[0,1,2].map(c=>Math.max(skyRamp[i][c],FLOOR[c]*(1-i*.12)));
+      const g=ctx.createLinearGradient(0,0,0,horizon*1.12);
+      g.addColorStop(0,rgbStr(skyRamp[0]));
+      g.addColorStop(.42,rgbStr(skyRamp[1]));
+      g.addColorStop(.78,rgbStr(skyRamp[2]));
+      g.addColorStop(1,rgbStr(skyRamp[3]));
+      ctx.fillStyle=g; ctx.fillRect(0,0,W,horizon*1.14);
+      ctx.fillStyle=rgbStr(skyRamp[3]); ctx.fillRect(0,horizon*1.1,W,Hh-horizon*1.1+2);
+
+      /* ---- 2. STARS (night) ---- */
+      if(M.night>.02){
+        // Stars fade out well before full daylight — a linear ramp left them
+        // faintly speckled across a bright matinée sky.
+        const vis=Math.pow(M.night,2.2)*(1-M.cloud*.72);
+        for(const s of S.stars){
+          const tw=.55+.45*Math.sin(S.t*1.7+s.tw);
+          const a=vis*s.m*tw*.95;
+          if(a<=.01) continue;
+          const x=(s.x*W - px*12*s.m + W)%W, y=s.y*horizon;
+          ctx.globalAlpha=a;
+          ctx.fillStyle='#fff';
+          const r=s.m*1.35;
+          ctx.fillRect(x,y,r,r);
+          if(s.m>.82){ // sparkle cross on the brightest
+            ctx.globalAlpha=a*.30;
+            ctx.fillRect(x-2.4,y+r*.4,5.8,.7); ctx.fillRect(x+r*.4,y-2.4,.7,5.8);
+          }
+        }
+        ctx.globalAlpha=1;
+      }
+
+      /* ---- 3. CELESTIAL BODY ---- */
+      const sunX=W*(.18+.64*(1-M.night)*0+ .5 + Math.sin(S.t*.02)*.10) - px*18;
+      const bodyY=horizon*(M.night>.5? .28 : .40) - py*14;
+      const bodyR=Math.min(W,Hh)*(M.night>.5? .050 : .062);
+      const bodyGlow=(1-M.cloud*.62)*(1-M.fogK*.5);
+      const bodyCol=M.night>.5?[228,236,255]:[255,246,214];
+      const halo=ctx.createRadialGradient(sunX,bodyY,0,sunX,bodyY,bodyR*(M.night>.5?7:11));
+      halo.addColorStop(0,rgbStr(bodyCol,.55*bodyGlow));
+      halo.addColorStop(.22,rgbStr(bodyCol,.16*bodyGlow));
+      halo.addColorStop(1,rgbStr(bodyCol,0));
+      ctx.fillStyle=halo; ctx.fillRect(0,0,W,horizon*1.1);
+      // Moon: carve the crescent by clipping the disc and repainting the sky
+      // gradient over the bitten side. destination-out would punch to black on
+      // this opaque canvas, which reads as a hole rather than a moon.
+      ctx.save();
+      ctx.beginPath(); ctx.arc(sunX,bodyY,bodyR,0,6.2832); ctx.clip();
+      ctx.fillStyle=rgbStr(bodyCol,.92*clamp(bodyGlow+.30,0,1));
+      ctx.fillRect(sunX-bodyR,bodyY-bodyR,bodyR*2,bodyR*2);
+      if(M.night>.35){
+        const bite=M.night; // repaint sky over the shadowed limb
+        ctx.globalAlpha=bite;
+        ctx.fillStyle=rgbStr(skyRamp[1]);
+        ctx.beginPath(); ctx.arc(sunX+bodyR*.66,bodyY-bodyR*.26,bodyR*.94,0,6.2832); ctx.fill();
+        ctx.globalAlpha=1;
+      } else {
+        // matinée sun: soft limb darkening so it isn't a flat sticker
+        const sg=ctx.createRadialGradient(sunX-bodyR*.3,bodyY-bodyR*.3,0,sunX,bodyY,bodyR);
+        sg.addColorStop(0,'rgba(255,255,245,.95)');
+        sg.addColorStop(1,rgbStr(bodyCol,.35));
+        ctx.fillStyle=sg; ctx.fillRect(sunX-bodyR,bodyY-bodyR,bodyR*2,bodyR*2);
+      }
+      ctx.restore();
+
+      /* ---- 4. AURORA (eerie nights) ---- */
+      // Aurora belongs to the eerie set only; below a clear majority it must be
+      // fully absent rather than a faint green wash over someone else's sky.
+      const aur=Math.max(0,(wE-.34)/.66)*M.night*(1-M.cloud*.6);
+      if(aur>.03){
+        ctx.save(); ctx.globalCompositeOperation='screen';
+        /* Each curtain is a ribbon bounded by its own wavy top and bottom.
+           Closing the path through the canvas corners instead filled the whole
+           lower frame with green — the aurora leaked over the scenery. */
+        for(let b=0;b<4;b++){
+          const yb=horizon*(.20+b*.075);
+          const band=Hh*.13;
+          const wave=(t,o)=>Math.sin(t*7+S.t*.5+b+o)*Hh*.035
+                           +Math.sin(t*17-S.t*.8+b*2+o)*Hh*.014;
+          ctx.beginPath();
+          for(let x=0;x<=W;x+=14){ const t=x/W; const y=yb+wave(t,0);
+            x===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+          for(let x=W;x>=0;x-=14){ const t=x/W; ctx.lineTo(x,yb-band+wave(t,.6)); }
+          ctx.closePath();
+          const ag=ctx.createLinearGradient(0,yb-band,0,yb);
+          ag.addColorStop(0,`rgba(120,255,210,0)`);
+          ag.addColorStop(.45,`rgba(120,255,210,${.075*aur})`);
+          ag.addColorStop(1,`rgba(90,180,255,0)`);
+          ctx.fillStyle=ag; ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      /* ---- 5. GOD RAYS (heroic) ---- */
+      const rays=Math.max(0,(wH-.30)/.70)*(1-M.cloud*.55)*(1-M.night*.55);
+      if(rays>.04){
+        ctx.save(); ctx.globalCompositeOperation='screen';
+        for(let i=0;i<9;i++){
+          const a=(-Math.PI/2)+(i-4)*.085+Math.sin(S.t*.14+i)*.012;
+          const len=Hh*1.5, wdt=(9+i%3*7)*(1+Math.sin(S.t*.5+i)*.15);
+          ctx.translate(sunX,bodyY); ctx.rotate(a+Math.PI);
+          const rg=ctx.createLinearGradient(0,0,0,len);
+          rg.addColorStop(0,rgbStr(lightC,.10*rays));
+          rg.addColorStop(1,rgbStr(lightC,0));
+          ctx.fillStyle=rg;
+          ctx.beginPath(); ctx.moveTo(-wdt*.15,0); ctx.lineTo(wdt,len); ctx.lineTo(-wdt,len); ctx.closePath(); ctx.fill();
+          ctx.setTransform(DPR,0,0,DPR,0,0);
+        }
+        ctx.restore();
+      }
+
+      /* ---- 6. CLOUDS (3 parallax bands) ---- */
+      const cloudAmt=M.cloud;
+      for(let band=0;band<3;band++){
+        const depth=.16+band*.30;
+        const speed=(4+band*11)*(0.25+M.wind*1.9)*windMul;
+        const yb=horizon*(.16+band*.17);
+        const scale=(.55+band*.55);
+        const alpha=cloudAmt*(.20+band*.13)*(1-M.fogK*.35);
+        if(alpha<.012) continue;
+        /* Cloud colour is derived from the sky it floats in — by day a bright
+           lift off the upper ramp, by night a dark mass slightly above the
+           horizon band. Deriving it from the mist tint instead introduced a
+           hue that belonged to no palette (green over a purple cosy sky). */
+        const dayCloud=lerp3(skyRamp[1],[255,252,246],.62);
+        const nightCloud=lerp3(skyRamp[2],[16,16,26],.34);
+        const dark=1-M.storm*.34-cloudAmt*.10;
+        const cCol=lerp3(dayCloud,nightCloud,M.night).map(c=>c*dark);
+        const period=W*1.5;
+        const off=(-S.t*speed - px*70*depth)%period;
+        for(let rep=-1;rep<=1;rep++){
+          const bx=off+rep*period;
+          const rnd=mulberry(9000+band*31);
+          const puffs=10;
+          for(let i=0;i<puffs;i++){
+            const cx=bx+ (i/puffs)*period + rnd()*80;
+            const cy=yb+(rnd()-.5)*Hh*.10;
+            const cr=Hh*(.030+rnd()*.055)*scale*(1+cloudAmt*.5);
+            if(cx<-cr*5||cx>W+cr*5) continue;
+            /* Each puff is a stack of soft radial blobs. Hard-edged arcs read as
+               painted circles pinned to the sky; a gradient falloff lets the
+               lobes melt together into cloud. */
+            for(let l=0;l<5;l++){
+              const d=Math.abs(l-2);
+              const lx=cx+(l-2)*cr*.66+Math.sin(S.t*.20+i+l)*cr*.10;
+              const ly=cy-d*cr*.12;
+              const lr=cr*(1.12-d*.13);
+              const pg=ctx.createRadialGradient(lx,ly-lr*.18,0,lx,ly,lr);
+              pg.addColorStop(0,rgbStr(cCol,alpha*.95));
+              pg.addColorStop(.45,rgbStr(cCol,alpha*.6));
+              pg.addColorStop(1,rgbStr(cCol,0));
+              ctx.fillStyle=pg;
+              ctx.beginPath(); ctx.arc(lx,ly,lr,0,6.2832); ctx.fill();
+            }
+          }
+        }
+      }
+
+      /* ---- 7. LIGHTNING ---- */
+      if(M.storm>.3){
+        S.nextBolt-=dt*(0.6+M.storm);
+        if(S.nextBolt<=0){
+          S.nextBolt=1.1+Math.random()*3.4;
+          S.flash=1; S.flashHold=.06+Math.random()*.05;
+          const sx=W*(.12+Math.random()*.76);
+          const seg=[{x:sx,y:0}]; let cx=sx,cy=0;
+          while(cy<horizon*.92){ cy+=horizon*(.06+Math.random()*.10); cx+=(Math.random()-.5)*W*.075; seg.push({x:cx,y:cy}); }
+          S.bolt={seg,life:1,forks:seg.filter((_,i)=>i>1&&i<seg.length-1&&Math.random()>.62)
+            .map(p=>({x:p.x,y:p.y,dx:(Math.random()-.5)*W*.10,dy:horizon*.14}))};
+        }
+      }
+      if(S.flash>0){
+        if(S.flashHold>0) S.flashHold-=dt; else S.flash=Math.max(0,S.flash-dt*4.2);
+        ctx.fillStyle=`rgba(226,236,255,${S.flash*.36*M.storm})`;
+        ctx.fillRect(0,0,W,Hh);
+      }
+      if(S.bolt){
+        S.bolt.life-=dt*4.4;
+        if(S.bolt.life<=0) S.bolt=null;
+        else{
+          const a=clamp(S.bolt.life,0,1);
+          ctx.save(); ctx.globalCompositeOperation='screen';
+          ctx.strokeStyle=`rgba(235,244,255,${a})`; ctx.lineWidth=2.1;
+          ctx.shadowColor='rgba(180,215,255,.95)'; ctx.shadowBlur=22;
+          ctx.beginPath(); S.bolt.seg.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y)); ctx.stroke();
+          ctx.lineWidth=1; ctx.strokeStyle=`rgba(200,225,255,${a*.7})`;
+          S.bolt.forks.forEach(f=>{ctx.beginPath();ctx.moveTo(f.x,f.y);ctx.lineTo(f.x+f.dx,f.y+f.dy);ctx.stroke();});
+          ctx.restore();
+        }
+      }
+
+      /* ---- 8. SPOTLIGHT SWEEPS (from the flies) ---- */
+      ctx.save(); ctx.globalCompositeOperation='screen';
+      S.spot.forEach((s,i)=>{
+        s.ph+=dt*s.sp*(0.7+M.heroic*1.5+M.eerie*.5);
+        const aim=s.base+Math.sin(s.ph)*.34;
+        const ox=W*(i===1?.5:i===0?.16:.84), oy=-Hh*.10;
+        const tx=W*aim, ty=Hh*(.86+Math.cos(s.ph*.7)*.05);
+        const ang=Math.atan2(ty-oy,tx-ox);
+        const spread=.075+.035*Math.sin(s.ph*1.3)+M.heroic*.022;
+        // Beams are volumetric haze, not paint: keep them faint or they flatten
+        // the scenery behind them into milk.
+        const inten=(.030+M.heroic*.055+M.eerie*.022+M.cosy*.014)
+                    *(0.45+M.night*.75)*(1-M.fogK*.25)*energy;
+        const len=Hh*1.7;
+        ctx.translate(ox,oy); ctx.rotate(ang);
+        const lg=ctx.createLinearGradient(0,0,len,0);
+        lg.addColorStop(0,rgbStr(lightC,inten));
+        lg.addColorStop(.35,rgbStr(lightC,inten*.62));
+        lg.addColorStop(1,rgbStr(lightC,0));
+        ctx.fillStyle=lg;
+        ctx.beginPath(); ctx.moveTo(0,0);
+        ctx.lineTo(len,Math.tan(spread)*len); ctx.lineTo(len,-Math.tan(spread)*len);
+        ctx.closePath(); ctx.fill();
+        // lamp housing glow at the pivot
+        const cg=ctx.createRadialGradient(0,0,0,0,0,Hh*.05);
+        cg.addColorStop(0,rgbStr(lightC,inten*5));
+        cg.addColorStop(1,rgbStr(lightC,0));
+        ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(0,0,Hh*.05,0,6.2832); ctx.fill();
+        ctx.setTransform(DPR,0,0,DPR,0,0);
+      });
+      ctx.restore();
+
+      /* ---- 9. SCENERY (parallax flats) ----
+         Sets cross-fade, but stacking three complete sets at equal weight is
+         mud — cottages inside mountains inside marsh. So each set also owns a
+         territory across the stage (village left, marsh centre, peaks right)
+         and its props are clipped to that territory. When one mood leads, its
+         territory covers the whole stage; as the mix evens out, the stage
+         divides into a composite set instead of a pile-up. */
+      const setW=v=>v<.06?0:Math.pow(v,1.35);
+      const rawW=[setW(wC),setW(wE),setW(wH)];
+      const lead=Math.max(...rawW);
+      // 0 = one mood dominates (no division), 1 = fully even (three territories)
+      const evenness=lead>0?clamp(1-(lead-(rawW.reduce((a,b)=>a+b,0)-lead)/2)/lead,0,1):0;
+      const CENTRES=[0.18,0.5,0.82];
+      const kinds=[['village',rawW[0]],['marsh',rawW[1]],['peaks',rawW[2]]];
+      // draw all three sets, each faded by its weight → true cross-fade of stage sets
+      kinds.forEach(([kind,w],ki)=>{
+        if(w<.02) return;
+        const sc=getScenery(kind,101+ki*37);
+        sc.layers.forEach((ly,li)=>{
+          const par=px*(18+ly.depth*90), pary=py*(4+ly.depth*16);
+          const shade=ly.shade;
+          /* Aerial perspective: distant flats sit close to the sky colour and
+             each nearer flat steps darker toward the mood's hill colour, so the
+             layers separate as silhouettes instead of merging into one mass. */
+          const haze=1-shade;                      // 0 = nearest, 1 = farthest
+          // Nearest flats fall away toward black (they are unlit scenery seen
+          // against the sky); far flats wash toward the horizon colour. Never
+          // brighten past hillC or the foreground blooms into a coloured slab.
+          const nearC=lerp3(hillC,[3,3,6],0.55);
+          const col=[0,1,2].map(i=>
+            lerp(lerp(hillC[i],nearC[i],shade), skyRamp[3][i], haze*0.66)
+          );
+          ctx.beginPath();
+          ctx.moveTo(-40,Hh+10);
+          /* Map the ridge into the lower part of the frame and keep the crests
+             clear of the top edge, so every set leaves a readable band of sky. */
+          const yOf=t=>{
+            const raw=ridgeY(ly.pts,t);
+            return horizon*(raw/.72) - horizon*.30 + pary;
+          };
+          for(let t=0;t<=1.0001;t+=.01){
+            ctx.lineTo(-40+ (t*(W+80)) + par*0, yOf(t));
+          }
+          ctx.lineTo(W+40,Hh+10); ctx.closePath();
+          // Normalise across sets: three flats at w=.33 each would otherwise
+          // stack to near-black. Draw each at full opacity scaled by its share.
+          ctx.globalAlpha=clamp(w/Math.max(lead,1e-3),0,1)*0.94;
+          ctx.fillStyle=rgbStr(col);
+          ctx.fill();
+          // rim light: only the nearest flats catch the key light, and softly
+          if(shade>.4){
+            ctx.globalAlpha=w*(.10+M.heroic*.20)*(0.35+M.night*.5)*shade;
+            ctx.strokeStyle=rgbStr(lightC,.85); ctx.lineWidth=1;
+            ctx.beginPath();
+            for(let t=0;t<=1.0001;t+=.01){ const x=-40+t*(W+80), y=yOf(t); t===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+            ctx.stroke();
+          }
+          /* Snow caps: snow only lies where the ridge is high relative to this
+             flat's own span, and the cap thickens toward each summit. A constant
+             ribbon along the whole ridge read as a drawn outline, not snow. */
+          const snowAmt=clamp(M.snowK*.9+(kind==='peaks'?(1-M.temp)*.5:0)-.12,0,1);
+          if(snowAmt>.02){
+            let ymin=1e9,ymax=-1e9;
+            for(let t=0;t<=1.0001;t+=.02){const y=yOf(t); if(y<ymin)ymin=y; if(y>ymax)ymax=y;}
+            const span=Math.max(1,ymax-ymin);
+            ctx.globalAlpha=w*snowAmt*(li===2?.5:.95);
+            ctx.fillStyle='rgba(242,249,255,.92)';
+            ctx.beginPath();
+            let started=false;
+            const segs=[];
+            let cur=null;
+            for(let t=0;t<=1.0001;t+=.008){
+              const y=yOf(t);
+              const elev=1-(y-ymin)/span;            // 1 at the summit
+              if(elev>.52){ if(!cur)cur={a:t,pts:[]}; cur.pts.push({t,y,elev}); }
+              else if(cur){ segs.push(cur); cur=null; }
+            }
+            if(cur) segs.push(cur);
+            segs.forEach(sg=>{
+              if(sg.pts.length<2) return;
+              ctx.beginPath();
+              sg.pts.forEach((q,qi)=>{
+                const x=-40+q.t*(W+80);
+                qi===0?ctx.moveTo(x,q.y):ctx.lineTo(x,q.y);
+              });
+              for(let qi=sg.pts.length-1;qi>=0;qi--){
+                const q=sg.pts[qi];
+                const x=-40+q.t*(W+80);
+                const depth=(q.elev-.52)/.48;        // 0 at snowline, 1 at peak
+                ctx.lineTo(x,q.y+span*.10*depth*snowAmt+2);
+              }
+              ctx.closePath(); ctx.fill();
+            });
+          }
+          ctx.globalAlpha=1;
+        });
+
+        /* props — clipped to this set's territory so distinctive silhouettes
+           (cottages, dead trees, banners) don't interleave into noise. */
+        ctx.save();
+        if(evenness>.12){
+          const half=lerp(0.62,0.24,evenness);   // territory half-width, in x-fraction
+          const c=CENTRES[ki];
+          const gx0=(c-half)*W, gx1=(c+half)*W;
+          const feather=W*0.09;
+          ctx.beginPath();
+          ctx.rect(Math.max(0,gx0-feather),0,Math.min(W,gx1+feather)-Math.max(0,gx0-feather),Hh);
+          ctx.clip();
+        }
+        const yAt=(depth,t)=>{
+          const ly=sc.layers.reduce((a,b)=>Math.abs(b.depth-depth)<Math.abs(a.depth-depth)?b:a);
+          const pary=py*(4+ly.depth*16);
+          return horizon*(ridgeY(ly.pts,t)/.72) - horizon*.30 + pary;   // must match yOf
+        };
+        sc.props.forEach(p=>{
+          const par=px*(18+p.depth*90);
+          const x=p.x*(W+80)-40+par*0;
+          ctx.globalAlpha=w;
+          if(p.type==='house'){
+            const bw=p.w*W*.9, bh=p.hh*Hh, gy=yAt(p.depth,p.x)+2;
+            const body=rgbStr([hillC[0]*.72,hillC[1]*.72,hillC[2]*.75]);
+            ctx.fillStyle=body; ctx.fillRect(x-bw/2,gy-bh,bw,bh+3);
+            // roof
+            ctx.beginPath();
+            ctx.moveTo(x-bw*.66,gy-bh); ctx.lineTo(x,gy-bh-bh*(p.roof==='gable'?.62:.42));
+            ctx.lineTo(x+bw*.66,gy-bh); ctx.closePath();
+            ctx.fillStyle=rgbStr([hillC[0]*.5,hillC[1]*.5,hillC[2]*.55]); ctx.fill();
+            // snow on roof
+            if(M.snowK>.2){ ctx.globalAlpha=w*M.snowK*.8; ctx.fillStyle='rgba(238,246,255,.9)';
+              ctx.beginPath(); ctx.moveTo(x-bw*.66,gy-bh); ctx.lineTo(x,gy-bh-bh*(p.roof==='gable'?.62:.42));
+              ctx.lineTo(x+bw*.66,gy-bh); ctx.closePath(); ctx.fill(); ctx.globalAlpha=w; }
+            // windows: warm when cosy dial is up
+            const lit=clamp(M.cosy*1.25-p.lit*.5,0,1)*(0.35+M.night*.75);
+            if(lit>.03){
+              const ww=bw*.20, wh=bh*.26;
+              const flick=1+Math.sin(S.t*(2.2+p.jit*3)+p.jit*10)*.10;
+              ctx.save(); ctx.globalCompositeOperation='screen';
+              // A tight spill around the panes — a wide halo turns each cottage
+              // into a glowing ball and erases the roofline.
+              const gr=bw*.72;
+              ctx.globalAlpha=w*lit*flick*.55;
+              const wg=ctx.createRadialGradient(x,gy-bh*.60,0,x,gy-bh*.60,gr);
+              wg.addColorStop(0,'rgba(255,206,130,.75)');
+              wg.addColorStop(.5,'rgba(255,190,110,.22)');
+              wg.addColorStop(1,'rgba(255,180,90,0)');
+              ctx.fillStyle=wg; ctx.beginPath(); ctx.arc(x,gy-bh*.60,gr,0,6.2832); ctx.fill();
+              // the panes themselves stay crisp and bright
+              ctx.globalAlpha=w*clamp(lit*flick,0,1);
+              ctx.fillStyle='rgba(255,228,172,.98)';
+              ctx.fillRect(x-ww*1.1,gy-bh*.70,ww,wh);
+              ctx.fillRect(x+ww*.1,gy-bh*.70,ww,wh);
+              ctx.restore();
+            }
+            // chimney smoke
+            if(p.chim && M.cosy>.15){
+              ctx.save(); ctx.globalAlpha=w*M.cosy*.34;
+              ctx.fillStyle=rgbStr([225,215,205]);
+              for(let s=0;s<7;s++){
+                const t=(S.t*.30+p.jit*3+s*.30)%1;
+                const sy=gy-bh*1.12-t*Hh*.16;
+                const sx=x+bw*.34+Math.sin(t*6+p.jit*9)*bw*(0.6+t*2)+M.wind*t*46*windMul;
+                const sr=(1.6+t*11)*(0.6+p.jit*.5);
+                ctx.globalAlpha=w*M.cosy*.30*(1-t);
+                ctx.beginPath(); ctx.arc(sx,sy,sr,0,6.2832); ctx.fill();
+              }
+              ctx.restore();
+            }
+          }
+          else if(p.type==='tree'){
+            const gy=yAt(p.depth,p.x), s=p.s*Hh*.055;
+            const sway=Math.sin(S.t*(1.1+p.jit)+p.jit*7)*M.wind*7*windMul;
+            ctx.fillStyle=rgbStr([hillC[0]*.55,hillC[1]*.6,hillC[2]*.55]);
+            ctx.beginPath(); ctx.moveTo(x-s*.42,gy);
+            ctx.quadraticCurveTo(x+sway*.4,gy-s*.7,x+sway,gy-s*1.7);
+            ctx.quadraticCurveTo(x+sway*.4-s*.1,gy-s*.7,x+s*.42,gy);
+            ctx.closePath(); ctx.fill();
+          }
+          else if(p.type==='deadtree'){
+            const gy=yAt(p.depth,p.x), s=p.s*Hh*.10;
+            const sway=Math.sin(S.t*.8+p.jit*7)*M.wind*5*windMul;
+            ctx.strokeStyle=rgbStr([hillC[0]*.45,hillC[1]*.5,hillC[2]*.5]);
+            ctx.lineWidth=Math.max(1,s*.055); ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(x,gy); ctx.lineTo(x+sway*.5,gy-s); ctx.stroke();
+            for(let b=0;b<5;b++){
+              const bt=.42+b*.13, bx=x+sway*.5*bt, by=gy-s*bt;
+              const dir=b%2?1:-1, bl=s*(.42-b*.05);
+              ctx.lineWidth=Math.max(.7,s*.03);
+              ctx.beginPath(); ctx.moveTo(bx,by);
+              ctx.quadraticCurveTo(bx+dir*bl*.6,by-bl*.35,bx+dir*bl,by-bl*.75+sway*.3); ctx.stroke();
+            }
+          }
+          else if(p.type==='reed'){
+            // Reeds are near-black silhouettes. Tinting them off hillC let 48
+            // overlapping strokes stack into a solid green field across the
+            // lower third; keep them dark and semi-transparent instead.
+            const gy=yAt(.6,p.x)+Hh*.035, s=p.s*Hh*.05;
+            const sway=Math.sin(S.t*1.6+p.ph)*(2+M.wind*10)*windMul;
+            ctx.globalAlpha=w*.5;
+            ctx.strokeStyle=rgbStr(lerp3(hillC,[2,4,4],.6),1);
+            ctx.lineWidth=1.15; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(x,gy);
+            ctx.quadraticCurveTo(x+sway*.5,gy-s*.6,x+sway,gy-s); ctx.stroke();
+            ctx.globalAlpha=w;
+          }
+          else if(p.type==='lantern'){
+            const gy=yAt(p.depth,p.x);
+            const fy=gy-Hh*(.06+p.amp*2.2)-Math.sin(S.t*.9+p.ph)*Hh*.022;
+            const fx=x+Math.sin(S.t*.55+p.ph*2)*W*.02;
+            const puls=.62+.38*Math.sin(S.t*2.1+p.ph*3);
+            ctx.save(); ctx.globalCompositeOperation='screen'; ctx.globalAlpha=w*(0.45+M.night*.55);
+            const lgr=ctx.createRadialGradient(fx,fy,0,fx,fy,Hh*.055);
+            lgr.addColorStop(0,`rgba(150,255,225,${.85*puls})`);
+            lgr.addColorStop(.3,`rgba(90,220,190,${.28*puls})`);
+            lgr.addColorStop(1,'rgba(60,200,170,0)');
+            ctx.fillStyle=lgr; ctx.beginPath(); ctx.arc(fx,fy,Hh*.055,0,6.2832); ctx.fill();
+            ctx.fillStyle=`rgba(220,255,245,${.9*puls})`;
+            ctx.beginPath(); ctx.arc(fx,fy,1.9,0,6.2832); ctx.fill();
+            ctx.restore();
+          }
+          else if(p.type==='banner'){
+            const gy=yAt(p.depth,p.x), s=p.s*Hh*.13;
+            // pole: dark against sky, with a small finial
+            ctx.strokeStyle=rgbStr(lerp3(hillC,[8,10,16],.4));
+            ctx.lineWidth=2.1; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(x,gy); ctx.lineTo(x,gy-s); ctx.stroke();
+            ctx.fillStyle=rgbStr([255,222,140],.9);
+            ctx.beginPath(); ctx.arc(x,gy-s-2.5,2.1,0,6.2832); ctx.fill();
+            const flap=(2+M.wind*16)*windMul;
+            const wav=t=>Math.sin(t*4-S.t*(3+M.wind*5)+p.ph)*flap*t;
+            ctx.beginPath(); ctx.moveTo(x,gy-s);
+            for(let i=0;i<=10;i++){const t=i/10; ctx.lineTo(x+t*s*.62, gy-s+t*s*.06+wav(t));}
+            for(let i=10;i>=0;i--){const t=i/10; ctx.lineTo(x+t*s*.62, gy-s+t*s*.06+s*.30+wav(t));}
+            ctx.closePath();
+            // cloth shading: the fold catches the key light, the trailing edge falls off
+            const bgr=ctx.createLinearGradient(x,gy-s,x+s*.62,gy-s+s*.3);
+            bgr.addColorStop(0,`rgba(${196+50*M.heroic},74,84,.94)`);
+            bgr.addColorStop(.55,`rgba(${150+40*M.heroic},48,60,.94)`);
+            bgr.addColorStop(1,`rgba(${172+46*M.heroic},60,72,.88)`);
+            ctx.fillStyle=bgr; ctx.fill();
+            // gold device on the cloth, riding the same wave
+            ctx.globalAlpha=w*.85; ctx.fillStyle=rgbStr([255,214,124],.95);
+            const dt2=.30;
+            ctx.beginPath();
+            ctx.arc(x+dt2*s*.62, gy-s+dt2*s*.06+s*.15+wav(dt2), s*.055,0,6.2832);
+            ctx.fill();
+          }
+          else if(p.type==='bird'){
+            const t=(S.t*.035*p.s+p.ph)%1;
+            const bx=t*(W+120)-60, by=Hh*p.y+Math.sin(S.t*.7+p.ph)*Hh*.02;
+            const flap=Math.sin(S.t*(6+p.s*3)+p.ph)*.7;
+            ctx.strokeStyle=rgbStr([hillC[0]*.7,hillC[1]*.7,hillC[2]*.8],.85);
+            ctx.lineWidth=1.5; ctx.lineCap='round';
+            const sz=4.5*p.s;
+            ctx.beginPath();
+            ctx.moveTo(bx-sz,by+flap*sz*.5); ctx.quadraticCurveTo(bx,by-sz*.4,bx+sz,by+flap*sz*.5);
+            ctx.stroke();
+          }
+          ctx.globalAlpha=1;
+        });
+        ctx.restore();   // release this set's territory clip
+      });
+
+      /* ---- 9b. NEAR FOREGROUND FLAT ----
+         A dark cut-out close to the audience. Without it the lower third of the
+         frame is an empty field and the scene loses its sense of depth; the
+         strong parallax on this layer sells the diorama. */
+      {
+        const fgPar=px*150, fgPary=py*26;
+        const fgTop=Hh*(.80)+fgPary;
+        const fgCol=lerp3(hillC,[2,2,5],.72);
+        ctx.beginPath();
+        ctx.moveTo(-60,Hh+20);
+        for(let t=0;t<=1.0001;t+=.02){
+          const x=-60+t*(W+120)+fgPar*.08;
+          // one broad rolling crest, mood-shaped: jagged for peaks, soft for cosy
+          const jag=wH*.5+wE*.2;
+          const y=fgTop
+            -Math.sin(t*Math.PI*1.15)*Hh*.055
+            -Math.sin(t*Math.PI*(3.1+jag*4)+1.7)*Hh*.018*(0.5+jag)
+            -Math.sin(t*Math.PI*7.3)*Hh*.006;
+          ctx.lineTo(x,y);
+        }
+        ctx.lineTo(W+60,Hh+20); ctx.closePath();
+        ctx.fillStyle=rgbStr(fgCol); ctx.fill();
+        // a faint lit edge where the footlights graze the crest
+        ctx.globalAlpha=.16*(0.4+M.night*.6)*energy;
+        ctx.strokeStyle=rgbStr(lightC,.9); ctx.lineWidth=1.1;
+        ctx.beginPath();
+        for(let t=0;t<=1.0001;t+=.02){
+          const x=-60+t*(W+120)+fgPar*.08;
+          const jag=wH*.5+wE*.2;
+          const y=fgTop
+            -Math.sin(t*Math.PI*1.15)*Hh*.055
+            -Math.sin(t*Math.PI*(3.1+jag*4)+1.7)*Hh*.018*(0.5+jag)
+            -Math.sin(t*Math.PI*7.3)*Hh*.006;
+          t===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+        }
+        ctx.stroke(); ctx.globalAlpha=1;
+      }
+
+      /* ---- 10. GROUND FOG / MIST BANDS ---- */
+      const fogAmt=clamp(M.fogK*.95+M.eerie*.30+M.cloud*.12,0,1);
+      for(let i=0;i<4;i++){
+        const yb=horizon+Hh*(.012+i*.032);
+        const sp=(7+i*13)*(0.3+M.wind)*windMul;
+        const off=(-S.t*sp)%(W*1.4);
+        const a=fogAmt*(.13-i*.024);
+        if(a<=.006) continue;
+        ctx.save();
+        /* Fog is lit air. The mood's mist hue is fully saturated (the eerie one
+           is near-primary green), so stacking four bands of it buried the lower
+           frame; desaturate toward the sky's own value and keep the tint faint. */
+        const skyBase=lerp3(skyRamp[2],[255,255,255],.50-M.night*.32);
+        const lum=(mistBase[0]+mistBase[1]+mistBase[2])/3;
+        const mistSoft=lerp3([lum,lum,lum],mistBase,.35);
+        const fogCol=lerp3(skyBase,mistSoft,.20);
+        const fg=ctx.createLinearGradient(0,yb-Hh*.05,0,yb+Hh*.08);
+        fg.addColorStop(0,rgbStr(fogCol,0));
+        fg.addColorStop(.5,rgbStr(fogCol,a*2.2));
+        fg.addColorStop(1,rgbStr(fogCol,0));
+        ctx.fillStyle=fg;
+        ctx.beginPath(); ctx.moveTo(0,Hh);
+        for(let x=0;x<=W;x+=18){
+          const t=(x+off)/W;
+          ctx.lineTo(x, yb+Math.sin(t*5.5+i*2+S.t*.3)*Hh*.018+Math.sin(t*13-S.t*.5)*Hh*.007);
+        }
+        ctx.lineTo(W,Hh); ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
+
+      /* ---- 11. PRECIPITATION ---- */
+      const rainAmt=M.precip*(1-M.snowK)*(1-M.fogK*.55);
+      if(rainAmt>.03){
+        const gust=1+Math.sin(S.t*.7)*.22+Math.sin(S.t*2.3)*.07;
+        const slant=(0.18+M.wind*1.05)*windMul*gust;
+        ctx.lineCap='round';
+        const count=Math.floor(S.rain.length*clamp(rainAmt*1.05,0,1));
+        for(let i=0;i<count;i++){
+          const p=S.rain[i];
+          const spd=(1.05+p.v*1.35)*(0.75+M.storm*.75)*dropMul;
+          p.y+=dt*spd; p.x+=dt*spd*slant*.42;
+          if(p.y>1.06){p.y=-.05;p.x=Math.random();}
+          if(p.x>1.15)p.x-=1.3; if(p.x<-.15)p.x+=1.3;
+          const z=p.z, len=Hh*.034*z*(0.8+M.storm*1.0);
+          const X=p.x*W - px*30*z, Y=p.y*Hh;
+          ctx.globalAlpha=clamp(.14+z*.40,0,1)*rainAmt*(0.6+M.night*.3);
+          // rain reads as lit water: mostly neutral, only faintly mood-tinted
+          ctx.strokeStyle=rgbStr(lerp3([214,230,246],lightC,.22),1);
+          ctx.lineWidth=Math.max(.6,z*1.15);
+          ctx.beginPath(); ctx.moveTo(X,Y); ctx.lineTo(X+len*slant,Y+len); ctx.stroke();
+        }
+        ctx.globalAlpha=1;
+        // splash line on the boards
+        ctx.save(); ctx.globalAlpha=rainAmt*.20;
+        for(let i=0;i<26;i++){
+          const t=((S.t*1.6+i*.37)%1);
+          const X=(mulberry(i*77)()*1.0)*W, Y=Hh*(.90+ (i%4)*.024);
+          const r=Math.max(0,t*10*(1-t)*4);
+          ctx.strokeStyle=rgbStr([220,235,250],clamp(1-t,0,1)*.5); ctx.lineWidth=.8;
+          ctx.beginPath(); ctx.ellipse(X,Y,r*1.7,r*.5,0,0,6.2832); ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // snow
+      if(M.snowK>.03){
+        const amt=M.snowK*clamp(M.precip*1.4,.25,1);
+        const count=Math.floor(S.snow.length*amt);
+        for(let i=0;i<count;i++){
+          const p=S.snow[i];
+          p.sw+=dt*1.4;
+          const spd=(.16+p.v*.3)*dropMul;
+          p.y+=dt*spd; p.x+=dt*(Math.sin(p.sw)*.05+M.wind*.13*windMul);
+          if(p.y>1.05){p.y=-.04;p.x=Math.random();}
+          if(p.x>1.1)p.x-=1.2; if(p.x<-.1)p.x+=1.2;
+          const X=p.x*W-px*26*p.z, Y=p.y*Hh;
+          // Depth-graded and soft-edged. Hard opaque dots read as static specks
+          // stuck on the scenery rather than snow moving through the air.
+          const rad=p.z*2.1;
+          ctx.globalAlpha=clamp(.10+p.z*.42,0,.8)*amt;
+          const sgr=ctx.createRadialGradient(X,Y,0,X,Y,rad);
+          const sc=lerp3([206,220,238],[252,254,255],p.z);
+          sgr.addColorStop(0,rgbStr(sc,.95));
+          sgr.addColorStop(.55,rgbStr(sc,.5));
+          sgr.addColorStop(1,rgbStr(sc,0));
+          ctx.fillStyle=sgr;
+          ctx.beginPath(); ctx.arc(X,Y,rad,0,6.2832); ctx.fill();
+        }
+        ctx.globalAlpha=1;
+      }
+      // wind-blown leaves / cinders
+      if(M.windK>.05||M.wind>.5){
+        const amt=clamp(M.windK*.9+ (M.wind-.4)*.7,0,1);
+        for(let i=0;i<S.leaves.length;i++){
+          const p=S.leaves[i];
+          p.sw+=dt*3.1;
+          p.x+=dt*(.10+p.v*.30)*(0.5+M.wind*1.7)*windMul;
+          p.y+=dt*Math.sin(p.sw)*.055;
+          if(p.x>1.08){p.x=-.06;p.y=Math.random()*.9;}
+          if(p.y<0)p.y+=.9; if(p.y>1)p.y-=.9;
+          const X=p.x*W-px*40*p.z, Y=p.y*Hh;
+          const warm=[lerp(210,255,M.cosy),lerp(150,190,M.cosy),90];
+          ctx.globalAlpha=amt*clamp(.20+p.z*.5,0,.8);
+          ctx.fillStyle=rgbStr(M.eerie>.5?[150,200,185]:warm,1);
+          ctx.save(); ctx.translate(X,Y); ctx.rotate(p.sw);
+          ctx.beginPath(); ctx.ellipse(0,0,3.1*p.z,1.35*p.z,0,0,6.2832); ctx.fill();
+          ctx.restore();
+        }
+        ctx.globalAlpha=1;
+      }
+
+      /* ---- 12. STAGE FLOOR (the boards) + footlights ---- */
+      const floorY=Hh*.885;
+      const fl=ctx.createLinearGradient(0,floorY,0,Hh);
+      fl.addColorStop(0,'rgba(9,5,9,.86)');
+      fl.addColorStop(1,'rgba(3,2,4,.99)');
+      ctx.fillStyle=fl; ctx.fillRect(0,floorY,W,Hh-floorY);
+      // a bright lip where the boards meet the backdrop — the stage edge
+      ctx.fillStyle=rgbStr(lightC,.10);
+      ctx.fillRect(0,floorY,W,1.2);
+      // reflection of the mood light
+      ctx.save(); ctx.globalCompositeOperation='screen';
+      const refl=ctx.createLinearGradient(0,floorY,0,Hh);
+      refl.addColorStop(0,rgbStr(lightC,.13*(0.4+M.night*.7)));
+      refl.addColorStop(1,rgbStr(lightC,0));
+      ctx.fillStyle=refl; ctx.fillRect(0,floorY,W,Hh-floorY);
+      // footlight arcs
+      for(let i=0;i<9;i++){
+        const fx=W*(i+.5)/9;
+        const fg2=ctx.createRadialGradient(fx,Hh,0,fx,Hh,Hh*.16);
+        const inten=.15+M.cosy*.16+M.heroic*.10;
+        fg2.addColorStop(0,rgbStr(lightC,inten));
+        fg2.addColorStop(1,rgbStr(lightC,0));
+        ctx.fillStyle=fg2; ctx.beginPath(); ctx.arc(fx,Hh,Hh*.16,0,6.2832); ctx.fill();
+      }
+      ctx.restore();
+      // board seams
+      ctx.strokeStyle='rgba(0,0,0,.35)'; ctx.lineWidth=1;
+      for(let i=1;i<14;i++){
+        const t=i/14;
+        ctx.beginPath();
+        ctx.moveTo(lerp(W*.5,t*W,.62),floorY);
+        ctx.lineTo(t*W,Hh); ctx.stroke();
+      }
+
+      /* ---- 12b. WING FLATS (legs) ----
+         Vertical masking pieces at the sides, the way a real stage hides the
+         wings. They also frame the composition and take the strongest parallax. */
+      {
+        const legW=W*.042, sway=px*30;
+        for(const side of [0,1]){
+          const dir=side?1:-1;
+          const bx=side?W:0;
+          ctx.beginPath();
+          ctx.moveTo(bx,0);
+          const steps=10;
+          for(let i=0;i<=steps;i++){
+            const t=i/steps;
+            const inset=legW*(0.55+0.45*Math.sin(t*Math.PI*.9))
+                        *(1+Math.sin(t*7)*.05);
+            ctx.lineTo(bx - dir*inset - dir*sway*.25, t*Hh);
+          }
+          ctx.lineTo(bx,Hh); ctx.closePath();
+          const lgr=ctx.createLinearGradient(bx,0,bx-dir*legW*1.2,0);
+          lgr.addColorStop(0,'rgba(2,1,3,.97)');
+          lgr.addColorStop(.7,'rgba(4,2,6,.85)');
+          lgr.addColorStop(1,'rgba(6,3,8,0)');
+          ctx.fillStyle=lgr; ctx.fill();
+        }
+      }
+
+      /* ---- 13. DUST MOTES IN THE BEAMS ---- */
+      ctx.save(); ctx.globalCompositeOperation='screen';
+      for(let i=0;i<64;i++){
+        const r=mulberry(i*31+7);
+        const bx=r(), by=r(), sp=r();
+        const X=((bx+S.t*(.006+sp*.014))%1)*W;
+        const Y=((by+Math.sin(S.t*.25+i)*.02+1)%1)*Hh*.92;
+        const a=(.05+sp*.14)*(0.4+M.night*.6);
+        ctx.fillStyle=rgbStr(lightC,a);
+        ctx.beginPath(); ctx.arc(X,Y,.7+sp*1.2,0,6.2832); ctx.fill();
+      }
+      ctx.restore();
+
+      /* ---- 14. GRADE: warm/cool wash + haze ---- */
+      /* A light 'soft-light' pass lifts the key side without the hue rotation
+         that 'overlay' inflicts on already-saturated palettes. */
+      ctx.save(); ctx.globalCompositeOperation='soft-light';
+      const washA=.16+M.heroic*.10;
+      const wash=ctx.createLinearGradient(0,0,0,horizon*1.05);
+      wash.addColorStop(0,rgbStr(lightC,washA));
+      wash.addColorStop(1,rgbStr(lightC,0));
+      ctx.fillStyle=wash; ctx.fillRect(0,0,W,horizon*1.05);
+      ctx.restore();
+      if(M.fogK>.05){
+        ctx.fillStyle=rgbStr(lerp3(skyRamp[2],[228,232,236],.55-M.night*.38),M.fogK*.18);
+        ctx.fillRect(0,0,W,Hh);
+      }
+
+      raf.current=requestAnimationFrame(frame);
+    }
+    raf.current=requestAnimationFrame(frame);
+    return ()=>{cancelAnimationFrame(raf.current); ro.disconnect();};
+  },[]);
+
+  return h('canvas',{id:'stage',ref:cv});
+}
+
+/* ============================================================================
+   TYPEWRITER
+   ========================================================================== */
+function Typewriter({text,speed=22}){
+  const [n,setN]=useState(0);
+  const tRef=useRef(text);
+  useEffect(()=>{
+    tRef.current=text; setN(0);
+    let i=0,alive=true,acc=0,last=performance.now(),id;
+    const step=now=>{
+      if(!alive)return;
+      const dt=now-last; last=now; acc+=dt;
+      const per=1000/speed;
+      while(acc>per && i<tRef.current.length){
+        acc-=per; i++;
+        const ch=tRef.current[i-1];
+        if(ch==='.'||ch==='—'||ch===',') acc-=per*(ch==='.'?7:3); // dramatic pause
+      }
+      setN(i);
+      if(i<tRef.current.length) id=requestAnimationFrame(step);
+    };
+    id=requestAnimationFrame(step);
+    return ()=>{alive=false;cancelAnimationFrame(id);};
+  },[text,speed]);
+  const done=n>=text.length;
+  return h('div',{className:'typewriter'},
+    text.slice(0,n),
+    h('span',{className:'caret',style:{opacity:done?.55:1}},' ')
+  );
+}
+
+/* ============================================================================
+   APP
+   ========================================================================== */
+const PRESETS=[
+  {name:'Hearthside',   tag:'Act I',   note:'rain on the window', mix:{cosy:.92,eerie:.10,heroic:.06}, day:0, night:true},
+  {name:'The Fen',      tag:'Act II',  note:'something in the fog', mix:{cosy:.04,eerie:.95,heroic:.14}, day:1, night:true},
+  {name:'Summit Fanfare',tag:'Act III',note:'the pass is crossed', mix:{cosy:.10,eerie:.06,heroic:.96}, day:5, night:false},
+  {name:'Full Ensemble',tag:'Finale',  note:'all three at once',   mix:{cosy:.62,eerie:.58,heroic:.66}, day:3, night:true},
+];
+
+function App(){
+  const [mix,setMix]=useState({cosy:.78,eerie:.22,heroic:.30});
+  const [night,setNight]=useState(true);
+  const [dayIdx,setDayIdx]=useState(0);
+  const [open,setOpen]=useState(false);
+  const [pointer,setPointer]=useState({x:.5,y:.5});
+  const [preset,setPreset]=useState(null);
+  const [showHint,setShowHint]=useState(true);
+  const curtainTimer=useRef(null);
+  const proRef=useRef(null);
+
+  const day=FORECAST[dayIdx];
+
+  /* dominant mood decides the narrator */
+  const dom=useMemo(()=>{
+    let best='cosy',bv=-1;
+    MOOD_KEYS.forEach(k=>{if(mix[k]>bv){bv=mix[k];best=k;}});
+    return best;
+  },[mix]);
+
+  const sceneTitle=useMemo(()=>{
+    const set={cosy:'The Village, Interior Light',eerie:'The Fen, After Dark',heroic:'The High Pass'}[dom];
+    return `${day.day} · ${set} · ${night?'Night':'Matinée'}`;
+  },[dom,day,night]);
+
+  const line=SCRIPT[day.kind][dom];
+
+  /* curtain choreography: close, swap, reveal */
+  const reveal=useCallback((delay=560)=>{
+    setOpen(false);
+    clearTimeout(curtainTimer.current);
+    curtainTimer.current=setTimeout(()=>setOpen(true),delay);
+  },[]);
+
+  useEffect(()=>{ const t=setTimeout(()=>setOpen(true),700); return ()=>clearTimeout(t); },[]);
+  useEffect(()=>{ const t=setTimeout(()=>setShowHint(false),7000); return ()=>clearTimeout(t); },[]);
+
+  const pickDay=i=>{ if(i===dayIdx)return; setDayIdx(i); setPreset(null); reveal(620); };
+
+  const applyPreset=(p,i)=>{
+    setPreset(i); setMix(p.mix); setDayIdx(p.day); setNight(p.night); reveal(660);
+  };
+
+  const setDial=(k,v)=>{ setMix(m=>({...m,[k]:v})); setPreset(null); };
+
+  /* keyboard: ←/→ days, space curtain, m matinée/night */
+  useEffect(()=>{
+    const onKey=e=>{
+      if(e.key==='ArrowRight'){e.preventDefault();pickDay((dayIdx+1)%7);}
+      else if(e.key==='ArrowLeft'){e.preventDefault();pickDay((dayIdx+6)%7);}
+      else if(e.key===' '){e.preventDefault();setOpen(o=>!o);}
+      else if(e.key==='m'||e.key==='M'){setNight(n=>!n);setPreset(null);}
+    };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[dayIdx]);
+
+  const onMove=e=>{
+    const r=proRef.current.getBoundingClientRect();
+    setPointer({x:clamp((e.clientX-r.left)/r.width,0,1),y:clamp((e.clientY-r.top)/r.height,0,1)});
+  };
+
+  const accent=useMemo(()=>{
+    const w=[mix.cosy,mix.eerie,mix.heroic];
+    const c=mixMany(MOOD_KEYS.map(k=>MOODS[k].accent),w);
+    return rgbStr(c);
+  },[mix]);
+
+  const hiRange=useMemo(()=>{
+    const his=FORECAST.map(d=>d.hi), los=FORECAST.map(d=>d.lo);
+    return {mn:Math.min(...los),mx:Math.max(...his)};
+  },[]);
+
+  return h('div',{className:'house'},
+    /* ── STAGE SIDE ── */
+    h('div',{className:'stage-wrap'},
+      h('div',{className:'marquee'},
+        h('h1',null,'Weather Theatre'),
+        h('span',{className:'sub'},'A Forecast in Three Acts'),
+        h('div',{className:'bulbs'},
+          [0,1,2,3,4].map(i=>h('div',{key:i,className:'bulb',style:{animationDelay:(i*.18)+'s'}}))
+        )
+      ),
+      h('div',{
+          className:'proscenium'+(open?' open':''),
+          ref:proRef, onMouseMove:onMove,
+          onMouseLeave:()=>setPointer({x:.5,y:.5}),
+          onClick:()=>setOpen(o=>!o),
+        },
+        h(Stage,{mix,night,day,curtainOpen:open,pointer}),
+        h('div',{className:'hint',style:{opacity:showHint?1:0}},'move to look around · click for curtain'),
+        h('div',{className:'act-badge'},
+          (preset!=null?PRESETS[preset].tag+' — ':'') + (MOODS[dom].label+' set')),
+        h('div',{className:'subtitle-plate'},
+          h('div',{className:'scene-tag'},sceneTitle),
+          h(Typewriter,{text:line,speed:26})
+        ),
+        h('div',{className:'valance'},
+          h('div',{className:'scallops'}), h('div',{className:'fringe'})),
+        h('div',{className:'curtain left'},h('div',{className:'cloth'}),h('div',{className:'edge'})),
+        h('div',{className:'curtain right'},h('div',{className:'cloth'}),h('div',{className:'edge'}))
+      ),
+      h('div',{className:'readout'},
+        h('div',{className:'chip'},h('div',{className:'k'},'High / Low'),
+          h('div',{className:'v'},day.hi,'°',h('small',null,' / '+day.lo+'°'))),
+        h('div',{className:'chip'},h('div',{className:'k'},'Wind'),
+          h('div',{className:'v'},day.wind,h('small',null,' km/h'))),
+        h('div',{className:'chip'},h('div',{className:'k'},'Precip'),
+          h('div',{className:'v'},day.precip,h('small',null,'%'))),
+        h('div',{className:'chip'},h('div',{className:'k'},'Cloud'),
+          h('div',{className:'v'},Math.round(day.cloud*100),h('small',null,'%'))),
+        h('div',{className:'chip'},h('div',{className:'k'},'Humidity'),
+          h('div',{className:'v'},day.humid,h('small',null,'%'))),
+        h('div',{className:'chip'},h('div',{className:'k'},'Staging'),
+          h('div',{className:'v',style:{color:accent,fontSize:'15px',paddingTop:'3px'}},MOODS[dom].label))
+      )
+    ),
+
+    /* ── BOOTH SIDE ── */
+    h('div',{className:'booth'},
+      h('div',null,
+        h('h2',null,'Mood Dials',h('em',null,'remix the same forecast')),
+        MOOD_KEYS.map(k=>{
+          const M=MOODS[k], v=mix[k];
+          const noteI=clamp(Math.floor(v*3.999),0,3);
+          return h('div',{className:'dial',key:k},
+            h('div',{className:'dial-head'},
+              h('div',{className:'dial-name',style:{color:M.accent}},M.label),
+              h('div',{className:'dial-val'},String(Math.round(v*100)).padStart(2,'0'))
+            ),
+            h('input',{type:'range',min:0,max:1,step:.01,value:v,
+              style:{'--trk':M.accent,'--glow':M.glow,'--pct':(v*100)+'%'},
+              onChange:e=>setDial(k,parseFloat(e.target.value)),
+              'aria-label':M.label+' intensity'}),
+            h('div',{className:'dial-note'},DIAL_NOTES[k][noteI])
+          );
+        })
+      ),
+
+      h('div',null,
+        h('h2',null,'House Lights'),
+        h('div',{className:'toggle'+(night?' night':''),onClick:()=>{setNight(n=>!n);setPreset(null);},
+          role:'switch','aria-checked':night,tabIndex:0,
+          onKeyDown:e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();setNight(n=>!n);}}},
+          h('div',{className:'knob'}),
+          h('span',{className:night?'':'on'},'Matinée'),
+          h('span',{className:night?'on':''},'Night')
+        )
+      ),
+
+      h('div',null,
+        h('h2',null,'Staged Scenes'),
+        h('div',{className:'presets'},
+          PRESETS.map((p,i)=>h('button',{key:p.name,className:'preset'+(preset===i?' active':''),
+            onClick:()=>applyPreset(p,i)},
+            h('b',null,p.tag), p.name,
+            h('div',{style:{fontSize:'11.5px',opacity:.6,fontStyle:'italic',marginTop:'2px'}},p.note)
+          ))
+        )
+      ),
+
+      h('div',null,
+        h('h2',null,'The Week',h('em',null,'mock data')),
+        h('div',{className:'forecast'},
+          FORECAST.map((d,i)=>{
+            const span=hiRange.mx-hiRange.mn;
+            const scale=(d.hi-hiRange.mn)/span;
+            return h('div',{key:d.day,className:'frow'+(i===dayIdx?' sel':''),
+              onClick:()=>pickDay(i),role:'button',tabIndex:0,
+              onKeyDown:e=>{if(e.key==='Enter'){pickDay(i);}}},
+              h('div',{className:'day'},d.day),
+              h('div',{className:'bar'},h('i',{style:{
+                transform:`scaleX(${clamp(scale,.06,1)})`,
+                background:`linear-gradient(90deg,${mixHex('#6fa8dc','#f0a663',clamp(scale,0,1))},${accent})`
+              }})),
+              h('div',{className:'tmp'},h('span',{className:'gl'},d.glyph),' ',d.hi,'°',h('small',null,'/'+d.lo+'°'))
+            );
+          })
+        )
+      ),
+
+      h('div',{className:'credits'},
+        'Every frame drawn by hand into one canvas. No forecast API was harmed.',
+        h('div',{style:{marginTop:'8px',fontStyle:'normal',letterSpacing:'.02em'}},
+          h('kbd',null,'←'),' ',h('kbd',null,'→'),' change day · ',
+          h('kbd',null,'space'),' curtain · ',h('kbd',null,'M'),' matinée')
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
