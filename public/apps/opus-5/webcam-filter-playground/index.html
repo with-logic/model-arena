@@ -1,0 +1,1180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Webcam Filter Playground</title>
+<style>
+  :root{
+    --bg:#08090c;
+    --panel:rgba(255,255,255,.045);
+    --panel-2:rgba(255,255,255,.075);
+    --line:rgba(255,255,255,.11);
+    --ink:#f2f4f8;
+    --dim:#8c93a3;
+    --accent:#5df2c0;
+    --accent-2:#7aa2ff;
+    --danger:#ff6b81;
+    --r:14px;
+    --shadow:0 20px 60px -20px rgba(0,0,0,.9);
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font:400 15px/1.5 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    overflow:hidden;
+  }
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+    background:
+      radial-gradient(900px 600px at 12% -10%, rgba(93,242,192,.09), transparent 60%),
+      radial-gradient(800px 700px at 100% 110%, rgba(122,162,255,.10), transparent 60%);
+  }
+
+  /* ---------- Layout ---------- */
+  .app{
+    position:relative;z-index:1;height:100%;
+    display:grid;
+    grid-template-columns:1fr 320px;
+    grid-template-rows:auto 1fr;
+    gap:14px;
+    padding:14px;
+  }
+  header{
+    grid-column:1/-1;
+    display:flex;align-items:center;gap:14px;
+    min-height:34px;
+  }
+  .brand{display:flex;align-items:center;gap:10px;min-width:0}
+  .dot{
+    width:11px;height:11px;border-radius:50%;
+    background:var(--danger);
+    box-shadow:0 0 0 0 rgba(255,107,129,.55);
+    flex:0 0 auto;
+    transition:background .3s;
+  }
+  .dot.live{background:var(--accent);animation:pulse 2.2s ease-out infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(93,242,192,.5)}
+    70%{box-shadow:0 0 0 11px rgba(93,242,192,0)}
+    100%{box-shadow:0 0 0 0 rgba(93,242,192,0)}
+  }
+  h1{
+    font-size:15px;font-weight:600;letter-spacing:.2px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;
+  }
+  h1 span{color:var(--dim);font-weight:400}
+  .spacer{flex:1}
+  .stat{
+    font:500 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+    color:var(--dim);letter-spacing:.6px;
+    padding:7px 10px;border:1px solid var(--line);border-radius:999px;
+    background:var(--panel);white-space:nowrap;
+  }
+  .stat b{color:var(--accent);font-weight:600}
+
+  /* ---------- Stage ---------- */
+  .stage{
+    position:relative;
+    border-radius:var(--r);
+    overflow:hidden;
+    background:#000 radial-gradient(circle at 50% 45%, #14161c, #06070a 70%);
+    border:1px solid var(--line);
+    box-shadow:var(--shadow);
+    display:grid;place-items:center;
+    min-height:0;min-width:0;
+  }
+  #gl{
+    display:block;
+    max-width:100%;max-height:100%;
+    width:auto;height:auto;
+    image-rendering:auto;
+  }
+  #gl.hide{opacity:0}
+
+  /* Overlays */
+  .overlay{
+    position:absolute;inset:0;display:grid;place-items:center;
+    padding:24px;text-align:center;
+    background:rgba(6,7,10,.72);backdrop-filter:blur(6px);
+    transition:opacity .35s, visibility .35s;
+  }
+  .overlay.gone{opacity:0;visibility:hidden}
+  .overlay .inner{max-width:360px;display:grid;gap:14px;justify-items:center}
+  .glyph{
+    width:56px;height:56px;border-radius:16px;display:grid;place-items:center;
+    background:linear-gradient(140deg,rgba(93,242,192,.18),rgba(122,162,255,.16));
+    border:1px solid var(--line);
+  }
+  .glyph svg{width:26px;height:26px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .overlay h2{font-size:19px;font-weight:600;letter-spacing:-.1px}
+  .overlay p{color:var(--dim);font-size:13.5px;line-height:1.6}
+  .overlay code{
+    font:500 12px/1 ui-monospace,Menlo,monospace;background:var(--panel-2);
+    padding:2px 6px;border-radius:5px;color:var(--ink)
+  }
+
+  /* Flash + toast */
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+  .flash.go{animation:flash .42s ease-out}
+  @keyframes flash{0%{opacity:.92}100%{opacity:0}}
+  .toast{
+    position:absolute;left:50%;bottom:18px;transform:translate(-50%,14px);
+    background:rgba(12,14,18,.92);border:1px solid var(--line);
+    padding:9px 15px;border-radius:999px;font-size:12.5px;font-weight:500;
+    opacity:0;transition:.3s cubic-bezier(.2,.9,.3,1);pointer-events:none;white-space:nowrap;
+    box-shadow:0 8px 30px -8px #000;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
+  .fxlabel{
+    position:absolute;top:12px;left:12px;
+    display:flex;align-items:center;gap:8px;
+    background:rgba(8,9,12,.6);backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:999px;
+    padding:6px 13px 6px 11px;font-size:12px;font-weight:600;letter-spacing:.3px;
+    pointer-events:none;
+  }
+  .fxlabel i{width:6px;height:6px;border-radius:50%;background:var(--accent-2);flex:0 0 auto}
+
+  /* ---------- Side panel ---------- */
+  .side{
+    min-height:0;display:flex;flex-direction:column;gap:12px;
+    overflow:hidden;
+  }
+  /* Effect card is the only one that flexes; Controls/Gallery keep their size. */
+  .side>.card.fxcard{flex:1 1 auto;min-height:120px;display:flex;flex-direction:column}
+  .side>.card.controls,.side>.card.galcard{flex:0 0 auto}
+  .card{
+    background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:13px;
+  }
+  .card>.hd{
+    display:flex;align-items:center;justify-content:space-between;
+    font-size:10.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;
+    color:var(--dim);margin-bottom:11px;
+  }
+  .card>.hd em{font-style:normal;color:var(--accent);font-family:ui-monospace,Menlo,monospace;letter-spacing:.5px}
+
+  .fxgrid{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:7px;
+    overflow-y:auto;flex:1;min-height:0;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+  }
+  .fxgrid::-webkit-scrollbar{width:7px}
+  .fxgrid::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+  .fx{
+    position:relative;
+    appearance:none;border:1px solid var(--line);background:var(--panel);
+    color:var(--dim);border-radius:10px;padding:9px 6px 8px;cursor:pointer;
+    font:600 11px/1.2 inherit;letter-spacing:.1px;text-align:center;
+    transition:.16s ease;
+    min-height:56px;                 /* room for emoji + label, never clipped */
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  }
+  .fx .emoji{display:block;font-size:16px;line-height:1;filter:saturate(.85)}
+  .fx .nm{
+    display:block;width:100%;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .fx:hover{background:var(--panel-2);color:var(--ink);border-color:rgba(255,255,255,.2);transform:translateY(-1px)}
+  .fx.on{
+    color:#04150f;border-color:transparent;
+    background:linear-gradient(140deg,var(--accent),#43d9d0);
+    box-shadow:0 6px 18px -8px rgba(93,242,192,.7);
+  }
+  .fx.on .emoji{filter:none}
+  .fx kbd{
+    position:absolute;top:4px;right:5px;font:600 8.5px/1 ui-monospace,Menlo,monospace;
+    opacity:.4;
+  }
+
+  .ctl{display:grid;gap:5px;margin-bottom:11px}
+  .ctl:last-child{margin-bottom:0}
+  .ctl .row{display:flex;justify-content:space-between;align-items:baseline;font-size:11.5px}
+  .ctl .row span{color:var(--dim);font-weight:600;letter-spacing:.4px;text-transform:uppercase;font-size:10px}
+  .ctl .row var{font:600 11.5px/1 ui-monospace,Menlo,monospace;font-style:normal;color:var(--ink)}
+  input[type=range]{
+    appearance:none;width:100%;height:22px;background:transparent;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:4px;border-radius:99px;background:var(--panel-2);
+  }
+  input[type=range]::-webkit-slider-thumb{
+    appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;
+    background:var(--ink);border:none;box-shadow:0 0 0 3px rgba(8,9,12,.9),0 2px 6px rgba(0,0,0,.5);
+    transition:background .15s;
+  }
+  input[type=range]:hover::-webkit-slider-thumb{background:var(--accent)}
+  input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:var(--panel-2)}
+  input[type=range]::-moz-range-thumb{
+    width:14px;height:14px;border-radius:50%;background:var(--ink);border:none;
+  }
+
+  .btns{display:grid;grid-template-columns:1fr auto auto;gap:7px}
+  button.act{
+    appearance:none;cursor:pointer;font:600 13px/1 inherit;
+    border-radius:10px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--ink);
+    padding:12px 13px;transition:.16s ease;
+    display:flex;align-items:center;justify-content:center;gap:7px;
+  }
+  button.act:hover{background:rgba(255,255,255,.13);border-color:rgba(255,255,255,.24)}
+  button.act:active{transform:scale(.97)}
+  button.act svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  button.act.primary{
+    background:linear-gradient(140deg,var(--accent),#3fd6cd);color:#04150f;border-color:transparent;
+    box-shadow:0 8px 22px -10px rgba(93,242,192,.85);
+  }
+  button.act.primary:hover{filter:brightness(1.08)}
+  button.act.icon{padding:12px}
+  button.act:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* Gallery */
+  .gal{display:flex;flex-direction:column;min-height:0}
+  .shots{
+    display:grid;grid-template-columns:repeat(3,1fr);gap:6px;
+    overflow-y:auto;max-height:120px;min-height:56px;
+    scrollbar-width:thin;scrollbar-color:var(--line) transparent;
+  }
+  .shots::-webkit-scrollbar{width:7px}
+  .shots::-webkit-scrollbar-thumb{background:var(--line);border-radius:99px}
+  .shots .empty{
+    grid-column:1/-1;display:grid;place-items:center;height:56px;
+    border:1px dashed var(--line);border-radius:9px;
+    color:var(--dim);font-size:11.5px;text-align:center;padding:0 8px;
+  }
+  .shot{
+    position:relative;aspect-ratio:4/3;border-radius:8px;overflow:hidden;
+    border:1px solid var(--line);background:#000;cursor:pointer;
+    animation:pop .35s cubic-bezier(.2,1.3,.4,1);
+  }
+  @keyframes pop{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:scale(1)}}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .shot .acts{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;gap:5px;
+    background:rgba(4,5,8,.62);opacity:0;transition:.16s;
+    cursor:zoom-in;   /* the overlay itself expands; its buttons stop propagation */
+  }
+  .shot:hover .acts{opacity:1}
+  .shot .acts button{
+    appearance:none;border:none;cursor:pointer;width:25px;height:25px;border-radius:7px;
+    background:rgba(255,255,255,.92);display:grid;place-items:center;padding:0;
+  }
+  .shot .acts button:hover{background:#fff;transform:scale(1.1)}
+  .shot .acts button.del:hover{background:var(--danger)}
+  .shot .acts svg{width:13px;height:13px;stroke:#0b0d11;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round}
+  .shot .tag{
+    position:absolute;bottom:0;left:0;right:0;padding:8px 5px 3px;
+    font:600 8.5px/1 inherit;letter-spacing:.3px;text-transform:uppercase;
+    color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.85));
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center;
+  }
+
+  .hint{
+    font-size:10.5px;color:var(--dim);line-height:1.6;
+    display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;
+  }
+  .hint kbd{
+    font:600 9.5px/1 ui-monospace,Menlo,monospace;
+    border:1px solid var(--line);background:var(--panel-2);
+    padding:3px 5px;border-radius:4px;color:var(--ink);
+  }
+
+  /* ---------- Lightbox ---------- */
+  .lb{
+    position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:28px;
+    background:rgba(4,5,8,.9);backdrop-filter:blur(10px);
+    opacity:0;visibility:hidden;transition:.25s;
+  }
+  .lb.show{opacity:1;visibility:visible}
+  .lb img{
+    max-width:100%;max-height:calc(100% - 74px);border-radius:12px;
+    box-shadow:0 30px 90px -20px #000;border:1px solid var(--line);
+  }
+  .lb .bar{position:absolute;bottom:26px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+
+  @media (max-width:900px){
+    body{overflow:auto}
+    .app{grid-template-columns:1fr;height:auto;min-height:100%}
+    .stage{min-height:44vh}
+    .side{overflow:visible}
+    .side>.card.fxcard{flex:none}
+    .fxgrid{max-height:none;overflow:visible;grid-template-columns:repeat(3,1fr)}
+    .shots{max-height:none}
+  }
+  @media (max-width:420px){
+    .fxgrid{grid-template-columns:repeat(2,1fr)}
+    .app{padding:10px;gap:10px}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <i class="dot" id="dot"></i>
+      <h1>Webcam Filter Playground <span id="sub">— camera off</span></h1>
+    </div>
+    <div class="spacer"></div>
+    <div class="stat" id="fps">— FPS</div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="gl" class="hide"></canvas>
+    <div class="fxlabel" id="fxlabel" style="display:none"><i></i><span></span></div>
+    <div class="flash" id="flash"></div>
+    <div class="toast" id="toast"></div>
+
+    <div class="overlay" id="ov">
+      <div class="inner">
+        <div class="glyph" id="ovGlyph">
+          <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        </div>
+        <h2 id="ovTitle">Turn on your camera</h2>
+        <p id="ovText">Everything runs locally on your GPU — no frames ever leave this tab.</p>
+        <button class="act primary" id="ovBtn" style="padding:12px 20px">
+          <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Start camera
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <aside class="side">
+    <div class="card gal fxcard">
+      <div class="hd">Effect <em id="fxIdx">00 / 00</em></div>
+      <div class="fxgrid" id="fxgrid"></div>
+    </div>
+
+    <div class="card controls">
+      <div class="hd">Controls</div>
+      <div class="ctl">
+        <div class="row"><span>Intensity</span><var id="vAmt">100%</var></div>
+        <input type="range" id="amt" min="0" max="150" value="100">
+      </div>
+      <div class="ctl">
+        <div class="row"><span id="lblP2">Variation</span><var id="vP2">50%</var></div>
+        <input type="range" id="p2" min="0" max="100" value="50">
+      </div>
+      <div class="btns">
+        <button class="act primary" id="snap" disabled>
+          <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+          Snapshot
+        </button>
+        <button class="act icon" id="mirror" title="Mirror image (M)">
+          <svg viewBox="0 0 24 24"><path d="M12 3v18M8 7 4 12l4 5M16 7l4 5-4 5"/></svg>
+        </button>
+        <button class="act icon" id="rand" title="Random effect (R)">
+          <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="card gal galcard">
+      <div class="hd">Gallery <em id="shotCount">0</em></div>
+      <div class="shots" id="shots">
+        <div class="empty">Snapshots appear here</div>
+      </div>
+      <div class="btns" style="grid-template-columns:1fr auto;margin-top:11px">
+        <button class="act" id="dlAll" disabled>
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Save all
+        </button>
+        <button class="act icon" id="clr" disabled title="Clear gallery">
+          <svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>
+        </button>
+      </div>
+      <div class="hint" style="margin-top:11px">
+        <kbd>Space</kbd> snapshot <kbd>←</kbd><kbd>→</kbd> effect <kbd>R</kbd> random <kbd>M</kbd> mirror <kbd>1</kbd>–<kbd>9</kbd> jump
+      </div>
+    </div>
+  </aside>
+</div>
+
+<div class="lb" id="lb">
+  <img id="lbImg" alt="Snapshot preview">
+  <div class="bar">
+    <button class="act primary" id="lbDl">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Save PNG
+    </button>
+    <button class="act" id="lbClose">Close</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================================================================
+   Webcam Filter Playground — WebGL2 real-time video effects
+   Pipeline:  <video> → RGBA texture → fragment shader → canvas → PNG
+   ========================================================================== */
+
+const $ = s => document.querySelector(s);
+
+const el = {
+  cv:$("#gl"), stage:$("#stage"), dot:$("#dot"), sub:$("#sub"), fps:$("#fps"),
+  ov:$("#ov"), ovBtn:$("#ovBtn"), ovTitle:$("#ovTitle"), ovText:$("#ovText"), ovGlyph:$("#ovGlyph"),
+  grid:$("#fxgrid"), fxIdx:$("#fxIdx"), fxlabel:$("#fxlabel"),
+  amt:$("#amt"), vAmt:$("#vAmt"), p2:$("#p2"), vP2:$("#vP2"), lblP2:$("#lblP2"),
+  snap:$("#snap"), mirror:$("#mirror"), rand:$("#rand"),
+  shots:$("#shots"), shotCount:$("#shotCount"), dlAll:$("#dlAll"), clr:$("#clr"),
+  flash:$("#flash"), toast:$("#toast"),
+  lb:$("#lb"), lbImg:$("#lbImg"), lbDl:$("#lbDl"), lbClose:$("#lbClose"),
+};
+
+/* ---------------------------------------------------------------- shader src */
+const VERT = `#version 300 es
+in vec2 p;
+out vec2 uv;
+void main(){ uv = p*0.5+0.5; gl_Position = vec4(p,0.,1.); }`;
+
+/* Shared prelude: uniforms + helpers available to every effect body.
+   An effect body assigns to `vec3 col` given `vec2 uv` (already mirrored). */
+const PRELUDE = `#version 300 es
+precision highp float;
+in vec2 uv;
+out vec4 frag;
+
+uniform sampler2D tex;      // video frame
+uniform vec2  res;          // canvas px
+uniform float time;         // seconds
+uniform float amt;          // intensity 0..1.5
+uniform float p2;           // secondary param 0..1
+
+#define PI 3.14159265359
+
+vec3 tx(vec2 c){ return texture(tex, clamp(c, 0.0005, 0.9995)).rgb; }
+float lum(vec3 c){ return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
+
+float hash(vec2 v){ return fract(sin(dot(v, vec2(12.9898,78.233))) * 43758.5453); }
+float noise(vec2 v){
+  vec2 i = floor(v), f = fract(v);
+  vec2 u = f*f*(3.0-2.0*f);
+  return mix(mix(hash(i), hash(i+vec2(1,0)), u.x),
+             mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), u.x), u.y);
+}
+float fbm(vec2 v){
+  float s = 0.0, a = 0.5;
+  for(int i=0;i<5;i++){ s += a*noise(v); v *= 2.03; a *= 0.5; }
+  return s;
+}
+vec3 hue2rgb(float h){
+  return clamp(abs(mod(h*6.0 + vec3(0,4,2), 6.0) - 3.0) - 1.0, 0.0, 1.0);
+}
+vec3 rgb2hsv(vec3 c){
+  vec4 K = vec4(0., -1./3., 2./3., -1.);
+  vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+  vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+  float d = q.x - min(q.w, q.y);
+  return vec3(abs(q.z + (q.w - q.y) / (6.0*d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+vec3 hsv2rgb(vec3 c){
+  vec3 p = abs(fract(c.xxx + vec3(1., 2./3., 1./3.))*6. - 3.);
+  return c.z * mix(vec3(1.), clamp(p - 1., 0., 1.), c.y);
+}
+// 3x3 luminance gradient magnitude (Sobel)
+float sobel(vec2 c, vec2 px){
+  float tl=lum(tx(c+px*vec2(-1,-1))), t=lum(tx(c+px*vec2(0,-1))), tr=lum(tx(c+px*vec2(1,-1)));
+  float l =lum(tx(c+px*vec2(-1, 0))),                             r=lum(tx(c+px*vec2(1, 0)));
+  float bl=lum(tx(c+px*vec2(-1, 1))), b=lum(tx(c+px*vec2(0, 1))), br=lum(tx(c+px*vec2(1, 1)));
+  float gx = -tl - 2.0*l - bl + tr + 2.0*r + br;
+  float gy = -tl - 2.0*t - tr + bl + 2.0*b + br;
+  return sqrt(gx*gx + gy*gy);
+}
+`;
+
+const FOOT = `
+void main(){
+  vec2 px = 1.0 / res;
+  vec3 col = vec3(0.0);
+  BODY
+  frag = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+/* ------------------------------------------------------------------ effects */
+/* Each: { name, emoji, p2:'label', src:'<glsl assigning col>' }              */
+const FX = [
+
+{ name:"None", emoji:"🎥", p2:"Warmth", src:`
+  col = tx(uv);
+  // gentle grade so "None" still looks intentional
+  col = mix(col, col*vec3(1.06,1.0,0.94), p2);
+  col = mix(vec3(lum(col)), col, 1.0 + amt*0.25);
+`},
+
+{ name:"Kaleido", emoji:"🔮", p2:"Segments", src:`
+  vec2 c = uv - 0.5;
+  c.x *= res.x/res.y;
+  float seg = floor(3.0 + p2*13.0);
+  float a = atan(c.y, c.x) + time*0.15*amt;
+  float r = length(c);
+  float wedge = PI*2.0/seg;
+  a = mod(a, wedge);
+  a = abs(a - wedge*0.5);            // mirror the wedge
+  vec2 k = vec2(cos(a), sin(a)) * r * (1.0 - 0.10*sin(time*0.5)*amt);
+  k.x /= res.x/res.y;
+  col = tx(k + 0.5);
+  col = mix(tx(uv), col, clamp(amt,0.,1.));
+  col *= 1.0 - 0.35*smoothstep(0.42, 0.78, r);   // vignette
+`},
+
+{ name:"Glitch", emoji:"📺", p2:"Chaos", src:`
+  float t = floor(time*11.0);
+  float band = floor(uv.y * mix(14.0, 60.0, p2));
+  float roll = hash(vec2(band, t));
+  float on = step(1.0 - 0.30*amt, roll);
+  vec2 g = uv;
+  g.x += (hash(vec2(band, t+7.0)) - 0.5) * 0.24 * amt * on;
+  g.y += (hash(vec2(t, band)) - 0.5) * 0.012 * amt * on;
+  float sh = 0.011 * amt * (0.35 + on);
+  col = vec3(tx(g + vec2(sh,0)).r, tx(g).g, tx(g - vec2(sh,0)).b);
+  // hard digital tear
+  float tear = step(0.965, hash(vec2(t*0.37, 3.0)));
+  if(tear > 0.5 && abs(uv.y - hash(vec2(t,1.0))) < 0.03*amt) col = 1.0 - col;
+  col += (hash(uv*res + t)-0.5) * 0.13 * amt;                  // noise
+  col *= 0.86 + 0.14*sin(uv.y*res.y*0.9 - time*24.0);          // scanlines
+`},
+
+{ name:"ASCII", emoji:"⌨️", p2:"Cell size", src:`
+  float cs = mix(6.0, 17.0, p2);
+  vec2 cell = floor(uv*res/cs);
+  vec2 org = cell*cs/res;
+  // average the cell for a stable glyph choice
+  vec3 av = vec3(0.0);
+  for(int y=0;y<3;y++) for(int x=0;x<3;x++)
+    av += tx(org + (vec2(float(x),float(y))+0.5)*cs/(3.0*res));
+  av /= 9.0;
+  float g = lum(av);
+  vec2 f = fract(uv*res/cs);
+  vec2 q = floor(f*5.0);            // 5x5 dot matrix
+  float step5 = floor(g*6.999);     // ramp index 0..6
+  float on = 0.0;
+  // procedural glyph ramp:  . : * o O @ #
+  if(step5 > 0.5) on += step(abs(q.x-2.0)+abs(q.y-2.0), 0.5);
+  if(step5 > 1.5) on += step(abs(q.x-2.0)+abs(q.y-1.0), 0.5) + step(abs(q.x-2.0)+abs(q.y-3.0), 0.5);
+  if(step5 > 2.5) on += step(abs(q.x-2.0)*abs(q.y-2.0), 0.5);
+  if(step5 > 3.5) on += step(length(q-2.0), 1.6);
+  if(step5 > 4.5) on += step(length(q-2.0), 2.1);
+  if(step5 > 5.5) on += 1.0 - step(0.5, mod(q.x+q.y, 2.0))*0.0;
+  on = clamp(on, 0.0, 1.0);
+  vec3 ink = mix(vec3(0.35,1.0,0.55), av*1.7, 0.45);
+  col = mix(vec3(0.02,0.045,0.03), ink, on*(0.35+g*0.9));
+  col = mix(av, col, clamp(amt,0.,1.));
+`},
+
+{ name:"Liquid", emoji:"🌊", p2:"Scale", src:`
+  float sc = mix(2.0, 9.0, p2);
+  vec2 q = uv*sc;
+  float n1 = fbm(q + time*0.28);
+  float n2 = fbm(q.yx*1.3 - time*0.21 + n1);
+  vec2 w = vec2(n1-0.5, n2-0.5) * 0.16 * amt;
+  col = tx(uv + w);
+  // caustic-ish highlights riding the flow
+  float ca = pow(abs(sin((n1+n2)*PI*2.2 + time*0.8)), 6.0);
+  col += ca * amt * vec3(0.18,0.30,0.34);
+  col = mix(col, col.brg, 0.10*amt);
+`},
+
+{ name:"Thermal", emoji:"🔥", p2:"Contrast", src:`
+  vec3 s = tx(uv);
+  float g = lum(s);
+  // 3x3 soften to mimic sensor blur
+  float b = 0.0;
+  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++) b += lum(tx(uv + vec2(float(x),float(y))*px*2.0));
+  g = mix(g, b/9.0, 0.6);
+  g = clamp((g - 0.5)*mix(1.0, 2.6, p2) + 0.5, 0.0, 1.0);
+  g = pow(g, 0.85);
+  // black → purple → red → orange → yellow → white
+  vec3 t = vec3(0.0);
+  t = mix(vec3(0.02,0.0,0.10), vec3(0.36,0.0,0.55), smoothstep(0.0,0.28,g));
+  t = mix(t,  vec3(0.92,0.13,0.20), smoothstep(0.24,0.52,g));
+  t = mix(t,  vec3(1.0,0.60,0.05),  smoothstep(0.48,0.74,g));
+  t = mix(t,  vec3(1.0,0.97,0.55),  smoothstep(0.70,0.90,g));
+  t = mix(t,  vec3(1.0),            smoothstep(0.88,1.0,g));
+  col = mix(s, t, clamp(amt,0.,1.));
+  col += sobel(uv, px)*0.10*amt;
+`},
+
+{ name:"Pencil", emoji:"✏️", p2:"Paper", src:`
+  float e = sobel(uv, px*1.35);
+  float g = lum(tx(uv));
+  float ink = 1.0 - clamp(e*mix(1.1, 3.0, amt/1.5), 0.0, 1.0);
+  // cross-hatch in the shadows
+  vec2 r = uv*res;
+  float h1 = sin((r.x+r.y)*0.42), h2 = sin((r.x-r.y)*0.42);
+  float sh = smoothstep(0.55, 0.10, g);
+  ink *= 1.0 - sh*0.55*step(0.35, h1) - sh*sh*0.45*step(0.55, h2);
+  float paper = 1.0 - fbm(uv*res.y*0.045)*0.13*p2;
+  col = vec3(clamp(ink,0.,1.) * paper);
+  col *= mix(vec3(1.0), vec3(1.0,0.985,0.94), p2);
+  col = mix(tx(uv), col, clamp(amt,0.,1.));
+`},
+
+{ name:"Time echo", emoji:"👻", p2:"Trail", src:`
+  // Sharp current frame, plus rainbow ghosts that spiral outward behind it.
+  // Screen-blending the echoes (instead of averaging) keeps local contrast.
+  vec3 base = tx(uv);
+  vec3 ghost = vec3(0.0);
+  float spread = mix(0.5, 1.8, p2);
+  for(int i=1;i<=8;i++){
+    float f = float(i)/8.0;
+    float a = f*0.55*amt*spread;
+    float sc = 1.0 + f*0.16*amt*spread;
+    vec2 c = uv - 0.5;
+    c = mat2(cos(a), -sin(a), sin(a), cos(a)) * c / sc;
+    vec3 s = tx(c + 0.5);
+    // tint each echo and keep only what is brighter than the base
+    vec3 tint = 0.5 + 0.5*hue2rgb(fract(f*0.7 + time*0.06));
+    ghost = max(ghost, s * tint * pow(1.0 - f, 0.85));
+  }
+  // screen blend: 1-(1-a)(1-b) — adds glow without flattening the subject
+  vec3 mixed = 1.0 - (1.0 - base) * (1.0 - ghost * 0.85);
+  col = mix(base, mixed, clamp(amt, 0.0, 1.0));
+  col = mix(vec3(lum(col)), col, 1.25);          // restore saturation
+  col = clamp((col - 0.5) * 1.15 + 0.5, 0.0, 1.0); // and contrast
+`},
+
+{ name:"Bulge", emoji:"🐡", p2:"Radius", src:`
+  vec2 c = uv - 0.5;
+  c.x *= res.x/res.y;
+  float r = length(c);
+  float R = mix(0.20, 0.62, p2);
+  float k = 1.0 - amt*0.62*smoothstep(R, 0.0, r)*(1.0 + 0.10*sin(time*1.5));
+  vec2 d = c*k;
+  d.x /= res.x/res.y;
+  // chromatic fringe at the lens edge
+  float fr = 0.006*amt*smoothstep(R*0.35, R, r);
+  vec2 b = d + 0.5;
+  col = vec3(tx(b*(1.0+fr) - fr*0.5).r, tx(b).g, tx(b*(1.0-fr) + fr*0.5).b);
+  col *= 1.0 - 0.30*smoothstep(0.34, 0.75, r);
+`},
+
+{ name:"Pop art", emoji:"🎨", p2:"Palette", src:`
+  vec2 q = fract(uv*2.0);
+  vec2 cell = floor(uv*2.0);
+  vec3 s = tx(q);
+  float g = lum(s);
+  float steps = 4.0;
+  g = floor(g*steps)/(steps-1.0);
+  float id = cell.x + cell.y*2.0 + floor(p2*3.99);
+  vec3 a = hue2rgb(fract(id*0.27 + 0.02));
+  vec3 b = hue2rgb(fract(id*0.27 + 0.47));
+  vec3 pop = mix(a*0.32, b, g);
+  pop = mix(pop, vec3(1.0), smoothstep(0.80, 1.0, g)*0.75);
+  // benday dots
+  vec2 d = uv*res/5.2;
+  float dot = step(length(fract(d)-0.5), 0.30 + g*0.24);
+  pop *= 0.74 + 0.26*dot;
+  pop += sobel(q, px*2.0)*0.5*vec3(0.06);
+  col = mix(tx(uv), pop, clamp(amt,0.,1.));
+`},
+
+{ name:"Neon edge", emoji:"⚡", p2:"Glow", src:`
+  float e = 0.0;
+  for(int i=1;i<=3;i++) e += sobel(uv, px*float(i)*1.3) / float(i);
+  e = clamp(e*mix(0.55, 1.9, amt/1.5), 0.0, 1.6);
+  vec3 s = tx(uv);
+  float h = fract(rgb2hsv(s).x + time*0.055);
+  vec3 neon = hue2rgb(h)*1.55 + 0.22;
+  // bloom: wide low-res edge sample
+  float bl = 0.0;
+  for(int i=0;i<8;i++){
+    float a = float(i)/8.0*PI*2.0;
+    bl += sobel(uv + vec2(cos(a),sin(a))*px*7.0, px*1.6);
+  }
+  bl /= 8.0;
+  col = neon * e + neon * bl * 0.42 * mix(0.3, 1.7, p2);
+  col += vec3(0.015, 0.018, 0.035);
+  col = mix(s*0.22, col, clamp(amt,0.,1.));
+`},
+
+{ name:"VHS 1987", emoji:"📼", p2:"Wear", src:`
+  vec2 g = uv;
+  float wob = sin(uv.y*220.0 + time*7.0)*0.0011 + sin(uv.y*33.0 - time*2.3)*0.0022;
+  g.x += wob*amt*mix(0.5,2.2,p2);
+  // head-switching noise at the bottom
+  float hs = smoothstep(0.055, 0.0, uv.y);
+  g.x += hs*(hash(vec2(floor(uv.y*160.0), floor(time*13.0)))-0.5)*0.10*amt;
+  float sh = 0.0055*amt;
+  col = vec3(tx(g + vec2(sh*1.5, 0)).r, tx(g).g, tx(g - vec2(sh,0.0008)).b);
+  col = mix(col, col*vec3(1.10,0.99,1.06), 0.55);
+  col = mix(vec3(lum(col)), col, 1.32);                       // chroma bleed look
+  col *= 0.88 + 0.12*sin(uv.y*res.y*1.55);                    // scanlines
+  col += (hash(uv*res + time*60.0)-0.5)*0.085*amt*p2;         // tape grain
+  float drop = step(0.9975, hash(vec2(floor(uv.y*90.0), floor(time*8.0))));
+  col += drop*0.55*step(0.5, fract(uv.x*3.0 + time));         // dropout streaks
+  vec2 v = uv-0.5;
+  col *= 1.0 - 0.55*dot(v,v);
+`},
+
+{ name:"Voxel", emoji:"🧊", p2:"Block size", src:`
+  float bs = mix(7.0, 30.0, p2);
+  vec2 cell = floor(uv*res/bs);
+  vec2 org = (cell + 0.5)*bs/res;
+  vec3 s = tx(org);
+  float g = lum(s);
+  vec2 f = fract(uv*res/bs);
+  // fake 3D lift: brighter cells pop toward the viewer
+  float h = g*amt*0.42;
+  vec2 lift = vec2(0.30, -0.30)*h;
+  float face = 1.0;
+  if(f.x > 1.0-abs(lift.x) ) face = 0.72;     // right face
+  if(f.y < abs(lift.y) )     face = 1.28;     // top face
+  float gap = smoothstep(0.0, 0.09, min(min(f.x, f.y), min(1.0-f.x, 1.0-f.y)));
+  col = s*face*mix(0.55, 1.0, gap);
+  col = mix(s, col, clamp(amt,0.,1.));
+`},
+
+{ name:"Mirror kal", emoji:"🦋", p2:"Axis", src:`
+  vec2 c = uv;
+  float mode = floor(p2*3.999);
+  if(mode < 1.0)      { c.x = abs(c.x - 0.5) + 0.5; }                      // right→left
+  else if(mode < 2.0) { c.x = 0.5 - abs(c.x - 0.5); }                      // left→right
+  else if(mode < 3.0) { c.x = 0.5 - abs(c.x-0.5); c.y = 0.5 - abs(c.y-0.5);} // quad
+  else                { c = abs(c - 0.5) + 0.25; }                         // corner tile
+  c.x = mix(uv.x, c.x, clamp(amt,0.,1.));
+  c.y = mix(uv.y, c.y, clamp(amt,0.,1.));
+  col = tx(c);
+  // seam glow
+  float seam = smoothstep(0.006, 0.0, abs(uv.x-0.5));
+  col += seam*0.16*amt*vec3(0.7,0.9,1.0);
+`},
+
+{ name:"Dream", emoji:"🌸", p2:"Bloom", src:`
+  vec3 s = tx(uv);
+  vec3 blur = vec3(0.0);
+  float w = 0.0;
+  for(int i=0;i<12;i++){
+    float a = float(i)/12.0*PI*2.0;
+    float rr = 1.0 + mod(float(i),3.0);
+    vec2 o = vec2(cos(a),sin(a))*px*rr*7.0*mix(0.5,1.8,p2);
+    vec3 t = tx(uv+o);
+    float ww = 0.55 + lum(t);          // weight highlights → glow
+    blur += t*ww; w += ww;
+  }
+  blur /= w;
+  col = 1.0 - (1.0-s)*(1.0-blur*0.85);                 // screen blend
+  col = mix(s, col, clamp(amt,0.,1.));
+  vec3 h = rgb2hsv(col);
+  h.y *= 1.0 + 0.28*amt; h.z = pow(h.z, 0.92);
+  col = hsv2rgb(h);
+  col = mix(col, col*vec3(1.06,0.98,1.05), 0.6);       // rose lift
+  vec2 v = uv-0.5;
+  col += (0.06*amt)*(1.0-dot(v,v)*2.0);
+`},
+
+{ name:"Matrix", emoji:"🟩", p2:"Density", src:`
+  float cs = mix(8.0, 18.0, p2);
+  vec2 cell = floor(uv*res/cs);
+  float colId = cell.x;
+  float speed = 3.0 + hash(vec2(colId, 1.0))*9.0;
+  float rows = res.y/cs;
+  float head = mod(hash(vec2(colId,7.0))*rows + time*speed, rows + 14.0);
+  float d = head - cell.y;
+  float trail = exp(-max(d, 0.0)*0.22) * step(0.0, d);
+  float glyph = step(0.35, hash(vec2(cell.x, floor(cell.y - time*speed))));
+  vec2 f = fract(uv*res/cs);
+  vec2 q = floor(f*4.0);
+  float bits = step(0.5, hash(q + cell + floor(time*speed*0.5)));
+  vec3 s = tx(uv);
+  float g = lum(s);
+  float rain = trail*glyph*bits*(0.35 + g*1.5);
+  vec3 green = vec3(0.15, 1.0, 0.38);
+  col = green*rain;
+  col += vec3(1.0)*step(0.985, trail)*glyph*bits;        // white head
+  col += green*g*g*0.30;                                 // ghost of the subject
+  col = mix(s, col, clamp(amt,0.,1.));
+`},
+
+{ name:"Chrome", emoji:"🪩", p2:"Sharpness", src:`
+  // fake normal from luminance gradient → env-mapped metal
+  float sc = mix(1.0, 4.0, p2);
+  float l  = lum(tx(uv));
+  float lx = lum(tx(uv+vec2(px.x,0)*sc)) - lum(tx(uv-vec2(px.x,0)*sc));
+  float ly = lum(tx(uv+vec2(0,px.y)*sc)) - lum(tx(uv-vec2(0,px.y)*sc));
+  vec3 n = normalize(vec3(-lx*amt*7.0, -ly*amt*7.0, 0.55));
+  vec3 v = normalize(vec3((uv-0.5)*1.4, -1.0));
+  vec3 r = reflect(v, n);
+  // procedural studio environment
+  float band = sin(r.y*7.0 + time*0.4)*0.5+0.5;
+  vec3 env = mix(vec3(0.05,0.07,0.11), vec3(0.85,0.90,1.0), pow(band, 2.0));
+  env += pow(max(r.y,0.0), 8.0)*1.1;                       // top light
+  env += pow(max(-r.y,0.0), 4.0)*vec3(0.35,0.22,0.15);     // floor bounce
+  float spec = pow(max(dot(r, normalize(vec3(0.4,0.8,0.4))), 0.0), 42.0);
+  vec3 metal = env*(0.55+l*0.75) + spec*1.5;
+  metal *= mix(vec3(1.0), vec3(1.0,0.94,0.86), 0.35);
+  col = mix(tx(uv), metal, clamp(amt,0.,1.));
+`},
+
+{ name:"Datamosh", emoji:"🧩", p2:"Block", src:`
+  float bs = mix(14.0, 46.0, p2);
+  vec2 cell = floor(uv*res/bs);
+  float t = floor(time*3.0);
+  float r1 = hash(cell + t*0.11);
+  float r2 = hash(cell.yx + t*0.37);
+  // blocks steal motion vectors from elsewhere
+  vec2 mv = (vec2(r1, r2)-0.5) * step(1.0-0.45*amt, r1) * 0.30 * amt;
+  vec3 s = tx(uv + mv);
+  // occasional DCT-ish smear + channel swap
+  if(r2 > 0.86) s = s.gbr;
+  if(r1 > 0.93) s = 1.0-s;
+  float q = mix(24.0, 5.0, amt/1.5);
+  s = floor(s*q)/q;                                    // quantize like a bad keyframe
+  col = mix(tx(uv), s, clamp(amt,0.,1.));
+  col += (hash(cell*3.1+t)-0.5)*0.06*amt;
+`},
+
+{ name:"X-ray", emoji:"🩻", p2:"Bones", src:`
+  vec3 s = tx(uv);
+  float g = 1.0 - lum(s);
+  g = pow(g, mix(0.7, 2.2, p2));
+  float e = sobel(uv, px*1.2);
+  vec3 xr = vec3(g)*vec3(0.72,0.86,1.0);
+  xr += e*mix(0.4,1.4,p2)*vec3(0.85,0.95,1.0);
+  xr = pow(xr, vec3(0.92));
+  xr *= 0.92 + 0.08*sin(uv.y*res.y*0.7 + time*3.0);
+  col = mix(s, xr, clamp(amt,0.,1.));
+  vec2 v = uv-0.5;
+  col *= 1.0 - 0.5*dot(v,v);
+`},
+
+{ name:"Slit scan", emoji:"🎞️", p2:"Skew", src:`
+  // vertical columns sampled from different phases → taffy-pull warp
+  float k = mix(0.5, 4.0, p2);
+  float ph = sin(uv.x*PI*k + time*1.1);
+  vec2 c = uv;
+  c.y += ph*0.13*amt;
+  c.x += sin(uv.y*PI*k*0.6 - time*0.8)*0.05*amt;
+  col = tx(c);
+  vec3 a = tx(c + vec2(0.0, 0.012*amt));
+  vec3 b = tx(c - vec2(0.0, 0.012*amt));
+  col = vec3(a.r, col.g, b.b);
+  col *= 0.95 + 0.05*sin(uv.x*PI*k*2.0 + time);
+`},
+];
+
+/* ---------------------------------------------------------------- GL engine */
+const video = document.createElement("video");
+video.autoplay = true; video.playsInline = true; video.muted = true;
+
+let gl, progs = [], cur = 0, mirrored = true, stream = null, tex = null;
+let startT = performance.now();
+
+function compile(src, type){
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)){
+    const log = gl.getShaderInfoLog(s);
+    gl.deleteShader(s);
+    throw new Error(log + "\n" + src.split("\n").map((l,i)=>(i+1)+": "+l).join("\n"));
+  }
+  return s;
+}
+
+function buildProgram(body){
+  const fs = PRELUDE + FOOT.replace("BODY", body);
+  const p = gl.createProgram();
+  gl.attachShader(p, compile(VERT, gl.VERTEX_SHADER));
+  gl.attachShader(p, compile(fs, gl.FRAGMENT_SHADER));
+  gl.bindAttribLocation(p, 0, "p");
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return {
+    p,
+    u:{
+      tex: gl.getUniformLocation(p, "tex"),
+      res: gl.getUniformLocation(p, "res"),
+      time:gl.getUniformLocation(p, "time"),
+      amt: gl.getUniformLocation(p, "amt"),
+      p2:  gl.getUniformLocation(p, "p2"),
+    }
+  };
+}
+
+function initGL(){
+  gl = el.cv.getContext("webgl2", {
+    antialias:false, preserveDrawingBuffer:true, alpha:false, premultipliedAlpha:false
+  });
+  if(!gl) return false;
+
+  const vao = gl.createVertexArray();
+  gl.bindVertexArray(vao);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+
+  // Compile every effect up front so switching is instant.
+  FX.forEach((f, i) => {
+    try { progs[i] = buildProgram(f.src); }
+    catch(e){ console.error("Shader failed:", f.name, e.message); progs[i] = null; }
+  });
+  if(!progs[0]) return false;
+  return true;
+}
+
+/* ------------------------------------------------------------------- render */
+let frames = 0, lastFps = performance.now(), lastVideoTime = -1;
+
+function draw(){
+  requestAnimationFrame(draw);
+  if(!stream || video.readyState < 2) return;
+
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if(!vw || !vh) return;
+
+  if(el.cv.width !== vw || el.cv.height !== vh){
+    el.cv.width = vw; el.cv.height = vh;
+    fitCanvas();
+  }
+
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  // Flip Y here so uv (0,0) is top-left, and mirror via texture scale in JS-free way.
+  if(video.currentTime !== lastVideoTime){
+    lastVideoTime = video.currentTime;
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, video);
+  }
+
+  const pr = progs[cur] || progs[0];
+  gl.useProgram(pr.p);
+  gl.viewport(0, 0, vw, vh);
+  gl.uniform1i(pr.u.tex, 0);
+  gl.uniform2f(pr.u.res, vw, vh);
+  gl.uniform1f(pr.u.time, (performance.now() - startT)/1000);
+  gl.uniform1f(pr.u.amt, el.amt.value/100);
+  gl.uniform1f(pr.u.p2, el.p2.value/100);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  frames++;
+  const now = performance.now();
+  if(now - lastFps > 500){
+    el.fps.innerHTML = "<b>" + Math.round(frames*1000/(now-lastFps)) + "</b> FPS · " + vw + "×" + vh;
+    frames = 0; lastFps = now;
+  }
+}
+
+/* Mirroring is a CSS transform on the canvas for preview, and is baked in at
+   capture time — keeps the shader space canonical. */
+function applyMirror(){
+  el.cv.style.transform = mirrored ? "scaleX(-1)" : "none";
+  el.mirror.style.color = mirrored ? "var(--accent)" : "";
+}
+
+function fitCanvas(){
+  // Let CSS object-fit-like sizing happen via max-width/height; nothing needed,
+  // but keep the aspect ratio attribute in sync for layout stability.
+  el.cv.style.aspectRatio = el.cv.width + " / " + el.cv.height;
+}
+
+/* -------------------------------------------------------------------- camera */
+async function startCamera(){
+  el.ovBtn.disabled = true;
+  el.ovBtn.textContent = "Requesting access…";
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ width:{ideal:1280}, height:{ideal:720}, facingMode:"user" },
+      audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    el.ov.classList.add("gone");
+    el.cv.classList.remove("hide");
+    el.dot.classList.add("live");
+    el.sub.textContent = "— live";
+    el.snap.disabled = false;
+    el.fxlabel.style.display = "flex";
+    toast("Camera live — try " + FX[1].name + " ✨");
+  }catch(err){
+    const denied = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+    el.ovGlyph.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>';
+    el.ovTitle.textContent = denied ? "Camera blocked" : "Camera unavailable";
+    el.ovText.innerHTML = denied
+      ? "Allow camera access in your browser's address-bar permissions, then press retry."
+      : "No camera could be started. <code>" + (err && err.name ? err.name : "Error") + "</code>";
+    el.ovBtn.disabled = false;
+    el.ovBtn.textContent = "Retry";
+  }
+}
+
+/* -------------------------------------------------------------------- effects */
+function buildGrid(){
+  FX.forEach((f, i) => {
+    const b = document.createElement("button");
+    b.className = "fx" + (i === 0 ? " on" : "");
+    b.innerHTML = '<span class="emoji">' + f.emoji + '</span>' +
+                  '<span class="nm">' + f.name + '</span>' +
+                  (i < 9 ? '<kbd>' + (i+1) + '</kbd>' : '');
+    b.title = f.name + " — " + f.p2;
+    b.onclick = () => setFx(i);
+    el.grid.appendChild(b);
+  });
+}
+
+function setFx(i, quiet){
+  cur = ((i % FX.length) + FX.length) % FX.length;
+  [...el.grid.children].forEach((c, n) => c.classList.toggle("on", n === cur));
+  const f = FX[cur];
+  el.lblP2.textContent = f.p2;
+  el.fxlabel.querySelector("span").textContent = f.name;
+  el.fxIdx.textContent = String(cur+1).padStart(2,"0") + " / " + String(FX.length).padStart(2,"0");
+  el.grid.children[cur].scrollIntoView({block:"nearest"});
+  if(!progs[cur]) toast("⚠ " + f.name + " failed to compile");
+  else if(!quiet) toast(f.emoji + "  " + f.name);
+}
+
+/* ------------------------------------------------------------------ snapshots */
+const shots = [];
+
+function stamp(){
+  const d = new Date(), p = n => String(n).padStart(2,"0");
+  return d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + "-" +
+         p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+
+function snapshot(){
+  if(!stream || !el.cv.width) return;
+  const c = document.createElement("canvas");
+  c.width = el.cv.width; c.height = el.cv.height;
+  const x = c.getContext("2d");
+  if(mirrored){ x.translate(c.width, 0); x.scale(-1, 1); }
+  x.drawImage(el.cv, 0, 0);
+
+  const name = "playground-" + FX[cur].name.toLowerCase().replace(/[^a-z0-9]+/g,"-") +
+               "-" + stamp() + ".png";
+  const url = c.toDataURL("image/png");
+
+  shots.unshift({url, name, fx:FX[cur].name});
+  renderShots();
+  el.flash.classList.remove("go");
+  void el.flash.offsetWidth;
+  el.flash.classList.add("go");
+  toast("📸  Snapshot saved to gallery");
+}
+
+function renderShots(){
+  el.shots.innerHTML = "";
+  el.shotCount.textContent = shots.length;
+  el.dlAll.disabled = el.clr.disabled = shots.length === 0;
+  if(!shots.length){
+    el.shots.innerHTML = '<div class="empty">Snapshots appear here</div>';
+    return;
+  }
+  shots.forEach((s, i) => {
+    const d = document.createElement("div");
+    d.className = "shot";
+    d.innerHTML =
+      '<img src="' + s.url + '" alt="' + s.fx + ' snapshot">' +
+      '<div class="tag">' + s.fx + '</div>' +
+      '<div class="acts">' +
+        '<button class="dl" title="Save PNG"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg></button>' +
+        '<button class="del" title="Delete"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>' +
+      '</div>';
+    // Click anywhere on the tile expands; the two action buttons opt out.
+    d.onclick = () => openLb(i);
+    d.querySelector(".dl").onclick = e => { e.stopPropagation(); download(s); };
+    d.querySelector(".del").onclick = e => { e.stopPropagation(); shots.splice(i,1); renderShots(); };
+    el.shots.appendChild(d);
+  });
+}
+
+function download(s){
+  const a = document.createElement("a");
+  a.href = s.url; a.download = s.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("💾  " + s.name);
+}
+
+async function downloadAll(){
+  for(const s of shots){
+    download(s);
+    await new Promise(r => setTimeout(r, 320));   // browsers throttle rapid downloads
+  }
+}
+
+/* -------------------------------------------------------------------- lightbox */
+let lbIdx = 0;
+function openLb(i){
+  lbIdx = i;
+  el.lbImg.src = shots[i].url;
+  el.lb.classList.add("show");
+}
+function closeLb(){ el.lb.classList.remove("show"); }
+
+/* ----------------------------------------------------------------------- misc */
+let toastT;
+function toast(msg){
+  el.toast.textContent = msg;
+  el.toast.classList.add("show");
+  clearTimeout(toastT);
+  toastT = setTimeout(() => el.toast.classList.remove("show"), 1700);
+}
+
+/* ------------------------------------------------------------------ listeners */
+el.ovBtn.onclick = startCamera;
+el.snap.onclick = snapshot;
+el.rand.onclick = () => { let n; do { n = 1 + Math.floor(Math.random()*(FX.length-1)); } while(n===cur && FX.length>2); setFx(n); el.p2.value = Math.floor(Math.random()*100); syncP2(); };
+el.mirror.onclick = () => { mirrored = !mirrored; applyMirror(); toast(mirrored ? "Mirrored" : "Un-mirrored"); };
+el.dlAll.onclick = downloadAll;
+el.clr.onclick = () => { shots.length = 0; renderShots(); toast("Gallery cleared"); };
+el.lbClose.onclick = closeLb;
+el.lbDl.onclick = () => download(shots[lbIdx]);
+el.lb.onclick = e => { if(e.target === el.lb) closeLb(); };
+
+function syncAmt(){ el.vAmt.textContent = el.amt.value + "%"; }
+function syncP2(){ el.vP2.textContent = el.p2.value + "%"; }
+el.amt.oninput = syncAmt;
+el.p2.oninput = syncP2;
+
+addEventListener("keydown", e => {
+  if(e.target.tagName === "INPUT" && e.key !== "Escape") return;
+  const k = e.key;
+  if(k === " "){ e.preventDefault(); snapshot(); }
+  else if(k === "ArrowRight"){ e.preventDefault(); setFx(cur+1); }
+  else if(k === "ArrowLeft"){ e.preventDefault(); setFx(cur-1); }
+  else if(k === "r" || k === "R") el.rand.click();
+  else if(k === "m" || k === "M") el.mirror.click();
+  else if(k === "Escape") closeLb();
+  else if(k >= "1" && k <= "9"){ const n = +k - 1; if(n < FX.length) setFx(n); }
+});
+
+/* ---------------------------------------------------------------------- boot */
+buildGrid();
+setFx(0, true);
+syncAmt(); syncP2();
+applyMirror();
+
+if(!initGL()){
+  el.ovGlyph.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>';
+  el.ovTitle.textContent = "WebGL2 not supported";
+  el.ovText.textContent = "This playground renders every filter as a GPU shader. Try a current version of Chrome, Edge, Firefox or Safari.";
+  el.ovBtn.style.display = "none";
+}else{
+  const bad = progs.filter(p => !p).length;
+  if(bad) console.warn(bad + " effect(s) failed to compile");
+  draw();
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    el.ovTitle.textContent = "Camera API unavailable";
+    el.ovText.innerHTML = "This page needs <code>https://</code> or <code>localhost</code> to access a camera.";
+    el.ovBtn.style.display = "none";
+  }
+}
+addEventListener("resize", fitCanvas);
+</script>
+</body>
+</html>

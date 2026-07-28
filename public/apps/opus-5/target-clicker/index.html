@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Target Clicker — 20 Second Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg1:#f4f7fb;
+    --bg2:#e8eefc;
+    --ink:#15213a;
+    --ink-soft:#5b6b8c;
+    --line:rgba(21,33,58,.10);
+    --card:rgba(255,255,255,.72);
+    --accent:#5b6cff;
+    --good:#12b886;
+    --bad:#ff5b7f;
+    --gold:#ffb020;
+    --shadow-lg:0 24px 60px -20px rgba(23,38,73,.35), 0 4px 12px rgba(23,38,73,.06);
+    --r:22px;
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Outfit',system-ui,-apple-system,"Segoe UI",sans-serif;
+    color:var(--ink);
+    background:var(--bg1);
+    overflow:hidden;
+    overscroll-behavior:none;
+    user-select:none;
+    touch-action:manipulation;
+  }
+
+  /* ---------- Backdrop ---------- */
+  #bg{position:fixed; inset:0; z-index:0; overflow:hidden;
+    background:
+      radial-gradient(1100px 700px at 12% -10%, #ffffff 0%, rgba(255,255,255,0) 60%),
+      radial-gradient(900px 640px at 88% 8%,  rgba(150,175,255,.30) 0%, rgba(150,175,255,0) 62%),
+      radial-gradient(900px 700px at 76% 104%, rgba(255,170,205,.28) 0%, rgba(255,170,205,0) 60%),
+      radial-gradient(760px 620px at 6% 92%,  rgba(140,235,215,.30) 0%, rgba(140,235,215,0) 62%),
+      linear-gradient(170deg,var(--bg1),var(--bg2));
+  }
+  #bg::after{
+    content:''; position:absolute; inset:-2px;
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:64px 64px;
+    mask-image:radial-gradient(ellipse 80% 70% at 50% 45%, #000 30%, transparent 78%);
+    -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 45%, #000 30%, transparent 78%);
+    opacity:.75;
+  }
+  .blob{position:absolute; border-radius:50%; filter:blur(60px); opacity:.5; mix-blend-mode:multiply; animation:drift linear infinite;}
+  .b1{width:42vmin;height:42vmin;left:-8vmin;top:8vmin;  background:#a9c1ff; animation-duration:26s;}
+  .b2{width:36vmin;height:36vmin;right:-6vmin;top:44vmin; background:#ffc0d8; animation-duration:31s; animation-direction:reverse;}
+  .b3{width:30vmin;height:30vmin;left:38vmin;bottom:-8vmin; background:#a8f0dd; animation-duration:35s;}
+  @keyframes drift{
+    0%{transform:translate3d(0,0,0) scale(1)}
+    33%{transform:translate3d(7vmin,4vmin,0) scale(1.09)}
+    66%{transform:translate3d(-5vmin,7vmin,0) scale(.95)}
+    100%{transform:translate3d(0,0,0) scale(1)}
+  }
+
+  /* ---------- Layout ---------- */
+  #stage{position:fixed; inset:0; z-index:2;}
+  #arena{position:absolute; inset:0; cursor:crosshair;}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed; z-index:6; left:50%; top:18px; transform:translateX(-50%);
+    display:flex; align-items:stretch; gap:10px;
+    padding:10px; border-radius:var(--r);
+    background:var(--card);
+    backdrop-filter:blur(18px) saturate(160%);
+    -webkit-backdrop-filter:blur(18px) saturate(160%);
+    border:1px solid rgba(255,255,255,.85);
+    box-shadow:var(--shadow-lg);
+    opacity:0; pointer-events:none;
+    transition:opacity .45s ease, transform .45s cubic-bezier(.2,.9,.25,1);
+  }
+  #hud.on{opacity:1; transform:translateX(-50%) translateY(0);}
+  #hud.off{transform:translateX(-50%) translateY(-14px);}
+
+  .stat{
+    min-width:88px; padding:8px 14px 9px; border-radius:15px;
+    background:rgba(255,255,255,.55);
+    display:flex; flex-direction:column; align-items:center; gap:1px;
+    border:1px solid rgba(21,33,58,.05);
+  }
+  .stat .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); font-weight:700;}
+  .stat .v{font-family:'JetBrains Mono',monospace; font-size:23px; font-weight:700; line-height:1.12; font-variant-numeric:tabular-nums;}
+  .stat.combo .v{color:var(--gold);}
+  #vScore{transition:transform .12s ease;}
+  .bump{transform:scale(1.28);}
+
+  /* Timer ring */
+  .timer{position:relative; min-width:104px; display:flex; align-items:center; justify-content:center; gap:11px;
+    padding:8px 16px 9px; border-radius:15px; background:rgba(255,255,255,.55); border:1px solid rgba(21,33,58,.05);}
+  .ring{width:38px;height:38px; transform:rotate(-90deg); flex:0 0 auto;}
+  .ring circle{fill:none; stroke-width:5; stroke-linecap:round;}
+  .ring .trk{stroke:rgba(21,33,58,.10);}
+  .ring .val{stroke:url(#tg); transition:stroke-dashoffset .1s linear;}
+  .timer .tw{display:flex;flex-direction:column;align-items:flex-start;gap:1px;}
+  .timer .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); font-weight:700;}
+  .timer .v{font-family:'JetBrains Mono',monospace; font-size:23px; font-weight:700; line-height:1.12; font-variant-numeric:tabular-nums;}
+  #hud.urgent .timer{animation:pulseRed .55s ease-in-out infinite;}
+  #hud.urgent .timer .v{color:var(--bad);}
+  @keyframes pulseRed{
+    0%,100%{box-shadow:0 0 0 0 rgba(255,91,127,0); background:rgba(255,255,255,.55);}
+    50%{box-shadow:0 0 0 6px rgba(255,91,127,.13); background:rgba(255,238,242,.85);}
+  }
+
+  /* ---------- Targets ---------- */
+  .t{
+    position:absolute; border-radius:50%; z-index:4;
+    display:grid; place-items:center;
+    will-change:transform,opacity;
+    animation:pop .26s cubic-bezier(.16,1.24,.3,1) both;
+    cursor:pointer;
+    -webkit-user-select:none;
+  }
+  @keyframes pop{from{transform:scale(.1) rotate(-32deg); opacity:0}to{transform:scale(1) rotate(0); opacity:1}}
+  .t.die{animation:fade .2s ease forwards;}
+  @keyframes fade{to{transform:scale(.55) rotate(14deg); opacity:0; filter:blur(2px)}}
+
+  .t .body{
+    position:absolute; inset:0; border-radius:50%;
+    box-shadow:0 12px 26px -8px var(--sh), inset 0 -5px 12px rgba(0,0,0,.14), inset 0 4px 10px rgba(255,255,255,.6);
+    background:radial-gradient(circle at 32% 26%, rgba(255,255,255,.92) 0%, rgba(255,255,255,.16) 34%, transparent 55%), var(--g);
+    animation:bob 1.5s ease-in-out infinite;
+  }
+  @keyframes bob{0%,100%{transform:scale(1)}50%{transform:scale(.955)}}
+
+  /* rotating rings inside target */
+  .t .ring1,.t .ring2{position:absolute; border-radius:50%; border:2.5px dashed rgba(255,255,255,.62);}
+  .t .ring1{inset:15%; animation:spin 3.4s linear infinite;}
+  .t .ring2{inset:31%; border-style:solid; border-width:2px; border-color:rgba(255,255,255,.42); animation:spin 2.2s linear infinite reverse;}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .t .dot{position:absolute; inset:41%; border-radius:50%; background:rgba(255,255,255,.95); box-shadow:0 0 12px rgba(255,255,255,.8);}
+
+  /* expiry sweep — conic countdown behind the body */
+  .t .fuse{
+    position:absolute; inset:-7px; border-radius:50%;
+    background:conic-gradient(var(--c1) calc(var(--p) * 1turn), rgba(21,33,58,.09) 0);
+    mask:radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
+    -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 4.5px), #000 calc(100% - 4px));
+  }
+  .t.golden .body{animation:bob 1.5s ease-in-out infinite, glow 1s ease-in-out infinite;}
+  @keyframes glow{0%,100%{filter:brightness(1)}50%{filter:brightness(1.22)}}
+  .t.golden::after{
+    content:'★'; position:absolute; font-size:.9em; color:#fff; z-index:3;
+    text-shadow:0 1px 4px rgba(140,80,0,.6); pointer-events:none;
+  }
+  .t.golden .dot{display:none;}
+  .t.bomb .body{background:radial-gradient(circle at 34% 28%, rgba(255,255,255,.55) 0%, rgba(255,255,255,.05) 30%, transparent 52%), linear-gradient(160deg,#3b4256,#12151f);}
+  .t.bomb::after{content:'✕'; position:absolute; font-size:1.05em; font-weight:900; color:#ff8fa6; z-index:3; pointer-events:none;}
+  .t.bomb .ring1,.t.bomb .ring2{border-color:rgba(255,143,166,.5);}
+  .t.bomb .dot{display:none;}
+
+  /* ---------- FX ---------- */
+  .fx{position:absolute; z-index:5; pointer-events:none;}
+  .float{
+    font-family:'JetBrains Mono',monospace; font-weight:700; font-size:19px;
+    transform:translate(-50%,-50%); white-space:nowrap;
+    animation:rise .78s cubic-bezier(.2,.8,.2,1) forwards;
+    text-shadow:0 2px 8px rgba(255,255,255,.9), 0 1px 0 #fff;
+  }
+  @keyframes rise{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(.6)}
+    18%{opacity:1; transform:translate(-50%,-118%) scale(1.14)}
+    100%{opacity:0; transform:translate(-50%,-280%) scale(.94)}
+  }
+  .ripple{
+    border-radius:50%; transform:translate(-50%,-50%);
+    border:2.5px solid var(--rc); animation:rip .55s cubic-bezier(.2,.8,.2,1) forwards;
+  }
+  @keyframes rip{from{width:12px;height:12px;opacity:.95}to{width:170px;height:170px;opacity:0}}
+  .spark{
+    width:8px;height:8px;border-radius:50%; transform:translate(-50%,-50%);
+    background:var(--sc); animation:fly .62s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+  @keyframes fly{
+    0%{opacity:1; transform:translate(-50%,-50%) translate(0,0) scale(1)}
+    100%{opacity:0; transform:translate(-50%,-50%) translate(var(--dx),var(--dy)) scale(.15)}
+  }
+  #missmark{position:absolute; z-index:5; pointer-events:none; transform:translate(-50%,-50%);
+    width:26px;height:26px; opacity:0;}
+  .missx{position:absolute; z-index:5; pointer-events:none; transform:translate(-50%,-50%) rotate(45deg);
+    width:22px;height:22px; animation:mx .4s ease-out forwards;}
+  .missx i{position:absolute; background:rgba(255,91,127,.85); border-radius:2px;}
+  .missx i:first-child{left:9px;top:0;width:4px;height:100%;}
+  .missx i:last-child{top:9px;left:0;height:4px;width:100%;}
+  @keyframes mx{0%{opacity:.95;transform:translate(-50%,-50%) rotate(45deg) scale(.5)}100%{opacity:0;transform:translate(-50%,-50%) rotate(45deg) scale(1.5)}}
+
+  /* ---------- Overlay ---------- */
+  #ov{
+    position:fixed; inset:0; z-index:20; display:grid; place-items:center;
+    padding:22px;
+    background:radial-gradient(900px 640px at 50% 30%, rgba(255,255,255,.62), rgba(232,238,252,.86));
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px);
+    transition:opacity .38s ease, visibility .38s;
+  }
+  #ov.hide{opacity:0; visibility:hidden; pointer-events:none;}
+  .panel{
+    width:min(560px,100%); padding:34px 34px 30px; border-radius:30px; text-align:center;
+    background:linear-gradient(180deg, rgba(255,255,255,.94), rgba(255,255,255,.8));
+    border:1px solid #fff;
+    box-shadow:var(--shadow-lg);
+    animation:panelIn .5s cubic-bezier(.2,.9,.25,1) both;
+    max-height:calc(100vh - 44px); overflow:auto;
+  }
+  @keyframes panelIn{from{opacity:0; transform:translateY(18px) scale(.97)}to{opacity:1; transform:none}}
+
+  .badge{
+    display:inline-flex; align-items:center; gap:7px; font-size:10.5px; font-weight:700;
+    letter-spacing:.18em; text-transform:uppercase; color:var(--accent);
+    background:rgba(91,108,255,.10); border:1px solid rgba(91,108,255,.2);
+    padding:6px 13px; border-radius:99px; margin-bottom:16px;
+  }
+  .badge .d{width:6px;height:6px;border-radius:50%;background:var(--accent); animation:blink 1.5s infinite;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+
+  h1{
+    margin:0 0 10px; font-size:clamp(38px,8.6vw,60px); line-height:.96; font-weight:900; letter-spacing:-.035em;
+    background:linear-gradient(100deg,#2b3f7a 0%,#5b6cff 42%,#ff6f9c 78%,#ffb020 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .sub{margin:0 auto 22px; max-width:400px; color:var(--ink-soft); font-size:15.5px; line-height:1.55; font-weight:400;}
+  .sub b{color:var(--ink); font-weight:600;}
+
+  .rules{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:0 0 24px;}
+  .rule{padding:13px 8px 12px; border-radius:16px; background:rgba(21,33,58,.035); border:1px solid rgba(21,33,58,.05);}
+  .rule .ic{width:26px;height:26px;border-radius:50%; margin:0 auto 7px; display:grid;place-items:center; font-size:13px; font-weight:900; color:#fff;}
+  .rule .t2{font-size:11.5px; font-weight:700; letter-spacing:.02em;}
+  .rule .s2{font-size:10.5px; color:var(--ink-soft); margin-top:1px; line-height:1.35;}
+
+  .btn{
+    appearance:none; border:0; cursor:pointer; font-family:inherit;
+    font-size:16.5px; font-weight:700; letter-spacing:.01em; color:#fff;
+    padding:16px 40px; border-radius:99px;
+    background:linear-gradient(120deg,#4d5dff,#7b5cff 46%,#ff5f95);
+    box-shadow:0 14px 30px -10px rgba(91,108,255,.75), inset 0 1px 0 rgba(255,255,255,.4);
+    transition:transform .16s cubic-bezier(.2,.9,.25,1), box-shadow .16s ease, filter .16s;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.02); box-shadow:0 20px 38px -10px rgba(91,108,255,.8); filter:saturate(1.1);}
+  .btn:active{transform:translateY(0) scale(.98);}
+  .btn.ghost{background:rgba(21,33,58,.06); color:var(--ink); box-shadow:none; padding:15px 26px; font-size:14.5px;}
+  .btn.ghost:hover{background:rgba(21,33,58,.11); box-shadow:none;}
+  .kbd{margin-top:15px; font-size:12px; color:var(--ink-soft);}
+  .kbd span{font-family:'JetBrains Mono',monospace; background:rgba(21,33,58,.07); padding:2.5px 7px; border-radius:6px; font-size:11px;}
+
+  /* results */
+  .grade{
+    font-size:clamp(64px,15vw,104px); font-weight:900; line-height:.86; letter-spacing:-.05em; margin:2px 0 2px;
+    background:linear-gradient(120deg,#5b6cff,#ff6f9c 60%,#ffb020);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:gradeIn .6s cubic-bezier(.2,1.5,.4,1) both;
+  }
+  @keyframes gradeIn{from{opacity:0;transform:scale(.6) rotate(-6deg)}to{opacity:1;transform:none}}
+  .gtag{font-size:13px; font-weight:700; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-soft); margin-bottom:22px;}
+
+  .grid{display:grid; grid-template-columns:repeat(2,1fr); gap:11px; margin-bottom:12px;}
+  .cell{
+    padding:16px 12px 14px; border-radius:18px; text-align:left;
+    background:rgba(255,255,255,.7); border:1px solid rgba(21,33,58,.06);
+    box-shadow:0 8px 20px -14px rgba(23,38,73,.4);
+  }
+  .cell .k{font-size:9.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-soft); font-weight:700;}
+  .cell .v{font-family:'JetBrains Mono',monospace; font-size:30px; font-weight:700; letter-spacing:-.02em; line-height:1.15; font-variant-numeric:tabular-nums;}
+  .cell.big{grid-column:span 2;}
+  .cell.big .v{font-size:44px;}
+  .cell .m{font-size:11.5px; color:var(--ink-soft); margin-top:2px;}
+
+  .mini{display:grid; grid-template-columns:repeat(3,1fr); gap:11px; margin-bottom:22px;}
+  .mini .cell .v{font-size:22px;}
+
+  .bar{height:7px; border-radius:99px; background:rgba(21,33,58,.09); overflow:hidden; margin-top:9px;}
+  .bar i{display:block; height:100%; border-radius:99px; width:0; background:linear-gradient(90deg,var(--accent),#ff6f9c); transition:width 1s cubic-bezier(.2,.8,.2,1);}
+
+  .best{font-size:12px; color:var(--ink-soft); margin-top:2px;}
+  .best b{color:var(--gold);}
+  .row{display:flex; gap:10px; justify-content:center; align-items:center; flex-wrap:wrap;}
+
+  #cdWrap{position:fixed; inset:0; z-index:15; display:grid; place-items:center; pointer-events:none;}
+  #cd{
+    font-size:clamp(110px,26vw,210px); font-weight:900; letter-spacing:-.06em; line-height:1;
+    background:linear-gradient(120deg,#5b6cff,#ff6f9c);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 12px 30px rgba(91,108,255,.3));
+  }
+  .cdA{animation:cdPop .82s cubic-bezier(.2,.9,.3,1) both;}
+  @keyframes cdPop{
+    0%{opacity:0; transform:scale(2.1)} 22%{opacity:1; transform:scale(1)}
+    70%{opacity:1; transform:scale(1)} 100%{opacity:0; transform:scale(.72)}
+  }
+
+  #flash{position:fixed; inset:0; z-index:14; pointer-events:none; opacity:0; background:rgba(255,91,127,.3);}
+  .flashA{animation:fl .3s ease-out;}
+  @keyframes fl{0%{opacity:.85}100%{opacity:0}}
+
+  #comboBar{
+    position:fixed; z-index:6; left:50%; transform:translateX(-50%);
+    top:104px; width:min(320px,72vw); height:5px; border-radius:99px;
+    background:rgba(21,33,58,.08); overflow:hidden; opacity:0; transition:opacity .25s;
+  }
+  #comboBar.on{opacity:1;}
+  #comboBar i{display:block;height:100%;width:100%;border-radius:99px;
+    background:linear-gradient(90deg,var(--gold),#ff6f9c); transform-origin:left; transform:scaleX(1);}
+
+  .hint{position:fixed; z-index:6; bottom:20px; left:50%; transform:translateX(-50%);
+    font-size:11.5px; color:var(--ink-soft); letter-spacing:.06em; opacity:0; transition:opacity .4s;}
+  .hint.on{opacity:.75;}
+
+  @media (max-width:520px){
+    #hud{top:10px; gap:7px; padding:8px;}
+    .stat{min-width:66px; padding:7px 9px 8px;}
+    .stat .v{font-size:19px;}
+    .timer{min-width:auto; padding:7px 11px 8px; gap:8px;}
+    .timer .v{font-size:19px;}
+    .ring{width:32px;height:32px;}
+    .stat.acc{display:none;}
+    .panel{padding:26px 20px 24px; border-radius:24px;}
+    .rules{gap:7px;}
+    #comboBar{top:78px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .blob,.t .body,.t .ring1,.t .ring2,.badge .d{animation:none !important;}
+  }
+</style>
+</head>
+<body>
+
+<div id="bg"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5b6cff"/><stop offset="60%" stop-color="#a05cff"/><stop offset="100%" stop-color="#ff6f9c"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div id="stage"><div id="arena"></div></div>
+
+<div id="hud" class="off">
+  <div class="stat"><div class="k">Score</div><div class="v" id="vScore">0</div></div>
+  <div class="stat combo"><div class="k">Combo</div><div class="v" id="vCombo">×1</div></div>
+  <div class="stat acc"><div class="k">Accuracy</div><div class="v" id="vAcc">—</div></div>
+  <div class="timer">
+    <svg class="ring" viewBox="0 0 44 44"><circle class="trk" cx="22" cy="22" r="17"/><circle class="val" id="ringVal" cx="22" cy="22" r="17" stroke-dasharray="106.8" stroke-dashoffset="0"/></svg>
+    <div class="tw"><div class="k">Time</div><div class="v" id="vTime">20.0</div></div>
+  </div>
+</div>
+
+<div id="comboBar"><i id="comboFill"></i></div>
+<div class="hint" id="hint">Miss a shot and your combo resets · avoid the ✕ bombs</div>
+
+<div id="cdWrap"><div id="cd"></div></div>
+<div id="flash"></div>
+
+<div id="ov">
+  <div class="panel" id="panel">
+    <div class="badge"><span class="d"></span>20 Second Challenge</div>
+    <h1>Target&nbsp;Clicker</h1>
+    <p class="sub">Targets flash across the screen for a heartbeat. <b>Hit them before they vanish.</b> Chain hits to build a multiplier — miss, and it's gone.</p>
+    <div class="rules">
+      <div class="rule">
+        <div class="ic" style="background:linear-gradient(135deg,#5b6cff,#8f5cff)">＋</div>
+        <div class="t2">Smaller = More</div><div class="s2">Tiny, fast targets pay best</div>
+      </div>
+      <div class="rule">
+        <div class="ic" style="background:linear-gradient(135deg,#ffb020,#ff7a45)">★</div>
+        <div class="t2">Golden</div><div class="s2">Rare, 5× value, blink-fast</div>
+      </div>
+      <div class="rule">
+        <div class="ic" style="background:linear-gradient(135deg,#3b4256,#12151f)">✕</div>
+        <div class="t2">Bombs</div><div class="s2">−80 and combo wiped</div>
+      </div>
+    </div>
+    <button class="btn" id="startBtn">Start Challenge</button>
+    <div class="kbd">Press <span>Space</span> to start · <span>R</span> to replay</div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+const DUR = 20;                 // seconds
+const MAX_MULT = 8;             // combo multiplier ceiling — keeps scores on a readable scale
+const multFor = c => Math.min(MAX_MULT, 1 + Math.floor(c/3));
+const arena = document.getElementById('arena');
+const hud = document.getElementById('hud');
+const ov  = document.getElementById('ov');
+const panel = document.getElementById('panel');
+const vScore = document.getElementById('vScore');
+const vCombo = document.getElementById('vCombo');
+const vAcc   = document.getElementById('vAcc');
+const vTime  = document.getElementById('vTime');
+const ringVal= document.getElementById('ringVal');
+const cd     = document.getElementById('cd');
+const flash  = document.getElementById('flash');
+const comboBar = document.getElementById('comboBar');
+const comboFill= document.getElementById('comboFill');
+const hint = document.getElementById('hint');
+const RING_LEN = 2 * Math.PI * 17;
+
+const PALETTE = [
+  ['#5b6cff','#9d6bff','rgba(91,108,255,.55)'],
+  ['#00c2ff','#0e8bff','rgba(0,150,255,.5)'],
+  ['#12d39a','#0aa87c','rgba(18,200,150,.5)'],
+  ['#ff6f9c','#ff4d7e','rgba(255,90,130,.5)'],
+  ['#ff9f43','#ff6b35','rgba(255,120,60,.5)'],
+  ['#c56bff','#8b3dff','rgba(160,80,255,.5)'],
+  ['#ffd93d','#ffb020','rgba(255,180,40,.5)'],
+  ['#2ee6c8','#12b0d6','rgba(30,200,215,.5)']
+];
+const GOLD = ['#ffe066','#ff9f1a','rgba(255,170,30,.75)'];
+
+let state = 'idle';            // idle | count | play | over
+let score=0, hits=0, shots=0, combo=0, best=0, maxCombo=0, golden=0, bombs=0;
+let timeLeft=DUR, lastT=0, spawnAcc=0, nextGap=0, rafId=0;
+let live = new Set();
+let bestScore = 0;
+try { bestScore = parseInt(localStorage.getItem('tc_best_v2')||'0',10) || 0; } catch(e){}
+
+/* ---------- audio (tiny WebAudio blips, no assets) ---------- */
+let ac=null;
+function actx(){ if(!ac){ try{ ac = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ ac=false; } } return ac; }
+function blip(freq, dur, type, vol, slideTo){
+  const c = actx(); if(!c) return;
+  if(c.state==='suspended') c.resume();
+  const t = c.currentTime;
+  const o = c.createOscillator(), g = c.createGain();
+  o.type = type||'sine'; o.frequency.setValueAtTime(freq,t);
+  if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t+dur);
+  g.gain.setValueAtTime(0,t);
+  g.gain.linearRampToValueAtTime(vol==null?.16:vol, t+.008);
+  g.gain.exponentialRampToValueAtTime(.0001, t+dur);
+  o.connect(g); g.connect(c.destination); o.start(t); o.stop(t+dur+.02);
+}
+const sHit  = n => blip(430 + Math.min(n,12)*62, .13, 'triangle', .17, 900 + Math.min(n,12)*70);
+const sGold = () => { blip(880,.16,'square',.11,1500); setTimeout(()=>blip(1320,.2,'triangle',.12,1900),70); };
+const sMiss = () => blip(190,.11,'sawtooth',.07,110);
+const sBomb = () => blip(150,.34,'sawtooth',.2,44);
+const sEnd  = () => { [523,659,784,1046].forEach((f,i)=>setTimeout(()=>blip(f,.3,'triangle',.13),i*95)); };
+const sTick = p => blip(p?900:620,.1,'triangle',.13);
+
+/* ---------- helpers ---------- */
+const rnd = (a,b) => a + Math.random()*(b-a);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+
+function fx(node, x, y, life){
+  node.style.left = x+'px'; node.style.top = y+'px';
+  arena.appendChild(node);
+  setTimeout(()=>node.remove(), life);
+}
+function floatText(x,y,txt,color,size){
+  const d = document.createElement('div');
+  d.className='fx float'; d.textContent=txt; d.style.color=color;
+  if(size) d.style.fontSize=size+'px';
+  // keep the label fully on screen — it rises and is centred on x, so pad for half its width
+  const halfW = txt.length * (size||19) * 0.34;
+  let px = clamp(x, halfW + 8, window.innerWidth - halfW - 8);
+  let py = Math.max(y, 60);
+  // nudge clear of labels still in flight so rapid hits stay legible
+  for(const o of Array.from(arena.querySelectorAll('.float'))){
+    const ox = parseFloat(o.style.left), oy = parseFloat(o.style.top);
+    if(Math.abs(ox-px) < halfW + 46 && Math.abs(oy-py) < 30){ py = oy - 34; }
+  }
+  fx(d, px, Math.max(py, 60), 820);
+}
+function ripple(x,y,color){
+  const d=document.createElement('div'); d.className='fx ripple'; d.style.setProperty('--rc',color);
+  fx(d,x,y,600);
+}
+function burst(x,y,c1,c2,n){
+  for(let i=0;i<n;i++){
+    const a = (i/n)*Math.PI*2 + Math.random()*.5;
+    const dist = rnd(38,104);
+    const d=document.createElement('div'); d.className='fx spark';
+    d.style.setProperty('--sc', i%2?c1:c2);
+    d.style.setProperty('--dx', Math.cos(a)*dist+'px');
+    d.style.setProperty('--dy', Math.sin(a)*dist+'px');
+    const s = rnd(5,11); d.style.width=s+'px'; d.style.height=s+'px';
+    fx(d,x,y,660);
+  }
+}
+function missMark(x,y){
+  const d=document.createElement('div'); d.className='missx';
+  d.innerHTML='<i></i><i></i>'; fx(d,x,y,420);
+}
+
+/* ---------- HUD ---------- */
+function paintHud(){
+  vScore.textContent = score;
+  vCombo.textContent = '×' + multFor(combo);
+  vAcc.textContent = shots ? Math.round(hits/shots*100)+'%' : '—';
+}
+function bumpScore(){
+  vScore.classList.add('bump');
+  setTimeout(()=>vScore.classList.remove('bump'),120);
+}
+function paintTime(){
+  vTime.textContent = timeLeft.toFixed(1);
+  ringVal.setAttribute('stroke-dashoffset', String(RING_LEN * (1 - clamp(timeLeft/DUR,0,1))));
+  hud.classList.toggle('urgent', timeLeft <= 5);
+}
+
+/* ---------- target lifecycle ---------- */
+function difficulty(){ return 1 - timeLeft/DUR; }   // 0 → 1
+
+function spawn(){
+  const d = difficulty();
+  const isBomb = Math.random() < .10 + .09*d;
+  const isGold = !isBomb && Math.random() < .075;
+
+  // smaller & shorter-lived as time runs out
+  let r = isGold ? rnd(20,27) : isBomb ? rnd(30,40) : rnd(24, 54 - 15*d);
+  let life = isGold ? rnd(600,780) : isBomb ? rnd(1000,1400) : rnd(1250 - 480*d, 1750 - 620*d);
+
+  const pad = 14, top = window.innerWidth < 520 ? 108 : 96;
+  const W = window.innerWidth, H = window.innerHeight;
+  const maxR = Math.min(r, (Math.min(W,H) - 2*pad)/2 - 2);
+  r = Math.max(16, maxR);
+
+  // pick a spot that doesn't overlap existing targets (few tries)
+  let x=0,y=0, ok=false;
+  for(let i=0;i<14 && !ok;i++){
+    x = rnd(pad + r, W - pad - r);
+    y = rnd(top + r, H - pad - r - 24);
+    ok = true;
+    for(const t of live){
+      const dx=t.x-x, dy=t.y-y;
+      if(Math.hypot(dx,dy) < t.r + r + 8){ ok=false; break; }
+    }
+  }
+  if(!ok) return;
+
+  const pal = isGold ? GOLD : PALETTE[(Math.random()*PALETTE.length)|0];
+  const el = document.createElement('div');
+  el.className = 't' + (isGold?' golden':'') + (isBomb?' bomb':'');
+  el.style.left = (x-r)+'px'; el.style.top = (y-r)+'px';
+  el.style.width = el.style.height = (2*r)+'px';
+  el.style.fontSize = (r*1.05)+'px';
+  el.style.setProperty('--g', `linear-gradient(150deg,${pal[0]},${pal[1]})`);
+  el.style.setProperty('--sh', pal[2]);
+  el.style.setProperty('--c1', isBomb ? '#ff5b7f' : pal[0]);
+  el.innerHTML = '<div class="fuse"></div><div class="body"></div><div class="ring1"></div><div class="ring2"></div><div class="dot"></div>';
+  const fuse = el.firstElementChild;
+  fuse.style.setProperty('--p','1');
+
+  const t = { el, x, y, r, born:performance.now(), life, isGold, isBomb, fuse, dead:false,
+              pts: isBomb ? 0 : Math.round((isGold?5:1) * (5 + (60-r)*0.55)) };
+  live.add(t);
+  arena.appendChild(el);
+
+  el.addEventListener('pointerdown', ev => {
+    ev.stopPropagation(); ev.preventDefault();
+    if(state!=='play') return;
+    hitTarget(t, ev.clientX, ev.clientY);
+  }, {passive:false});
+}
+
+function killEl(t){
+  t.dead = true; live.delete(t);
+  t.el.classList.add('die');
+  setTimeout(()=>t.el.remove(), 220);
+}
+
+function hitTarget(t, cx, cy){
+  if(t.dead) return;
+  shots++;
+
+  if(t.isBomb){
+    bombs++; combo = 0;
+    score = Math.max(0, score - 80);
+    killEl(t);
+    burst(t.x, t.y, '#ff5b7f', '#3b4256', 18);
+    ripple(t.x, t.y, 'rgba(255,91,127,.9)');
+    floatText(t.x, t.y, '−80', '#ff2d5e', 24);
+    flash.classList.remove('flashA'); void flash.offsetWidth; flash.classList.add('flashA');
+    sBomb();
+    paintHud(); paintCombo();
+    return;
+  }
+
+  hits++; combo++;
+  maxCombo = Math.max(maxCombo, combo);
+  if(t.isGold) golden++;
+  const mult = multFor(combo);
+  const gained = t.pts * mult;
+  score += gained;
+
+  killEl(t);
+  const c = t.isGold ? GOLD : null;
+  burst(t.x, t.y, c?c[0]:'#ffffff', c?c[1]:t.el.style.getPropertyValue('--c1')||'#5b6cff', t.isGold?24:12);
+  ripple(t.x, t.y, t.isGold?'rgba(255,170,30,.95)':'rgba(91,108,255,.75)');
+  floatText(t.x, t.y - t.r*.2, '+'+gained + (mult>1?'  ×'+mult:''), t.isGold?'#f59300':'#3448d6', t.isGold?24:19);
+  if(t.isGold) floatText(t.x, t.y - t.r*.2 - 26, 'GOLDEN', '#f59300', 13);
+  if(combo>0 && combo%5===0) floatText(t.x, t.y + t.r + 14, combo+' STREAK', '#ff4d7e', 14);
+
+  t.isGold ? sGold() : sHit(combo);
+  bumpScore(); paintHud(); paintCombo();
+}
+
+function paintCombo(){
+  const on = combo >= 2;
+  comboBar.classList.toggle('on', on);
+  comboFill.style.transform = 'scaleX(' + clamp(combo/15, .06, 1) + ')';
+}
+
+function arenaMiss(ev){
+  if(state!=='play') return;
+  shots++; combo = 0;
+  missMark(ev.clientX, ev.clientY);
+  ripple(ev.clientX, ev.clientY, 'rgba(255,91,127,.5)');
+  sMiss(); paintHud(); paintCombo();
+}
+arena.addEventListener('pointerdown', arenaMiss);
+
+/* ---------- loop ---------- */
+function tick(now){
+  if(state!=='play') return;
+  const dt = Math.min(.05, (now - lastT)/1000);
+  lastT = now;
+
+  timeLeft -= dt;
+  if(timeLeft <= 0){ timeLeft = 0; paintTime(); return end(); }
+  paintTime();
+
+  // expire targets, animate fuses
+  for(const t of Array.from(live)){
+    const p = 1 - (now - t.born)/t.life;
+    if(p <= 0){
+      live.delete(t); t.dead = true;
+      t.el.classList.add('die');
+      setTimeout(()=>t.el.remove(),220);
+      if(!t.isBomb){ combo = 0; paintCombo(); }
+    } else {
+      t.fuse.style.setProperty('--p', p.toFixed(3));
+    }
+  }
+
+  // spawn pacing — ramps up over the round
+  const d = difficulty();
+  spawnAcc += dt*1000;
+  if(spawnAcc >= nextGap){
+    spawnAcc = 0;
+    nextGap = rnd(400 - 190*d, 700 - 300*d);
+    spawn();
+    if(Math.random() < .16 + .3*d) spawn();
+  }
+  const cap = 3 + Math.round(3*d);
+  if(live.size < 2) spawn();
+  while(live.size > cap + 2){ const first = live.values().next().value; killEl(first); }
+
+  rafId = requestAnimationFrame(tick);
+}
+
+/* ---------- flow ---------- */
+function reset(){
+  score=hits=shots=combo=maxCombo=golden=bombs=0;
+  timeLeft=DUR; spawnAcc=0; nextGap=260;
+  for(const t of live) t.el.remove();
+  live.clear();
+  arena.querySelectorAll('.fx,.missx').forEach(n=>n.remove());
+  paintHud(); paintTime(); paintCombo();
+}
+
+function start(){
+  if(state==='count' || state==='play') return;
+  actx();
+  reset();
+  state='count';
+  ov.classList.add('hide');
+  hud.classList.remove('off'); hud.classList.add('on');
+  hint.classList.add('on');
+
+  const seq = ['3','2','1','GO'];
+  let i = 0;
+  (function step(){
+    if(i >= seq.length){
+      cd.textContent=''; cd.className='';
+      state='play'; lastT=performance.now();
+      spawn(); spawn();
+      rafId = requestAnimationFrame(tick);
+      setTimeout(()=>hint.classList.remove('on'), 3200);
+      return;
+    }
+    cd.textContent = seq[i];
+    cd.className=''; void cd.offsetWidth; cd.className='cdA';
+    sTick(i===3);
+    i++; setTimeout(step, 640);
+  })();
+}
+
+// Thresholds calibrated against scripted runs at four skill levels (avg of repeats):
+// casual ~165, average ~635, strong ~5400, frame-perfect ~22000.
+function gradeFor(s, acc){
+  const v = s * (0.55 + acc*0.45);
+  if(v >= 11000) return ['S+','Untouchable'];
+  if(v >= 6000)  return ['S','Elite reflexes'];
+  if(v >= 3200)  return ['A','Sharpshooter'];
+  if(v >= 1500)  return ['B','Solid aim'];
+  if(v >= 700)   return ['C','Getting warm'];
+  if(v >= 250)   return ['D','Room to grow'];
+  return ['E','Warm-up round'];
+}
+
+function end(){
+  state='over';
+  cancelAnimationFrame(rafId);
+  for(const t of Array.from(live)){ t.el.classList.add('die'); setTimeout(()=>t.el.remove(),220); }
+  live.clear();
+  hud.classList.remove('on'); hud.classList.add('off');
+  hint.classList.remove('on');
+  comboBar.classList.remove('on');
+  sEnd();
+
+  const acc = shots ? hits/shots : 0;
+  const [g, tag] = gradeFor(score, acc);
+  const isBest = score > bestScore;
+  if(isBest){ bestScore = score; try{ localStorage.setItem('tc_best_v2', String(score)); }catch(e){} }
+  const tps = (hits / DUR).toFixed(1);
+
+  panel.innerHTML = `
+    <div class="badge"><span class="d"></span>${isBest ? 'New Personal Best' : 'Round Complete'}</div>
+    <div class="grade">${g}</div>
+    <div class="gtag">${tag}</div>
+    <div class="grid">
+      <div class="cell big">
+        <div class="k">Final Score</div>
+        <div class="v" id="rScore">0</div>
+        <div class="best">Best ${isBest?'<b>★ '+bestScore+'</b>':bestScore}</div>
+      </div>
+      <div class="cell">
+        <div class="k">Accuracy</div>
+        <div class="v" id="rAcc">0%</div>
+        <div class="m">${hits} hit / ${shots} click${shots===1?'':'s'}</div>
+        <div class="bar"><i id="rBar"></i></div>
+      </div>
+      <div class="cell">
+        <div class="k">Best Combo</div>
+        <div class="v">${maxCombo}<span style="font-size:15px;color:var(--ink-soft)"> hits</span></div>
+        <div class="m">peak ×${multFor(maxCombo)} multiplier</div>
+      </div>
+    </div>
+    <div class="mini">
+      <div class="cell"><div class="k">Per Sec</div><div class="v">${tps}</div></div>
+      <div class="cell"><div class="k">Golden</div><div class="v" style="color:#f59300">${golden}</div></div>
+      <div class="cell"><div class="k">Bombs</div><div class="v" style="color:${bombs?'var(--bad)':'var(--ink)'}">${bombs}</div></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="againBtn">Play Again</button>
+      <button class="btn ghost" id="homeBtn">Menu</button>
+    </div>
+    <div class="kbd">Press <span>R</span> to replay</div>
+  `;
+  panel.style.animation='none'; void panel.offsetWidth; panel.style.animation='';
+  ov.classList.remove('hide');
+
+  document.getElementById('againBtn').onclick = start;
+  document.getElementById('homeBtn').onclick = menu;
+
+  // count-up animations
+  const rs = document.getElementById('rScore'), ra = document.getElementById('rAcc');
+  const t0 = performance.now(), D = 900;
+  (function up(n){
+    const p = clamp((n-t0)/D, 0, 1), e = 1-Math.pow(1-p,3);
+    rs.textContent = Math.round(score*e);
+    ra.textContent = Math.round(acc*100*e)+'%';
+    if(p<1) requestAnimationFrame(up);
+  })(t0);
+  requestAnimationFrame(()=>{ document.getElementById('rBar').style.width = (acc*100)+'%'; });
+}
+
+function menu(){
+  state='idle';
+  panel.innerHTML = MENU_HTML;
+  panel.style.animation='none'; void panel.offsetWidth; panel.style.animation='';
+  ov.classList.remove('hide');
+  document.getElementById('startBtn').onclick = start;
+}
+
+const MENU_HTML = panel.innerHTML;
+document.getElementById('startBtn').onclick = start;
+
+window.addEventListener('keydown', e => {
+  if(e.code==='Space'){ if(state==='idle'){ e.preventDefault(); start(); } }
+  else if(e.key==='r'||e.key==='R'){ if(state==='idle'||state==='over') start(); }
+});
+window.addEventListener('contextmenu', e => { if(state==='play') e.preventDefault(); });
+window.addEventListener('resize', () => {
+  if(state!=='play') return;
+  const W=window.innerWidth,H=window.innerHeight;
+  for(const t of Array.from(live)){
+    if(t.x > W-10 || t.y > H-10) killEl(t);
+  }
+});
+
+paintHud(); paintTime();
+})();
+</script>
+</body>
+</html>

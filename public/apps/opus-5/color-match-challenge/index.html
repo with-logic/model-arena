@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#0b0d17" />
+<title>Color Match Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b0d17;
+    --bg-2:#141830;
+    --ink:#f5f7ff;
+    --muted:#8b93b8;
+    --line:rgba(255,255,255,.10);
+    --card:rgba(255,255,255,.045);
+    --good:#3ddc84;
+    --bad:#ff4d6d;
+    --shadow:0 18px 40px -18px rgba(0,0,0,.85);
+    --r:20px;
+    --dur:.42s;
+  }
+
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Space Grotesk',system-ui,-apple-system,'Segoe UI',sans-serif;
+    overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+
+  /* ---------- ambient background ---------- */
+  #bg{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(90rem 60rem at 15% -10%, #1d2350 0%, transparent 55%),
+      radial-gradient(70rem 50rem at 110% 110%, #2a1440 0%, transparent 55%),
+      var(--bg);
+  }
+  #bg::after{
+    content:''; position:absolute; inset:-30%;
+    background-image:radial-gradient(rgba(255,255,255,.055) 1px, transparent 1px);
+    background-size:26px 26px;
+    mask-image:radial-gradient(60% 60% at 50% 45%, #000 20%, transparent 78%);
+    -webkit-mask-image:radial-gradient(60% 60% at 50% 45%, #000 20%, transparent 78%);
+    animation:drift 60s linear infinite;
+  }
+  @keyframes drift{to{transform:translate3d(-26px,-26px,0)}}
+
+  /* glow that flashes the active color */
+  #glow{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    opacity:.30; transition:background var(--dur) ease, opacity .3s ease;
+    background:radial-gradient(60rem 44rem at 50% 40%, var(--accent,#5b6cff) 0%, transparent 62%);
+    filter:blur(10px);
+  }
+
+  /* ---------- shell ---------- */
+  .stage{
+    position:relative; z-index:2;
+    width:min(100vw - 2rem, 44rem);
+    height:min(100vh - 1.6rem, 54rem);
+    display:flex; flex-direction:column;
+    padding:clamp(.9rem,2.2vw,1.4rem);
+  }
+
+  /* ---------- HUD ---------- */
+  header{
+    display:grid; grid-template-columns:1fr auto 1fr;
+    align-items:center; gap:.75rem;
+    flex:0 0 auto;
+  }
+  .stat{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:.5rem .8rem;
+    backdrop-filter:blur(10px);
+    min-width:0;
+  }
+  .stat .k{
+    font-size:.62rem; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--muted); font-weight:600; line-height:1;
+  }
+  .stat .v{
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(1.35rem,4.6vw,1.85rem);
+    line-height:1.05; letter-spacing:-.01em;
+    font-variant-numeric:tabular-nums;
+    display:flex; align-items:baseline; gap:.35rem;
+  }
+  .stat.right{text-align:right}
+  .stat.right .v{justify-content:flex-end}
+  #streakBadge{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:.72rem; font-weight:700; color:var(--good);
+    opacity:0; transform:translateY(2px);
+    transition:opacity .2s, transform .2s;
+    white-space:nowrap;
+  }
+  #streakBadge.on{opacity:1; transform:none}
+
+  /* timer ring */
+  .timer{position:relative; width:clamp(74px,20vw,92px); aspect-ratio:1}
+  .timer svg{width:100%; height:100%; transform:rotate(-90deg); overflow:visible}
+  .timer circle{fill:none; stroke-width:7; stroke-linecap:round}
+  .timer .track{stroke:rgba(255,255,255,.09)}
+  .timer .prog{
+    stroke:#5b6cff;
+    transition:stroke-dashoffset .25s linear, stroke .4s ease;
+    filter:drop-shadow(0 0 8px rgba(91,108,255,.55));
+  }
+  .timer .num{
+    position:absolute; inset:0; display:grid; place-items:center;
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(1.5rem,5vw,1.95rem);
+    font-variant-numeric:tabular-nums;
+    letter-spacing:-.02em;
+  }
+  .timer.low .prog{stroke:var(--bad); filter:drop-shadow(0 0 10px rgba(255,77,109,.6))}
+  .timer.low .num{color:var(--bad); animation:tick 1s ease-in-out infinite}
+  @keyframes tick{50%{transform:scale(1.12)}}
+
+  /* ---------- word card ---------- */
+  main{flex:1 1 auto; display:flex; flex-direction:column; gap:clamp(.7rem,1.8vw,1rem); min-height:0; padding-top:clamp(.7rem,1.8vw,1rem)}
+
+  .prompt{
+    text-align:center;
+    font-size:.68rem; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--muted); font-weight:600;
+    flex:0 0 auto;
+  }
+  .prompt b{color:#fff}
+
+  .card{
+    position:relative; flex:1 1 auto; min-height:0;
+    display:grid; place-items:center;
+    border-radius:var(--r);
+    border:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+    box-shadow:var(--shadow), inset 0 1px 0 rgba(255,255,255,.08);
+    backdrop-filter:blur(14px);
+    overflow:hidden;
+  }
+  .card::before{
+    content:''; position:absolute; inset:0;
+    background:radial-gradient(70% 90% at 50% 50%, var(--accent,#5b6cff) 0%, transparent 70%);
+    opacity:.13; transition:background var(--dur) ease;
+  }
+  #word{
+    position:relative;
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(3.1rem, 17vw, 6.6rem);
+    line-height:.95; letter-spacing:-.035em;
+    color:var(--accent,#fff);
+    text-shadow:0 0 44px color-mix(in srgb, var(--accent,#fff) 55%, transparent);
+    transition:color var(--dur) ease;
+    padding:0 .4em; text-align:center;
+    animation:pop .34s cubic-bezier(.2,1.5,.4,1);
+  }
+  #word.shake{animation:shake .38s cubic-bezier(.36,.07,.19,.97)}
+  @keyframes pop{
+    0%{transform:scale(.72) rotate(-2.5deg); opacity:0; filter:blur(6px)}
+    60%{filter:blur(0)}
+    100%{transform:none; opacity:1}
+  }
+  @keyframes shake{
+    10%,90%{transform:translateX(-5px) rotate(-1deg)}
+    30%,70%{transform:translateX(8px) rotate(1.5deg)}
+    50%{transform:translateX(-8px)}
+  }
+
+  /* combo meter under card */
+  .meter{flex:0 0 auto; height:5px; border-radius:99px; background:rgba(255,255,255,.08); overflow:hidden}
+  .meter i{
+    display:block; height:100%; width:0%;
+    background:linear-gradient(90deg,#5b6cff,#a855f7,#ff4d6d);
+    border-radius:99px;
+    transition:width .3s cubic-bezier(.2,.9,.3,1);
+  }
+
+  /* ---------- buttons ---------- */
+  .pad{
+    flex:0 0 auto;
+    display:grid; grid-template-columns:1fr 1fr;
+    gap:clamp(.55rem,1.8vw,.85rem);
+    padding-top:clamp(.2rem,1vw,.5rem);
+  }
+  .btn{
+    position:relative;
+    border:0; cursor:pointer; color:#fff;
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(.95rem,3.4vw,1.3rem);
+    letter-spacing:.02em;
+    padding:clamp(.95rem,3.6vw,1.35rem) .5rem;
+    border-radius:16px;
+    background:var(--c);
+    box-shadow:0 6px 0 0 var(--c-dark), 0 16px 26px -12px var(--c-glow), inset 0 1px 0 rgba(255,255,255,.35);
+    transform:translateY(0);
+    transition:transform .09s cubic-bezier(.3,1.4,.5,1), box-shadow .09s ease, filter .18s ease, opacity .18s;
+    overflow:hidden;
+    text-shadow:0 1px 2px rgba(0,0,0,.32);
+    -webkit-user-select:none;
+  }
+  .btn span{position:relative; z-index:2; display:block}
+  .btn::after{ /* sheen */
+    content:''; position:absolute; inset:0; z-index:1;
+    background:linear-gradient(180deg, rgba(255,255,255,.26), rgba(255,255,255,0) 55%);
+    pointer-events:none;
+  }
+  @media (hover:hover){
+    .btn:hover{filter:brightness(1.09) saturate(1.05); transform:translateY(-2px);
+      box-shadow:0 8px 0 0 var(--c-dark), 0 20px 32px -12px var(--c-glow), inset 0 1px 0 rgba(255,255,255,.35)}
+  }
+  .btn:active,.btn.press{
+    transform:translateY(6px) scale(.985);
+    box-shadow:0 0 0 0 var(--c-dark), 0 6px 14px -10px var(--c-glow), inset 0 1px 0 rgba(255,255,255,.2);
+    filter:brightness(.95);
+  }
+  .btn:focus-visible{outline:3px solid #fff; outline-offset:3px}
+  .btn .key{
+    position:absolute; top:6px; right:8px; z-index:2;
+    font-family:'Space Grotesk',sans-serif; font-size:.6rem; font-weight:700;
+    opacity:.55; letter-spacing:.06em;
+  }
+  /* ripple */
+  .btn .rip{
+    position:absolute; z-index:1; border-radius:50%;
+    background:rgba(255,255,255,.5);
+    transform:translate(-50%,-50%) scale(0); opacity:.85;
+    pointer-events:none;
+    animation:rip .55s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+  @keyframes rip{to{transform:translate(-50%,-50%) scale(1); opacity:0}}
+  .btn.ok{animation:okFlash .4s ease}
+  .btn.no{animation:noFlash .4s ease}
+  @keyframes okFlash{0%,100%{box-shadow:0 6px 0 0 var(--c-dark), 0 16px 26px -12px var(--c-glow)}
+    35%{box-shadow:0 0 0 4px #fff, 0 0 34px 6px var(--c-glow)}}
+  @keyframes noFlash{0%,100%{filter:none}35%{filter:grayscale(.75) brightness(.7)}}
+  .pad.locked .btn{pointer-events:none}
+
+  /* ---------- floating score popups ---------- */
+  #fx{position:fixed; inset:0; z-index:60; pointer-events:none; overflow:hidden}
+  .float{
+    position:absolute; transform:translate(-50%,-50%);
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(1.5rem,5.5vw,2.1rem);
+    letter-spacing:-.02em;
+    animation:floatUp .95s cubic-bezier(.2,.8,.3,1) forwards;
+    text-shadow:0 4px 18px rgba(0,0,0,.6);
+    white-space:nowrap;
+  }
+  @keyframes floatUp{
+    0%{opacity:0; transform:translate(-50%,-50%) scale(.6)}
+    22%{opacity:1; transform:translate(-50%,-90%) scale(1.12)}
+    100%{opacity:0; transform:translate(-50%,-230%) scale(.95)}
+  }
+  .spark{
+    position:absolute; width:8px; height:8px; border-radius:2px;
+    animation:spark .8s cubic-bezier(.2,.7,.3,1) forwards;
+  }
+  @keyframes spark{
+    0%{opacity:1; transform:translate(-50%,-50%) scale(1) rotate(0)}
+    100%{opacity:0; transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(.2) rotate(280deg)}
+  }
+
+  /* ---------- overlays ---------- */
+  .overlay{
+    position:absolute; inset:0; z-index:40;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    gap:1.1rem; text-align:center;
+    padding:clamp(1rem,4vw,2rem);
+    background:rgba(11,13,23,.78);
+    backdrop-filter:blur(18px) saturate(1.2);
+    border-radius:var(--r);
+    animation:fade .34s ease both;
+  }
+  .overlay[hidden]{display:none}
+  @keyframes fade{from{opacity:0}to{opacity:1}}
+
+  .title{
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(2.1rem,10vw,3.6rem);
+    line-height:.92; letter-spacing:-.04em; margin:0;
+    background:linear-gradient(96deg,#ff4d6d,#f7b32b 26%,#3ddc84 50%,#3aa0ff 72%,#a855f7);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 26px rgba(91,108,255,.35));
+  }
+  .sub{max-width:30rem; color:#c8cee8; line-height:1.55; font-size:clamp(.9rem,3.2vw,1.02rem); margin:0}
+  .sub em{color:#fff; font-style:normal; font-weight:700}
+  .rules{
+    display:flex; flex-direction:column; gap:.55rem; width:100%; max-width:23rem;
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:.9rem 1rem; text-align:left;
+  }
+  .rule{display:flex; gap:.7rem; align-items:center; font-size:.86rem; color:#d5daf0}
+  .rule i{
+    flex:0 0 auto; width:24px; height:24px; border-radius:8px; display:grid; place-items:center;
+    font-size:.8rem; font-style:normal; font-weight:700; color:#0b0d17;
+    background:#5b6cff;
+  }
+  .demo{font-family:'Archivo Black',sans-serif; font-size:1.05rem; letter-spacing:-.01em}
+
+  .cta{
+    border:0; cursor:pointer;
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(1.05rem,4vw,1.3rem);
+    letter-spacing:.01em;
+    color:#0b0d17;
+    padding:1rem 2.6rem; border-radius:99px;
+    background:linear-gradient(180deg,#fff,#d9dff5);
+    box-shadow:0 6px 0 0 #8f97b8, 0 22px 40px -16px rgba(255,255,255,.5);
+    transition:transform .1s cubic-bezier(.3,1.4,.5,1), box-shadow .1s;
+  }
+  .cta:active{transform:translateY(6px); box-shadow:0 0 0 0 #8f97b8, 0 8px 18px -12px rgba(255,255,255,.4)}
+  .cta:focus-visible{outline:3px solid #5b6cff; outline-offset:4px}
+  .hint{font-size:.74rem; color:var(--muted); letter-spacing:.08em; text-transform:uppercase; font-weight:600}
+
+  /* results */
+  .bigScore{
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(4.2rem,20vw,7rem); line-height:.86; letter-spacing:-.05em;
+    background:linear-gradient(180deg,#fff,#96a0ce);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    animation:pop .5s cubic-bezier(.2,1.5,.4,1) both;
+  }
+  .grade{
+    font-family:'Archivo Black',sans-serif; font-size:clamp(1.1rem,4.4vw,1.45rem);
+    letter-spacing:.02em; margin-top:-.35rem;
+  }
+  .grid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:.5rem; width:100%; max-width:23rem;
+  }
+  .cell{
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:.65rem .4rem;
+  }
+  .cell .k{font-size:.58rem; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); font-weight:600}
+  .cell .v{font-family:'Archivo Black',sans-serif; font-size:clamp(1.05rem,4.4vw,1.35rem); font-variant-numeric:tabular-nums}
+  .best{font-size:.8rem; color:var(--muted)}
+  .best b{color:#f7b32b}
+  .row{display:flex; gap:.6rem; flex-wrap:wrap; justify-content:center}
+  .ghost{
+    border:1px solid var(--line); background:transparent; color:#c8cee8;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:.9rem;
+    padding:.95rem 1.4rem; border-radius:99px; cursor:pointer;
+    transition:background .18s, transform .1s;
+  }
+  .ghost:active{transform:translateY(2px)}
+  @media (hover:hover){.ghost:hover{background:rgba(255,255,255,.07)}}
+
+  /* countdown */
+  #count{
+    position:absolute; inset:0; z-index:50; display:grid; place-items:center;
+    pointer-events:none;
+  }
+  #count b{
+    font-family:'Archivo Black',sans-serif;
+    font-size:clamp(6rem,30vw,12rem); line-height:1; letter-spacing:-.05em;
+    color:#fff; text-shadow:0 0 60px rgba(91,108,255,.8);
+    animation:cd .8s cubic-bezier(.2,.8,.3,1) both;
+  }
+  @keyframes cd{
+    0%{opacity:0; transform:scale(1.9)}
+    30%{opacity:1; transform:scale(1)}
+    100%{opacity:0; transform:scale(.72)}
+  }
+
+  .flashLayer{
+    position:fixed; inset:0; z-index:55; pointer-events:none; opacity:0;
+  }
+  .flashLayer.go{animation:flash .42s ease-out}
+  @keyframes flash{0%{opacity:.32}100%{opacity:0}}
+
+  @media (max-width:400px){
+    .rules{padding:.75rem .8rem}
+    .rule{font-size:.8rem}
+  }
+  @media (min-width:560px) and (min-height:620px){
+    .pad{grid-template-columns:repeat(3,1fr)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.05s !important}
+    #bg::after{animation:none}
+  }
+</style>
+</head>
+<body>
+<div id="bg"></div>
+<div id="glow"></div>
+<div class="flashLayer" id="flash"></div>
+
+<div class="stage" id="stage">
+  <header>
+    <div class="stat">
+      <div class="k">Score</div>
+      <div class="v"><span id="score">0</span><span id="streakBadge">🔥<span id="streakN">0</span></span></div>
+    </div>
+
+    <div class="timer" id="timer">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="track" cx="50" cy="50" r="43"/>
+        <circle class="prog" id="ring" cx="50" cy="50" r="43"/>
+      </svg>
+      <div class="num" id="time">30</div>
+    </div>
+
+    <div class="stat right">
+      <div class="k">Accuracy</div>
+      <div class="v"><span id="acc">–</span></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="prompt">Tap the <b>ink color</b> — ignore the word</div>
+    <div class="card">
+      <div id="word">READY</div>
+    </div>
+    <div class="meter" aria-hidden="true"><i id="meter"></i></div>
+    <div class="pad" id="pad"></div>
+  </main>
+
+  <!-- START -->
+  <div class="overlay" id="startScreen">
+    <h1 class="title">Color&nbsp;Match<br/>Challenge</h1>
+    <p class="sub">A word appears in a <em>colored ink</em>. Tap the button matching the <em>ink</em>, not what the word says.</p>
+    <div class="rules">
+      <div class="rule"><i>1</i><span>You see <span class="demo" style="color:#3ddc84">RED</span> → tap <b style="color:#3ddc84">GREEN</b></span></div>
+      <div class="rule"><i>2</i><span>Fast answers earn a bigger <b>speed bonus</b></span></div>
+      <div class="rule"><i>3</i><span>Streaks multiply your points — misses reset them</span></div>
+    </div>
+    <button class="cta" id="startBtn">Start · 30s</button>
+    <div class="hint">Keys 1–6 also work</div>
+  </div>
+
+  <!-- RESULTS -->
+  <div class="overlay" id="endScreen" hidden>
+    <div class="hint" id="endLabel">Time's up</div>
+    <div class="bigScore" id="finalScore">0</div>
+    <div class="grade" id="grade">—</div>
+    <div class="grid">
+      <div class="cell"><div class="k">Correct</div><div class="v" id="fCorrect">0</div></div>
+      <div class="cell"><div class="k">Accuracy</div><div class="v" id="fAcc">0%</div></div>
+      <div class="cell"><div class="k">Best streak</div><div class="v" id="fStreak">0</div></div>
+    </div>
+    <div class="best" id="bestLine"></div>
+    <div class="row">
+      <button class="cta" id="againBtn">Play again</button>
+      <button class="ghost" id="homeBtn">Menu</button>
+    </div>
+    <div class="hint">Press <b>Space</b> to replay</div>
+  </div>
+
+  <div id="count" hidden><b id="countNum">3</b></div>
+</div>
+
+<div id="fx"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------- palette ---------------- */
+  const COLORS = [
+    { name:'RED',    hex:'#ff3b52', dark:'#a4102a', glow:'rgba(255,59,82,.6)'   },
+    { name:'BLUE',   hex:'#2f7bff', dark:'#12409f', glow:'rgba(47,123,255,.6)'  },
+    { name:'GREEN',  hex:'#22c55e', dark:'#0d7136', glow:'rgba(34,197,94,.6)'   },
+    { name:'YELLOW', hex:'#f5b400', dark:'#9c7000', glow:'rgba(245,180,0,.55)'  },
+    { name:'PURPLE', hex:'#a855f7', dark:'#6a2ab5', glow:'rgba(168,85,247,.6)'  },
+    { name:'ORANGE', hex:'#ff7a1a', dark:'#a84500', glow:'rgba(255,122,26,.6)'  }
+  ];
+
+  const ROUND = 30;             // seconds
+  const BASE = 10;              // base points
+  const MAX_SPEED_BONUS = 15;   // decays over SPEED_WINDOW
+  const SPEED_WINDOW = 1800;    // ms
+
+  /* ---------------- refs ---------------- */
+  const $ = id => document.getElementById(id);
+  const el = {
+    word:$('word'), pad:$('pad'), score:$('score'), time:$('time'), ring:$('ring'),
+    timer:$('timer'), acc:$('acc'), meter:$('meter'), glow:$('glow'), fx:$('fx'),
+    streakBadge:$('streakBadge'), streakN:$('streakN'), flash:$('flash'),
+    start:$('startScreen'), end:$('endScreen'), startBtn:$('startBtn'),
+    againBtn:$('againBtn'), homeBtn:$('homeBtn'), count:$('count'), countNum:$('countNum'),
+    finalScore:$('finalScore'), grade:$('grade'), fCorrect:$('fCorrect'),
+    fAcc:$('fAcc'), fStreak:$('fStreak'), bestLine:$('bestLine'), endLabel:$('endLabel')
+  };
+
+  const R = 43, CIRC = 2 * Math.PI * R;
+  el.ring.style.strokeDasharray = CIRC;
+  el.ring.style.strokeDashoffset = 0;
+
+  /* ---------------- state ---------------- */
+  let state = 'idle';           // idle | count | play | over
+  let score = 0, correct = 0, attempts = 0, streak = 0, bestStreak = 0;
+  let target = null, shownAt = 0;
+  let endsAt = 0, rafId = 0, timers = [];
+  let best = +(localStorage.getItem('cmc.best') || 0);
+
+  const rand = n => Math.floor(Math.random() * n);
+  const pick = a => a[rand(a.length)];
+  const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const clearTimers = () => { timers.forEach(clearTimeout); timers = []; };
+
+  /* ---------------- audio (WebAudio blips, no assets) ---------------- */
+  let ac = null;
+  function audio(){
+    if (!ac) { const C = window.AudioContext || window.webkitAudioContext; if (C) ac = new C(); }
+    if (ac && ac.state === 'suspended') ac.resume();
+    return ac;
+  }
+  function blip(freq, dur = .1, type = 'sine', vol = .16, slide = 0){
+    const a = audio(); if (!a) return;
+    const t = a.currentTime;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(60, freq + slide), t + dur);
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + .012);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(a.destination);
+    o.start(t); o.stop(t + dur + .02);
+  }
+  const sGood = s => blip(520 + Math.min(s, 10) * 55, .11, 'triangle', .17, 260);
+  const sBad  = () => { blip(190, .2, 'sawtooth', .13, -90); blip(96, .26, 'sine', .1, -30); };
+  const sTick = () => blip(880, .05, 'square', .07);
+  const sEnd  = () => { [523,659,784,1047].forEach((f,i)=>later(()=>blip(f,.22,'triangle',.15),i*95)); };
+  const sGo   = () => blip(740, .16, 'triangle', .16, 300);
+
+  const buzz = ms => { if (navigator.vibrate) try { navigator.vibrate(ms); } catch(e){} };
+
+  /* ---------------- build buttons ---------------- */
+  const buttons = COLORS.map((c, i) => {
+    const b = document.createElement('button');
+    b.className = 'btn';
+    b.type = 'button';
+    b.style.setProperty('--c', c.hex);
+    b.style.setProperty('--c-dark', c.dark);
+    b.style.setProperty('--c-glow', c.glow);
+    b.innerHTML = `<span>${c.name}</span><i class="key">${i+1}</i>`;
+    b.setAttribute('aria-label', `${c.name} — key ${i+1}`);
+    b.addEventListener('pointerdown', e => {
+      ripple(b, e);
+      answer(i, e.clientX, e.clientY);
+    });
+    // keyboard activation (Enter/Space) — pointerdown won't fire
+    b.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        const r = b.getBoundingClientRect();
+        answer(i, r.left + r.width/2, r.top + r.height/2);
+      }
+    });
+    el.pad.appendChild(b);
+    return b;
+  });
+
+  function ripple(b, e){
+    const r = b.getBoundingClientRect();
+    const d = Math.max(r.width, r.height) * 2.2;
+    const s = document.createElement('span');
+    s.className = 'rip';
+    s.style.width = s.style.height = d + 'px';
+    s.style.left = ((e && e.clientX ? e.clientX - r.left : r.width/2)) + 'px';
+    s.style.top  = ((e && e.clientY ? e.clientY - r.top  : r.height/2)) + 'px';
+    b.appendChild(s);
+    setTimeout(() => s.remove(), 560);
+  }
+
+  /* ---------------- rendering ---------------- */
+  function setAccent(hex){
+    document.documentElement.style.setProperty('--accent', hex);
+    el.glow.style.setProperty('--accent', hex);
+  }
+
+  function nextRound(){
+    const inkIdx = rand(COLORS.length);
+    // word text differs from ink most of the time (true Stroop conflict)
+    let wordIdx = inkIdx;
+    if (Math.random() < 0.86) {
+      wordIdx = (inkIdx + 1 + rand(COLORS.length - 1)) % COLORS.length;
+    }
+    target = inkIdx;
+    const ink = COLORS[inkIdx];
+
+    el.word.textContent = COLORS[wordIdx].name;
+    el.word.style.color = ink.hex;
+    setAccent(ink.hex);
+
+    // restart the pop animation
+    el.word.classList.remove('shake');
+    el.word.style.animation = 'none';
+    void el.word.offsetWidth;
+    el.word.style.animation = '';
+
+    shownAt = performance.now();
+    el.pad.classList.remove('locked');
+  }
+
+  function updateHud(){
+    el.score.textContent = score;
+    el.acc.textContent = attempts ? Math.round(correct / attempts * 100) + '%' : '–';
+    if (streak >= 2) {
+      el.streakBadge.classList.add('on');
+      el.streakN.textContent = streak;
+    } else {
+      el.streakBadge.classList.remove('on');
+    }
+    el.meter.style.width = Math.min(100, streak * 12.5) + '%';
+  }
+
+  function bump(node){
+    node.style.animation = 'none';
+    void node.offsetWidth;
+    node.style.animation = 'pop .3s cubic-bezier(.2,1.5,.4,1)';
+  }
+
+  /* ---------------- fx ---------------- */
+  function floatText(text, color, x, y){
+    const f = document.createElement('div');
+    f.className = 'float';
+    f.textContent = text;
+    f.style.color = color;
+    f.style.left = x + 'px';
+    f.style.top  = y + 'px';
+    el.fx.appendChild(f);
+    setTimeout(() => f.remove(), 1000);
+  }
+  function sparks(x, y, color, n){
+    for (let i = 0; i < n; i++){
+      const s = document.createElement('div');
+      const a = Math.random() * Math.PI * 2, d = 40 + Math.random() * 90;
+      s.className = 'spark';
+      s.style.left = x + 'px'; s.style.top = y + 'px';
+      s.style.background = color;
+      s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      s.style.setProperty('--dy', (Math.sin(a) * d - 30) + 'px');
+      s.style.animationDelay = (Math.random() * 90) + 'ms';
+      el.fx.appendChild(s);
+      setTimeout(() => s.remove(), 950);
+    }
+  }
+  function screenFlash(color){
+    el.flash.style.background = `radial-gradient(60rem 40rem at 50% 45%, ${color}, transparent 65%)`;
+    el.flash.classList.remove('go');
+    void el.flash.offsetWidth;
+    el.flash.classList.add('go');
+  }
+
+  /* ---------------- answer ---------------- */
+  function answer(idx, x, y){
+    if (state !== 'play' || target === null) return;
+    audio();
+
+    const b = buttons[idx];
+    b.classList.add('press');
+    setTimeout(() => b.classList.remove('press'), 110);
+
+    attempts++;
+    const cx = x || window.innerWidth / 2, cy = y || window.innerHeight / 2;
+
+    if (idx === target){
+      const dt = performance.now() - shownAt;
+      const speed = Math.round(MAX_SPEED_BONUS * Math.max(0, 1 - dt / SPEED_WINDOW));
+      streak++;
+      bestStreak = Math.max(bestStreak, streak);
+      const mult = 1 + Math.floor(streak / 4) * 0.5;   // x1, x1.5 at 4, x2 at 8…
+      const gained = Math.round((BASE + speed) * mult);
+      score += gained;
+      correct++;
+
+      b.classList.remove('ok'); void b.offsetWidth; b.classList.add('ok');
+      sGood(streak);
+      buzz(14);
+      floatText('+' + gained, COLORS[idx].hex, cx, cy);
+      sparks(cx, cy, COLORS[idx].hex, speed > 8 ? 14 : 8);
+      if (mult > 1 && streak % 4 === 0){
+        floatText('×' + mult.toFixed(1).replace('.0','') + ' STREAK', '#fff', window.innerWidth/2, window.innerHeight*0.33);
+        screenFlash(COLORS[idx].glow);
+      }
+      bump(el.score.parentElement);
+      updateHud();
+      el.pad.classList.add('locked');
+      later(() => { if (state === 'play') nextRound(); }, 90);
+    } else {
+      streak = 0;
+      score = Math.max(0, score - 5);
+      b.classList.remove('no'); void b.offsetWidth; b.classList.add('no');
+      el.word.classList.remove('shake'); void el.word.offsetWidth; el.word.classList.add('shake');
+      sBad();
+      buzz([18, 40, 18]);
+      floatText('−5', '#ff4d6d', cx, cy);
+      updateHud();
+    }
+  }
+
+  /* ---------------- clock ---------------- */
+  let lastWhole = -1;
+  function tick(){
+    if (state !== 'play') return;
+    const left = Math.max(0, endsAt - performance.now());
+    const secs = left / 1000;
+    const shown = Math.ceil(secs - 0.0001);
+    el.ring.style.strokeDashoffset = CIRC * (1 - secs / ROUND);
+
+    if (shown !== lastWhole){
+      lastWhole = shown;
+      el.time.textContent = Math.max(0, shown);
+      if (shown <= 5 && shown > 0){ el.timer.classList.add('low'); sTick(); }
+    }
+    if (left <= 0){ finish(); return; }
+    rafId = requestAnimationFrame(tick);
+  }
+
+  /* ---------------- flow ---------------- */
+  function reset(){
+    score = 0; correct = 0; attempts = 0; streak = 0; bestStreak = 0;
+    target = null; lastWhole = -1;
+    el.timer.classList.remove('low');
+    el.time.textContent = ROUND;
+    el.ring.style.strokeDashoffset = 0;
+    el.meter.style.width = '0%';
+    el.streakBadge.classList.remove('on');
+    updateHud();
+  }
+
+  function startGame(){
+    clearTimers(); cancelAnimationFrame(rafId);
+    audio();
+    reset();
+    el.start.hidden = true;
+    el.end.hidden = true;
+    el.pad.classList.add('locked');
+    state = 'count';
+
+    el.word.textContent = 'GET READY';
+    el.word.style.color = '#fff';
+    setAccent('#5b6cff');
+
+    const seq = ['3','2','1','GO!'];
+    el.count.hidden = false;
+    seq.forEach((s, i) => later(() => {
+      el.countNum.textContent = s;
+      el.countNum.style.animation = 'none';
+      void el.countNum.offsetWidth;
+      el.countNum.style.animation = '';
+      el.countNum.style.fontSize = s === 'GO!' ? 'clamp(4rem,20vw,8rem)' : '';
+      if (s === 'GO!') sGo(); else sTick();
+    }, i * 620));
+
+    later(() => {
+      el.count.hidden = true;
+      state = 'play';
+      endsAt = performance.now() + ROUND * 1000;
+      nextRound();
+      rafId = requestAnimationFrame(tick);
+    }, seq.length * 620 + 120);
+  }
+
+  function gradeFor(s, acc){
+    if (s >= 420 && acc >= 92) return ['S', 'Inhuman reflexes.', '#f7b32b'];
+    if (s >= 330) return ['A', 'Elite pattern breaker.', '#3ddc84'];
+    if (s >= 240) return ['B', 'Sharp and steady.', '#3aa0ff'];
+    if (s >= 150) return ['C', 'Solid — push the pace.', '#a855f7'];
+    if (s >= 70)  return ['D', 'The words are winning.', '#ff7a1a'];
+    return ['E', 'Read the ink, not the word.', '#ff4d6d'];
+  }
+
+  function finish(){
+    state = 'over';
+    cancelAnimationFrame(rafId);
+    clearTimers();
+    el.pad.classList.add('locked');
+    el.time.textContent = '0';
+    el.ring.style.strokeDashoffset = CIRC;
+    el.timer.classList.remove('low');
+    el.word.textContent = 'TIME';
+    el.word.style.color = '#fff';
+    setAccent('#5b6cff');
+    sEnd();
+
+    const acc = attempts ? Math.round(correct / attempts * 100) : 0;
+    const [g, blurb, gcolor] = gradeFor(score, acc);
+
+    el.finalScore.textContent = score;
+    el.grade.textContent = `${g} · ${blurb}`;
+    el.grade.style.color = gcolor;
+    el.fCorrect.textContent = correct;
+    el.fAcc.textContent = acc + '%';
+    el.fStreak.textContent = bestStreak;
+
+    const isRecord = score > best;
+    if (isRecord){ best = score; try { localStorage.setItem('cmc.best', String(best)); } catch(e){} }
+    el.endLabel.textContent = isRecord ? '🏆 New personal best' : "Time's up";
+    el.bestLine.innerHTML = isRecord
+      ? `You beat your old record.`
+      : `Personal best <b>${best}</b>`;
+
+    el.end.hidden = false;
+    later(() => el.againBtn.focus({ preventScroll:true }), 240);
+  }
+
+  function toMenu(){
+    clearTimers(); cancelAnimationFrame(rafId);
+    state = 'idle';
+    reset();
+    el.end.hidden = true;
+    el.start.hidden = false;
+    el.word.textContent = 'READY';
+    el.word.style.color = '#fff';
+    setAccent('#5b6cff');
+  }
+
+  /* ---------------- input ---------------- */
+  el.startBtn.addEventListener('click', startGame);
+  el.againBtn.addEventListener('click', startGame);
+  el.homeBtn.addEventListener('click', toMenu);
+
+  window.addEventListener('keydown', e => {
+    if (e.repeat) return;
+    const k = e.key;
+
+    if (state === 'play'){
+      const n = parseInt(k, 10);
+      if (n >= 1 && n <= COLORS.length){
+        e.preventDefault();
+        const b = buttons[n-1], r = b.getBoundingClientRect();
+        ripple(b, { clientX: r.left + r.width/2, clientY: r.top + r.height/2 });
+        answer(n-1, r.left + r.width/2, r.top + r.height/2);
+      }
+      return;
+    }
+
+    if (k === ' ' || k === 'Enter'){
+      if (state === 'idle' || state === 'over'){ e.preventDefault(); startGame(); }
+    }
+    if (k === 'Escape' && state === 'over') toMenu();
+  }, { passive:false });
+
+  // prevent double-tap zoom / scroll bounce on the play surface
+  document.addEventListener('dblclick', e => e.preventDefault());
+  el.pad.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive:false });
+  document.addEventListener('gesturestart', e => e.preventDefault());
+
+  // Tab-away shouldn't drain a wall-clock timer: bank the remaining ms and
+  // re-anchor the deadline on return so the player keeps their full 30s.
+  let banked = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden){
+      if (state === 'play'){
+        banked = Math.max(0, endsAt - performance.now());
+        cancelAnimationFrame(rafId);
+      }
+    } else if (state === 'play' && banked > 0){
+      endsAt = performance.now() + banked;
+      banked = 0;
+      shownAt = performance.now();   // don't punish speed bonus for the pause
+      rafId = requestAnimationFrame(tick);
+    }
+  });
+
+  setAccent('#5b6cff');
+  updateHud();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Escape the Maze</title>
+<style>
+  :root{
+    --bg-0:#080b14;
+    --bg-1:#0e1424;
+    --wall:#2b3a5c;
+    --wall-lit:#4f6ea8;
+    --ink:#e8eefc;
+    --muted:#8ea0c4;
+    --accent:#5eead4;
+    --accent-2:#a78bfa;
+    --gold:#fbbf24;
+    --danger:#fb7185;
+    --panel:rgba(20,28,48,.72);
+    --line:rgba(120,150,210,.18);
+    --font: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family:var(--font);
+    color:var(--ink);
+    background:
+      radial-gradient(1100px 700px at 18% -10%, rgba(56,189,248,.10) 0%, transparent 60%),
+      radial-gradient(900px 600px at 85% 110%, rgba(167,139,250,.10) 0%, transparent 60%),
+      radial-gradient(700px 500px at 50% 40%, rgba(94,234,212,.05) 0%, transparent 70%),
+      linear-gradient(170deg, var(--bg-1), var(--bg-0));
+    background-attachment:fixed;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:18px;
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    /* subtle vignette + grain */
+    content:"";
+    position:fixed; inset:0; pointer-events:none; z-index:5;
+    background:radial-gradient(circle at 50% 45%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+
+  .app{
+    width:min(100%, 1120px);
+    display:grid;
+    grid-template-columns: minmax(0,1fr) 268px;
+    gap:22px;
+    align-items:start;
+  }
+
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+    margin-bottom:14px;
+  }
+  h1{
+    font-size:clamp(19px, 2.4vw, 27px);
+    margin:0; letter-spacing:.14em; text-transform:uppercase; font-weight:700;
+    background:linear-gradient(92deg, var(--accent) 0%, #7dd3fc 45%, var(--accent-2) 100%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .tag{
+    font-size:10.5px; letter-spacing:.2em; text-transform:uppercase;
+    color:var(--muted); border:1px solid var(--line); padding:4px 9px; border-radius:99px;
+    background:rgba(255,255,255,.02);
+  }
+
+  /* ---------- board ---------- */
+  .board-wrap{position:relative;}
+  .board{
+    position:relative;
+    background:linear-gradient(160deg, rgba(30,42,72,.55), rgba(12,18,34,.75));
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:16px;
+    box-shadow:
+      0 30px 70px -30px rgba(0,0,0,.9),
+      inset 0 1px 0 rgba(255,255,255,.05);
+    overflow:hidden;
+  }
+  canvas{
+    display:block; width:100%; height:auto; border-radius:10px;
+    touch-action:none; cursor:crosshair;
+  }
+
+  /* ---------- HUD ---------- */
+  .hud{
+    display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;
+  }
+  .stat{
+    flex:1 1 0; min-width:88px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:12px;
+    padding:9px 12px;
+    backdrop-filter:blur(8px);
+  }
+  .stat .k{
+    font-size:9.5px; letter-spacing:.18em; text-transform:uppercase; color:var(--muted);
+    display:block; margin-bottom:3px;
+  }
+  .stat .v{
+    font-size:21px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:.02em;
+    display:block; line-height:1.1;
+  }
+  .stat .v small{font-size:11px; color:var(--muted); font-weight:500; letter-spacing:0;}
+  #timeVal{color:var(--accent);}
+  #effVal.perfect{color:var(--gold); text-shadow:0 0 18px rgba(251,191,36,.55);}
+  #effVal.good{color:var(--accent);}
+  #effVal.meh{color:var(--muted);}
+
+  /* ---------- sidebar ---------- */
+  aside{
+    display:flex; flex-direction:column; gap:14px;
+    position:sticky; top:18px;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:14px;
+    padding:14px;
+    backdrop-filter:blur(10px);
+  }
+  .card h2{
+    margin:0 0 10px; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted);
+    font-weight:600;
+  }
+  .row{
+    display:flex; justify-content:space-between; align-items:center; gap:8px;
+    padding:5px 0; font-size:12.5px; color:var(--muted);
+    border-bottom:1px dashed rgba(120,150,210,.10);
+  }
+  .row:last-child{border-bottom:0;}
+  .row b{color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums;}
+
+  .seg{display:flex; gap:6px;}
+  .seg button{
+    flex:1; padding:7px 4px; font-size:11px; letter-spacing:.06em;
+    border-radius:9px; border:1px solid var(--line); cursor:pointer;
+    background:rgba(255,255,255,.03); color:var(--muted);
+    font-family:inherit; transition:all .16s ease; text-transform:uppercase;
+  }
+  .seg button:hover{color:var(--ink); border-color:rgba(120,150,210,.4); background:rgba(255,255,255,.06);}
+  .seg button[aria-pressed="true"]{
+    background:linear-gradient(180deg, rgba(94,234,212,.20), rgba(94,234,212,.07));
+    color:var(--accent); border-color:rgba(94,234,212,.45);
+    box-shadow:inset 0 0 12px rgba(94,234,212,.12);
+  }
+
+  button.btn{
+    width:100%; padding:11px; border-radius:11px; cursor:pointer;
+    font-family:inherit; font-size:12px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;
+    border:1px solid rgba(94,234,212,.4);
+    background:linear-gradient(180deg, rgba(94,234,212,.22), rgba(94,234,212,.06));
+    color:var(--accent);
+    transition:transform .12s ease, box-shadow .2s ease, background .2s ease;
+  }
+  button.btn:hover{box-shadow:0 0 22px rgba(94,234,212,.28); transform:translateY(-1px);}
+  button.btn:active{transform:translateY(0);}
+  button.btn.ghost{
+    border-color:var(--line); background:rgba(255,255,255,.03); color:var(--muted);
+  }
+  button.btn.ghost:hover{color:var(--ink); box-shadow:none; border-color:rgba(120,150,210,.4);}
+
+  .keyhint{
+    display:grid; grid-template-columns:repeat(3, 1fr); gap:5px; justify-items:center;
+    margin-top:2px;
+  }
+  kbd{
+    display:inline-flex; align-items:center; justify-content:center;
+    min-width:30px; height:28px; padding:0 6px;
+    border:1px solid var(--line); border-bottom-width:2px; border-radius:7px;
+    background:rgba(255,255,255,.04); color:var(--muted);
+    font-size:13px; font-family:inherit;
+  }
+  kbd.wide{grid-column:1 / -1; min-width:auto; width:100%; font-size:10px; letter-spacing:.1em;}
+  .keyhint .sp{visibility:hidden;}
+
+  /* ---------- overlay ---------- */
+  .overlay{
+    position:absolute; inset:0; z-index:10;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(8,11,20,.78);
+    backdrop-filter:blur(9px);
+    border-radius:18px;
+    opacity:0; pointer-events:none; transition:opacity .3s ease;
+  }
+  .overlay.show{opacity:1; pointer-events:auto;}
+  .modal{
+    text-align:center; max-width:400px; padding:26px 30px;
+    animation:pop .38s cubic-bezier(.2,1.3,.4,1) both;
+  }
+  @keyframes pop{from{transform:scale(.9) translateY(14px); opacity:0;} to{transform:none; opacity:1;}}
+  .modal .title{
+    font-size:27px; letter-spacing:.1em; text-transform:uppercase; font-weight:800; margin:0 0 4px;
+    background:linear-gradient(92deg, var(--gold), #fde68a 50%, var(--accent));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+  }
+  .modal .sub{color:var(--muted); font-size:12px; margin:0 0 18px; letter-spacing:.06em;}
+  .scoreGrid{
+    display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:16px;
+  }
+  .scoreGrid div{
+    border:1px solid var(--line); border-radius:10px; padding:9px 4px; background:rgba(255,255,255,.03);
+  }
+  .scoreGrid span{display:block; font-size:9px; letter-spacing:.15em; text-transform:uppercase; color:var(--muted); margin-bottom:3px;}
+  .scoreGrid b{font-size:17px; font-variant-numeric:tabular-nums;}
+  .bonusLine{
+    font-size:12.5px; margin:0 0 16px; color:var(--muted); line-height:1.6;
+  }
+  .bonusLine .pill{
+    display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; letter-spacing:.08em;
+    background:rgba(251,191,36,.16); color:var(--gold); border:1px solid rgba(251,191,36,.35);
+    text-transform:uppercase; font-weight:700;
+  }
+  .modal .btns{display:flex; gap:9px;}
+  .modal .btns .btn{width:auto; flex:1;}
+
+  .toast{
+    position:absolute; left:50%; bottom:26px; transform:translate(-50%, 14px);
+    background:rgba(20,28,48,.94); border:1px solid var(--line);
+    padding:8px 16px; border-radius:99px; font-size:11.5px; letter-spacing:.08em;
+    color:var(--muted); opacity:0; transition:all .3s ease; pointer-events:none; z-index:11;
+    white-space:nowrap;
+  }
+  .toast.show{opacity:1; transform:translate(-50%, 0);}
+
+  /* mobile dpad */
+  .dpad{display:none;}
+
+  @media (max-width: 880px){
+    body{overflow:auto; align-items:flex-start; padding:12px;}
+    .app{grid-template-columns:1fr; gap:14px;}
+    aside{position:static; flex-direction:row; flex-wrap:wrap;}
+    aside .card{flex:1 1 160px;}
+    .card.legend{display:none;}
+    .keyhint{display:none;}
+    .dpad{
+      display:grid; grid-template-columns:repeat(3,58px); grid-template-rows:repeat(2,52px);
+      gap:7px; justify-content:center; margin-top:4px;
+    }
+    .dpad button{
+      border:1px solid var(--line); border-radius:11px; background:rgba(255,255,255,.05);
+      color:var(--ink); font-size:19px; font-family:inherit; cursor:pointer;
+      -webkit-user-select:none; user-select:none; -webkit-tap-highlight-color:transparent;
+    }
+    .dpad button:active{background:rgba(94,234,212,.2); border-color:rgba(94,234,212,.5);}
+    .dpad .u{grid-column:2; grid-row:1;}
+    .dpad .l{grid-column:1; grid-row:2;}
+    .dpad .d{grid-column:2; grid-row:2;}
+    .dpad .r{grid-column:3; grid-row:2;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <main>
+    <header>
+      <h1>Escape the Maze</h1>
+      <span class="tag" id="seedTag">seed —</span>
+    </header>
+
+    <div class="hud">
+      <div class="stat"><span class="k">Time</span><span class="v" id="timeVal">0.0<small>s</small></span></div>
+      <div class="stat"><span class="k">Steps</span><span class="v" id="stepVal">0</span></div>
+      <div class="stat"><span class="k">Optimal</span><span class="v" id="optVal">—</span></div>
+      <div class="stat"><span class="k">Efficiency</span><span class="v meh" id="effVal">—</span></div>
+    </div>
+
+    <div class="board-wrap">
+      <div class="board">
+        <canvas id="cv" width="900" height="900" aria-label="Maze"></canvas>
+        <div class="overlay" id="overlay">
+          <div class="modal">
+            <p class="title" id="mTitle">Escaped!</p>
+            <p class="sub" id="mSub">You found the exit.</p>
+            <div class="scoreGrid">
+              <div><span>Time</span><b id="mTime">—</b></div>
+              <div><span>Steps</span><b id="mSteps">—</b></div>
+              <div><span>Optimal</span><b id="mOpt">—</b></div>
+            </div>
+            <p class="bonusLine" id="mBonus"></p>
+            <div class="btns">
+              <button class="btn ghost" id="mReplay">Replay Maze</button>
+              <button class="btn" id="mNext">New Maze</button>
+            </div>
+          </div>
+        </div>
+        <div class="toast" id="toast"></div>
+      </div>
+    </div>
+  </main>
+
+  <aside>
+    <div class="card">
+      <h2>Difficulty</h2>
+      <div class="seg" id="sizeSeg">
+        <button data-size="11" aria-pressed="false">Easy</button>
+        <button data-size="19" aria-pressed="true">Normal</button>
+        <button data-size="29" aria-pressed="false">Hard</button>
+        <button data-size="41" aria-pressed="false">Epic</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Controls</h2>
+      <div class="keyhint">
+        <span class="sp"></span><kbd>↑</kbd><span class="sp"></span>
+        <kbd>←</kbd><kbd>↓</kbd><kbd>→</kbd>
+        <kbd class="wide">R — Replay · N — New · H — Hint</kbd>
+      </div>
+      <div class="dpad">
+        <button class="u" data-dir="up">↑</button>
+        <button class="l" data-dir="left">←</button>
+        <button class="d" data-dir="down">↓</button>
+        <button class="r" data-dir="right">→</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Session</h2>
+      <div class="row"><span>Best time</span><b id="bestTime">—</b></div>
+      <div class="row"><span>Best score</span><b id="bestScore">—</b></div>
+      <div class="row"><span>Escapes</span><b id="winCount">0</b></div>
+      <div class="row"><span>Perfect runs</span><b id="perfCount">0</b></div>
+    </div>
+
+    <button class="btn" id="btnNew">New Maze</button>
+    <button class="btn ghost" id="btnReplay">Replay (R)</button>
+    <button class="btn ghost" id="btnHint">Reveal Hint (H)</button>
+
+    <div class="card legend">
+      <h2>Scoring</h2>
+      <div class="row"><span>Base</span><b>1000</b></div>
+      <div class="row"><span>Time penalty</span><b>−6/s</b></div>
+      <div class="row"><span>Wasted step</span><b>−4</b></div>
+      <div class="row"><span>Perfect path</span><b style="color:var(--gold)">+500</b></div>
+    </div>
+  </aside>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ============================================================
+   Deterministic RNG (mulberry32) so mazes are replayable by seed
+   ============================================================ */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+/* ============================================================
+   Maze model — grid of cells with 4 wall flags.
+   Generated with randomized iterative DFS (perfect maze),
+   then a few walls are removed to create braid loops on larger
+   sizes so the "shortest path" bonus is genuinely non-trivial.
+   ============================================================ */
+const N = 1, E = 2, S = 4, W = 8;
+const DX = {1:0, 2:1, 4:0, 8:-1};
+const DY = {1:-1, 2:0, 4:1, 8:0};
+const OPP = {1:4, 2:8, 4:1, 8:2};
+
+class Maze {
+  constructor(size, seed){
+    this.size = size;
+    this.seed = seed;
+    this.rng = mulberry32(seed);
+    this.cells = new Uint8Array(size*size).fill(N|E|S|W);
+    this.start = {x:0, y:0};
+    this.end = {x:size-1, y:size-1};
+    this.generate();
+    this.braid();
+    this.solution = this.solve(this.start, this.end);
+    this.dist = this.distanceField(this.end);
+  }
+  idx(x,y){ return y*this.size + x; }
+  inside(x,y){ return x>=0 && y>=0 && x<this.size && y<this.size; }
+  open(x,y,dir){ return (this.cells[this.idx(x,y)] & dir) === 0; }
+  carve(x,y,dir){
+    this.cells[this.idx(x,y)] &= ~dir;
+    const nx = x+DX[dir], ny = y+DY[dir];
+    this.cells[this.idx(nx,ny)] &= ~OPP[dir];
+  }
+
+  generate(){
+    const n = this.size;
+    const seen = new Uint8Array(n*n);
+    const stack = [[0,0]];
+    seen[0] = 1;
+    while(stack.length){
+      const [x,y] = stack[stack.length-1];
+      const opts = [];
+      for(const d of [N,E,S,W]){
+        const nx = x+DX[d], ny = y+DY[d];
+        if(this.inside(nx,ny) && !seen[this.idx(nx,ny)]) opts.push(d);
+      }
+      if(!opts.length){ stack.pop(); continue; }
+      // Bias slightly toward continuing straight => longer, snakier corridors
+      const d = opts[Math.floor(this.rng()*opts.length)];
+      this.carve(x,y,d);
+      const nx = x+DX[d], ny = y+DY[d];
+      seen[this.idx(nx,ny)] = 1;
+      stack.push([nx,ny]);
+    }
+  }
+
+  // Remove a fraction of interior walls to create alternate routes.
+  braid(){
+    const n = this.size;
+    const budget = Math.floor(n*n*0.045);
+    let tries = 0;
+    for(let i=0; i<budget && tries<budget*40; i++){
+      let placed = false;
+      while(!placed && tries < budget*40){
+        tries++;
+        const x = Math.floor(this.rng()*n), y = Math.floor(this.rng()*n);
+        const d = [N,E,S,W][Math.floor(this.rng()*4)];
+        const nx = x+DX[d], ny = y+DY[d];
+        if(!this.inside(nx,ny)) continue;
+        if(this.open(x,y,d)) continue;
+        this.carve(x,y,d);
+        placed = true;
+      }
+    }
+  }
+
+  neighbors(x,y){
+    const out = [];
+    for(const d of [N,E,S,W]){
+      if(this.open(x,y,d)){
+        const nx = x+DX[d], ny = y+DY[d];
+        if(this.inside(nx,ny)) out.push([nx,ny]);
+      }
+    }
+    return out;
+  }
+
+  // BFS distance from a target to every cell (used for hints + optimal length)
+  distanceField(target){
+    const n = this.size;
+    const dist = new Int32Array(n*n).fill(-1);
+    const q = [[target.x, target.y]];
+    dist[this.idx(target.x,target.y)] = 0;
+    for(let h=0; h<q.length; h++){
+      const [x,y] = q[h];
+      const d0 = dist[this.idx(x,y)];
+      for(const [nx,ny] of this.neighbors(x,y)){
+        if(dist[this.idx(nx,ny)] === -1){
+          dist[this.idx(nx,ny)] = d0+1;
+          q.push([nx,ny]);
+        }
+      }
+    }
+    return dist;
+  }
+
+  solve(a,b){
+    const dist = this.distanceField(b);
+    const path = [[a.x,a.y]];
+    let [x,y] = [a.x,a.y];
+    let guard = this.size*this.size*4;
+    while((x!==b.x || y!==b.y) && guard-- > 0){
+      let best = null, bd = Infinity;
+      for(const [nx,ny] of this.neighbors(x,y)){
+        const d = dist[this.idx(nx,ny)];
+        if(d >= 0 && d < bd){ bd = d; best = [nx,ny]; }
+      }
+      if(!best) break;
+      [x,y] = best;
+      path.push([x,y]);
+    }
+    return path;
+  }
+}
+
+/* ============================================================
+   Game state
+   ============================================================ */
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const $ = id => document.getElementById(id);
+const el = {
+  time:$('timeVal'), step:$('stepVal'), opt:$('optVal'), eff:$('effVal'),
+  seed:$('seedTag'), overlay:$('overlay'), toast:$('toast'),
+  mTitle:$('mTitle'), mSub:$('mSub'), mTime:$('mTime'), mSteps:$('mSteps'),
+  mOpt:$('mOpt'), mBonus:$('mBonus'),
+  bestTime:$('bestTime'), bestScore:$('bestScore'), winCount:$('winCount'), perfCount:$('perfCount')
+};
+
+const state = {
+  maze:null,
+  size:19,
+  px:0, py:0,           // logical cell
+  rx:0, ry:0,           // rendered (tweened) position
+  moving:false,
+  trail:[],             // visited cell order (for the breadcrumb ribbon)
+  visitCount:null,      // Uint16 per-cell visit tally
+  steps:0,
+  started:false,
+  finished:false,
+  t0:0, elapsed:0,
+  hint:0,               // hint reveal opacity target
+  hintUses:0,
+  particles:[],
+  goalPulse:0,
+  shake:0,
+  session:{wins:0, perfect:0, bestTime:Infinity, bestScore:0}
+};
+
+/* -------- layout / sizing -------- */
+let CELL = 20, PAD = 0, DPR = 1;
+
+function layout(){
+  const wrap = cv.parentElement;
+  const avail = wrap.clientWidth - 32; // board padding
+  const maxH = Math.max(280, window.innerHeight - (window.innerWidth < 880 ? 300 : 190));
+  const side = Math.max(240, Math.min(avail, maxH));
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+
+  CELL = Math.max(6, Math.floor((side - 12) / state.size));
+  const inner = CELL * state.size;
+  PAD = Math.round((side - inner) / 2);
+  const cssSide = inner + PAD*2;
+
+  cv.style.width = cssSide + 'px';
+  cv.style.height = cssSide + 'px';
+  cv.width = Math.round(cssSide * DPR);
+  cv.height = Math.round(cssSide * DPR);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+}
+
+/* ============================================================
+   New game / replay
+   ============================================================ */
+function newMaze(seed){
+  const s = seed === undefined ? (Math.floor(Math.random()*0xFFFFFF)) : seed;
+  state.maze = new Maze(state.size, s);
+  el.seed.textContent = 'seed ' + s.toString(16).toUpperCase().padStart(6,'0') + ' · ' + state.size + '×' + state.size;
+  resetRun();
+  layout();
+}
+
+function resetRun(){
+  const m = state.maze;
+  state.px = m.start.x; state.py = m.start.y;
+  state.rx = state.px; state.ry = state.py;
+  state.steps = 0;
+  state.started = false;
+  state.finished = false;
+  state.elapsed = 0;
+  state.trail = [[state.px, state.py]];
+  state.visitCount = new Uint16Array(state.size*state.size);
+  state.visitCount[m.idx(state.px,state.py)] = 1;
+  state.hint = 0;
+  state.hintUses = 0;
+  state.particles.length = 0;
+  state.shake = 0;
+  el.overlay.classList.remove('show');
+  updateHUD();
+}
+
+/* ============================================================
+   Movement
+   ============================================================ */
+// Note: no vim hjkl bindings — `h` is reserved for the Hint shortcut and
+// `r`/`n` for replay/new, so a movement mapping would shadow them.
+const DIRKEY = {
+  ArrowUp:N, ArrowRight:E, ArrowDown:S, ArrowLeft:W,
+  w:N, d:E, s:S, a:W, W:N, D:E, S:S, A:W
+};
+
+function move(dir){
+  if(state.finished || !state.maze) return;
+  const m = state.maze;
+  if(!m.open(state.px, state.py, dir)){
+    bump(dir);
+    return;
+  }
+  if(!state.started){
+    state.started = true;
+    state.t0 = performance.now();
+  }
+  state.px += DX[dir];
+  state.py += DY[dir];
+  state.steps++;
+
+  const id = m.idx(state.px, state.py);
+  state.visitCount[id] = Math.min(65535, state.visitCount[id] + 1);
+
+  // Trail: if we backtrack onto the previous cell, pop instead of appending —
+  // keeps the ribbon showing the *current* route rather than a scribble.
+  const t = state.trail;
+  if(t.length >= 2 && t[t.length-2][0] === state.px && t[t.length-2][1] === state.py){
+    t.pop();
+  } else {
+    t.push([state.px, state.py]);
+  }
+
+  spawnDust(dir);
+  updateHUD();
+
+  if(state.px === m.end.x && state.py === m.end.y) finish();
+}
+
+function bump(dir){
+  state.shake = Math.min(6, state.shake + 4.5);
+  state.bumpDir = dir;
+}
+
+/* ============================================================
+   Scoring
+   ============================================================ */
+function scoreOf(seconds, steps, optimal){
+  const wasted = Math.max(0, steps - optimal);
+  let sc = 1000 - Math.round(seconds * 6) - wasted * 4;
+  if(wasted === 0) sc += 500;
+  return Math.max(0, sc);
+}
+
+function finish(){
+  state.finished = true;
+  state.elapsed = (performance.now() - state.t0) / 1000;
+  const m = state.maze;
+  const optimal = m.solution.length - 1;
+  const wasted = state.steps - optimal;
+  const perfect = wasted === 0 && state.hintUses === 0;
+  const score = scoreOf(state.elapsed, state.steps, optimal) - state.hintUses * 60;
+  const finalScore = Math.max(0, score);
+
+  state.goalPulse = 1;
+  burst(m.end.x, m.end.y, perfect ? 90 : 55, perfect);
+
+  // session stats
+  state.session.wins++;
+  if(perfect) state.session.perfect++;
+  if(state.elapsed < state.session.bestTime) state.session.bestTime = state.elapsed;
+  if(finalScore > state.session.bestScore) state.session.bestScore = finalScore;
+  el.winCount.textContent = state.session.wins;
+  el.perfCount.textContent = state.session.perfect;
+  el.bestTime.textContent = state.session.bestTime === Infinity ? '—' : state.session.bestTime.toFixed(2) + 's';
+  el.bestScore.textContent = state.session.bestScore || '—';
+
+  el.mTitle.textContent = perfect ? 'Perfect Escape' : 'Escaped!';
+  el.mSub.textContent = perfect
+    ? 'Not a single wasted step.'
+    : (wasted <= 4 ? 'Razor close to optimal.' : 'You made it out — now do it cleaner.');
+  el.mTime.textContent = state.elapsed.toFixed(2) + 's';
+  el.mSteps.textContent = state.steps;
+  el.mOpt.textContent = optimal;
+
+  const parts = [];
+  parts.push('Score <b style="color:var(--ink)">' + finalScore + '</b>');
+  if(perfect){
+    parts.push('<span class="pill">Shortest path +500</span>');
+  } else if(wasted > 0){
+    parts.push('<span style="color:var(--danger)">' + wasted + ' wasted step' + (wasted===1?'':'s') + '</span> · −' + (wasted*4));
+  }
+  if(state.hintUses) parts.push('<span style="color:var(--danger)">hint used</span> · −' + (state.hintUses*60));
+  el.mBonus.innerHTML = parts.join('<br>');
+
+  setTimeout(() => el.overlay.classList.add('show'), 520);
+  updateHUD();
+}
+
+/* ============================================================
+   HUD
+   ============================================================ */
+function updateHUD(){
+  const m = state.maze;
+  const optimal = m ? m.solution.length - 1 : 0;
+  el.step.textContent = state.steps;
+  el.opt.textContent = optimal;
+
+  if(state.steps === 0){
+    el.eff.textContent = '—';
+    el.eff.className = 'v meh';
+  } else {
+    // Efficiency = optimal remaining route length vs actual steps taken.
+    const pct = Math.round(Math.min(1, optimal / state.steps) * 100);
+    el.eff.textContent = pct + '%';
+    el.eff.className = 'v ' + (pct === 100 ? 'perfect' : pct >= 80 ? 'good' : 'meh');
+  }
+}
+
+function tickTimer(){
+  if(state.started && !state.finished){
+    state.elapsed = (performance.now() - state.t0) / 1000;
+  }
+  el.time.innerHTML = state.elapsed.toFixed(1) + '<small>s</small>';
+}
+
+/* ============================================================
+   Particles
+   ============================================================ */
+function spawnDust(dir){
+  const cx = state.px, cy = state.py;
+  for(let i=0;i<4;i++){
+    state.particles.push({
+      x:cx+0.5 - DX[dir]*0.25, y:cy+0.5 - DY[dir]*0.25,
+      vx:(-DX[dir]*0.6 + (Math.random()-.5)*0.5)*0.05,
+      vy:(-DY[dir]*0.6 + (Math.random()-.5)*0.5)*0.05,
+      life:1, decay:0.05+Math.random()*0.04, r:1.6+Math.random()*1.6,
+      c:'94,234,212'
+    });
+  }
+}
+function burst(cx, cy, count, gold){
+  for(let i=0;i<count;i++){
+    const a = Math.random()*Math.PI*2;
+    const sp = 0.02 + Math.random()*0.10;
+    state.particles.push({
+      x:cx+0.5, y:cy+0.5,
+      vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+      life:1, decay:0.010+Math.random()*0.016, r:1.5+Math.random()*2.8,
+      c: gold ? (Math.random()<.5 ? '251,191,36' : '253,230,138') : (Math.random()<.5 ? '94,234,212' : '167,139,250')
+    });
+  }
+}
+
+/* ============================================================
+   Rendering
+   ============================================================ */
+let lastT = performance.now();
+
+function draw(now){
+  const dt = Math.min(50, now - lastT); lastT = now;
+  const m = state.maze;
+  if(!m){ requestAnimationFrame(draw); return; }
+
+  const n = state.size;
+  const W_ = cv.width / DPR, H_ = cv.height / DPR;
+
+  // camera shake on wall bump
+  let sx = 0, sy = 0;
+  if(state.shake > 0.05){
+    sx = (Math.random()-.5) * state.shake;
+    sy = (Math.random()-.5) * state.shake;
+    state.shake *= 0.82;
+  } else state.shake = 0;
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W_,H_);
+  ctx.translate(sx, sy);
+
+  // ---- floor ----
+  const g = ctx.createLinearGradient(0,0,W_,H_);
+  g.addColorStop(0,'#0b1120'); g.addColorStop(1,'#111a2e');
+  ctx.fillStyle = g;
+  roundRect(ctx, PAD-4, PAD-4, n*CELL+8, n*CELL+8, 8); ctx.fill();
+
+  const X = c => PAD + c*CELL;
+  const Y = c => PAD + c*CELL;
+
+  // ---- heat: cells you've walked, deeper = revisited more ----
+  for(let y=0;y<n;y++){
+    for(let x=0;x<n;x++){
+      const v = state.visitCount[m.idx(x,y)];
+      if(!v) continue;
+      const a = Math.min(0.30, 0.07 + (v-1)*0.075);
+      ctx.fillStyle = v > 1 ? 'rgba(251,113,133,'+a+')' : 'rgba(94,234,212,0.055)';
+      ctx.fillRect(X(x)+1, Y(y)+1, CELL-2, CELL-2);
+    }
+  }
+
+  // ---- hint path (fades in when revealed) ----
+  if(state.hint > 0.002){
+    const path = m.solve({x:state.px,y:state.py}, m.end);
+    ctx.save();
+    ctx.globalAlpha = state.hint * 0.85;
+    ctx.strokeStyle = 'rgba(251,191,36,0.85)';
+    ctx.lineWidth = Math.max(1.5, CELL*0.16);
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.setLineDash([CELL*0.32, CELL*0.34]);
+    ctx.lineDashOffset = -(now/38)%1000;
+    ctx.shadowColor='rgba(251,191,36,.6)'; ctx.shadowBlur = CELL*0.5;
+    ctx.beginPath();
+    path.forEach((p,i)=>{
+      const px = X(p[0])+CELL/2, py = Y(p[1])+CELL/2;
+      i ? ctx.lineTo(px,py) : ctx.moveTo(px,py);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- current route ribbon ----
+  if(state.trail.length > 1){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(125,211,252,0.42)';
+    ctx.lineWidth = Math.max(1.4, CELL*0.20);
+    ctx.lineCap='round'; ctx.lineJoin='round';
+    ctx.shadowColor='rgba(125,211,252,.35)'; ctx.shadowBlur = CELL*0.35;
+    ctx.beginPath();
+    state.trail.forEach((p,i)=>{
+      const px = X(p[0])+CELL/2, py = Y(p[1])+CELL/2;
+      i ? ctx.lineTo(px,py) : ctx.moveTo(px,py);
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ---- start & goal ----
+  drawMarker(X(m.start.x), Y(m.start.y), '167,139,250', 'S', now, 0);
+  drawMarker(X(m.end.x), Y(m.end.y), '251,191,36', '★', now, 1);
+
+  // ---- walls ----
+  const lw = Math.max(1.4, Math.min(4, CELL*0.15));
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#33456b';
+  ctx.shadowColor = 'rgba(79,110,168,.45)';
+  ctx.shadowBlur = Math.min(6, CELL*0.30);
+  ctx.beginPath();
+  for(let y=0;y<n;y++){
+    for(let x=0;x<n;x++){
+      const c = m.cells[m.idx(x,y)];
+      const x0=X(x), y0=Y(y), x1=x0+CELL, y1=y0+CELL;
+      if(c & N){ ctx.moveTo(x0,y0); ctx.lineTo(x1,y0); }
+      if(c & W){ ctx.moveTo(x0,y0); ctx.lineTo(x0,y1); }
+      if(y===n-1 && (c & S)){ ctx.moveTo(x0,y1); ctx.lineTo(x1,y1); }
+      if(x===n-1 && (c & E)){ ctx.moveTo(x1,y0); ctx.lineTo(x1,y1); }
+    }
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // outer frame glow
+  ctx.strokeStyle = 'rgba(94,234,212,.30)';
+  ctx.lineWidth = Math.max(1.5, lw*0.9);
+  roundRect(ctx, PAD, PAD, n*CELL, n*CELL, 4); ctx.stroke();
+
+  // ---- particles ----
+  for(let i=state.particles.length-1;i>=0;i--){
+    const p = state.particles[i];
+    p.x += p.vx * (dt/16); p.y += p.vy * (dt/16);
+    p.vy += 0.0016 * (dt/16);
+    p.life -= p.decay * (dt/16);
+    if(p.life <= 0){ state.particles.splice(i,1); continue; }
+    ctx.fillStyle = 'rgba('+p.c+','+ (p.life*0.85).toFixed(3) +')';
+    ctx.beginPath();
+    ctx.arc(PAD + p.x*CELL, PAD + p.y*CELL, p.r * p.life * (CELL/22 + .5), 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // ---- avatar (tweened) ----
+  const ease = 1 - Math.pow(0.0016, dt/16.67);
+  state.rx += (state.px - state.rx) * ease;
+  state.ry += (state.py - state.ry) * ease;
+  drawAvatar(PAD + state.rx*CELL + CELL/2, PAD + state.ry*CELL + CELL/2, now);
+
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  tickTimer();
+  if(state.hintTarget !== undefined) state.hint += (state.hintTarget - state.hint) * 0.12;
+  requestAnimationFrame(draw);
+}
+
+function drawMarker(x,y,rgb,glyph,now,phase){
+  const pulse = 0.5 + 0.5*Math.sin(now/520 + phase*2.1);
+  ctx.save();
+  ctx.fillStyle = 'rgba('+rgb+','+(0.14 + pulse*0.20).toFixed(3)+')';
+  ctx.shadowColor = 'rgba('+rgb+',.7)';
+  ctx.shadowBlur = CELL*(0.5 + pulse*0.7);
+  roundRect(ctx, x+2, y+2, CELL-4, CELL-4, Math.max(2, CELL*0.22));
+  ctx.fill();
+  ctx.restore();
+  if(CELL >= 15){
+    ctx.save();
+    ctx.fillStyle = 'rgba('+rgb+',' + (0.65 + pulse*0.35).toFixed(3) + ')';
+    ctx.font = '700 ' + Math.round(CELL*0.52) + 'px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(glyph, x+CELL/2, y+CELL/2 + CELL*0.03);
+    ctx.restore();
+  }
+}
+
+function drawAvatar(cx, cy, now){
+  const r = Math.max(3, CELL*0.30);
+  const pulse = 0.5 + 0.5*Math.sin(now/300);
+
+  // aura
+  const ag = ctx.createRadialGradient(cx,cy,0,cx,cy,r*3.2);
+  ag.addColorStop(0,'rgba(94,234,212,'+(0.30+pulse*0.16).toFixed(3)+')');
+  ag.addColorStop(1,'rgba(94,234,212,0)');
+  ctx.fillStyle = ag;
+  ctx.beginPath(); ctx.arc(cx,cy,r*3.2,0,Math.PI*2); ctx.fill();
+
+  // ring
+  ctx.strokeStyle = 'rgba(94,234,212,'+(0.35+pulse*0.3).toFixed(3)+')';
+  ctx.lineWidth = Math.max(1, r*0.20);
+  ctx.beginPath(); ctx.arc(cx,cy,r*1.55 + pulse*r*0.22,0,Math.PI*2); ctx.stroke();
+
+  // core
+  const cg = ctx.createRadialGradient(cx - r*0.35, cy - r*0.35, r*0.1, cx, cy, r);
+  cg.addColorStop(0,'#ffffff');
+  cg.addColorStop(0.45,'#7ff3e0');
+  cg.addColorStop(1,'#22b8a4');
+  ctx.fillStyle = cg;
+  ctx.shadowColor='rgba(94,234,212,.9)'; ctx.shadowBlur = r*2.2;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function roundRect(c,x,y,w,h,r){
+  r = Math.min(r, w/2, h/2);
+  c.beginPath();
+  c.moveTo(x+r,y);
+  c.arcTo(x+w,y,x+w,y+h,r);
+  c.arcTo(x+w,y+h,x,y+h,r);
+  c.arcTo(x,y+h,x,y,r);
+  c.arcTo(x,y,x+w,y,r);
+  c.closePath();
+}
+
+/* ============================================================
+   Input
+   ============================================================ */
+let repeatTimer = null, repeatDir = null;
+
+window.addEventListener('keydown', e => {
+  if(e.metaKey || e.ctrlKey || e.altKey) return;
+  const d = DIRKEY[e.key];
+  if(d){
+    e.preventDefault();
+    move(d);
+    return;
+  }
+  if(e.key === 'r' || e.key === 'R'){ e.preventDefault(); replay(); }
+  else if(e.key === 'n' || e.key === 'N'){ e.preventDefault(); newMaze(); toast('New maze generated'); }
+  else if(e.key === 'h' || e.key === 'H'){ e.preventDefault(); toggleHint(); }
+  else if(e.key === 'Escape'){ el.overlay.classList.remove('show'); }
+});
+
+// D-pad (mobile) with press-and-hold repeat
+document.querySelectorAll('.dpad button').forEach(b => {
+  const dir = {up:N,right:E,down:S,left:W}[b.dataset.dir];
+  const start = e => {
+    e.preventDefault();
+    move(dir);
+    clearInterval(repeatTimer);
+    repeatDir = dir;
+    repeatTimer = setInterval(()=>move(repeatDir), 130);
+  };
+  const stop = () => { clearInterval(repeatTimer); repeatTimer = null; };
+  b.addEventListener('touchstart', start, {passive:false});
+  b.addEventListener('mousedown', start);
+  ['touchend','touchcancel','mouseup','mouseleave'].forEach(ev => b.addEventListener(ev, stop));
+});
+
+// Swipe on canvas
+let tsx=0, tsy=0, tracking=false;
+cv.addEventListener('touchstart', e => {
+  tsx = e.touches[0].clientX; tsy = e.touches[0].clientY; tracking = true;
+}, {passive:true});
+cv.addEventListener('touchmove', e => {
+  if(!tracking) return;
+  const dx = e.touches[0].clientX - tsx, dy = e.touches[0].clientY - tsy;
+  const thresh = 26;
+  if(Math.abs(dx) > thresh || Math.abs(dy) > thresh){
+    if(Math.abs(dx) > Math.abs(dy)) move(dx>0 ? E : W);
+    else move(dy>0 ? S : N);
+    tsx = e.touches[0].clientX; tsy = e.touches[0].clientY;
+  }
+}, {passive:true});
+cv.addEventListener('touchend', () => { tracking = false; });
+
+/* ============================================================
+   Actions
+   ============================================================ */
+function replay(){
+  resetRun();
+  toast('Same maze — go again');
+}
+function toggleHint(){
+  if(state.finished) return;
+  if(state.hintTarget){ state.hintTarget = 0; toast('Hint hidden'); return; }
+  state.hintTarget = 1;
+  state.hintUses++;
+  toast('Hint revealed · −60 score');
+}
+state.hintTarget = 0;
+
+let toastT = null;
+function toast(msg){
+  el.toast.textContent = msg;
+  el.toast.classList.add('show');
+  clearTimeout(toastT);
+  toastT = setTimeout(()=>el.toast.classList.remove('show'), 1700);
+}
+
+// Buttons blur themselves so keyboard play (and R/N/H) keeps working after a click,
+// rather than Space/Enter re-firing the focused control.
+function bind(id, fn){
+  $(id).onclick = e => { e.currentTarget.blur(); fn(); };
+}
+bind('btnNew', () => { newMaze(); toast('New maze generated'); });
+bind('btnReplay', replay);
+bind('btnHint', toggleHint);
+bind('mReplay', replay);
+bind('mNext', () => { newMaze(); toast('New maze generated'); });
+
+document.querySelectorAll('#sizeSeg button').forEach(b => {
+  b.onclick = () => {
+    b.blur();
+    document.querySelectorAll('#sizeSeg button').forEach(o => o.setAttribute('aria-pressed','false'));
+    b.setAttribute('aria-pressed','true');
+    state.size = parseInt(b.dataset.size, 10);
+    newMaze();
+    toast(b.textContent + ' · ' + state.size + '×' + state.size);
+  };
+});
+
+let rt = null;
+window.addEventListener('resize', () => {
+  clearTimeout(rt);
+  rt = setTimeout(layout, 90);
+});
+
+/* ============================================================
+   Boot
+   ============================================================ */
+// Minimal introspection hook (used by automated smoke tests; harmless at runtime).
+window.__maze = {
+  state,
+  route: () => state.maze.solve({x:state.px, y:state.py}, state.maze.end),
+  dirTo: (a,b) => (b[0]-a[0]===1?'ArrowRight':b[0]-a[0]===-1?'ArrowLeft':b[1]-a[1]===1?'ArrowDown':'ArrowUp')
+};
+
+newMaze();
+requestAnimationFrame(draw);
+
+})();
+</script>
+</body>
+</html>
