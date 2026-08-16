@@ -8,16 +8,14 @@ import {
   getAppOutputPath,
   type ModelConfig,
 } from "../lib/models.config";
+import {
+  buildHarnessCommand,
+  buildHarnessSpawnEnv,
+  type EnvOverrides,
+} from "../lib/harness-command";
 
 // Set Claude max output tokens globally to avoid truncation errors
 process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = "128000";
-
-// Max output token settings per CLI
-const MAX_OUTPUT_TOKENS = {
-  claude: 128000,
-  codex: 100000,
-  gemini: 65536, // Gemini's max - requires ~/.gemini/settings.json config
-};
 
 // Check token limit configurations on startup
 function checkTokenLimits(): void {
@@ -73,15 +71,13 @@ interface GenerateOptions {
   forceAll: boolean; // Force regenerate all apps
   modelFilter: string[]; // Model IDs to generate for (empty = all)
   concurrency: number; // Number of parallel generations
-  interactive: boolean; // Run Claude in its interactive terminal UI
+  interactive: boolean; // Run a supported harness in its interactive terminal UI
 }
 
 interface SandboxRunOptions {
   interactive: boolean;
   maxRetries?: number;
 }
-
-type EnvOverrides = Record<string, string | undefined>;
 
 // ============================================================================
 // Configuration
@@ -136,7 +132,7 @@ function ensureDir(filePath: string): void {
 
 function buildPrompt(spec: ExampleSpec, interactive: boolean): string {
   const sessionGuidance = interactive
-    ? "Work autonomously through the implementation. The user is watching in the interactive Claude Code session."
+    ? "Work autonomously through the implementation. The user is watching in the interactive harness session."
     : "This is a non-interactive session, so you will not be able to ask clarifying questions. Use your best judgment.";
 
   return `You are implementing a single self-contained HTML file.
@@ -182,8 +178,8 @@ function readEnvFile(): Record<string, string> | undefined {
   }
 }
 
-/** Build env overrides for models served via an Anthropic-compatible proxy
- *  (e.g. Fireworks, OpenRouter, a self-hosted gateway). Reads the base URL
+/** Build env overrides for models served via Fireworks' Anthropic-compatible
+ *  endpoint. Reads the base URL
  *  and auth from .env and pins every Claude Code model slot to this model's
  *  id so a single run uses one backend end-to-end.
  */
@@ -211,129 +207,12 @@ function buildAnthropicProxyEnv(model: ModelConfig): EnvOverrides | undefined {
   return result;
 }
 
-/** OpenRouter's Anthropic-compatible endpoint. The Claude Code CLI appends
- *  `/v1/messages`, so the base URL stops at `/api`. */
-const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-
-/** Build env overrides for models served via OpenRouter's Anthropic-compatible
- *  endpoint. Unlike buildAnthropicProxyEnv (which reads base URL + auth from
- *  .env), this pins the OpenRouter base URL and reads the key from
- *  OPENROUTER_API_KEY (process.env preferred, .env as a fallback) so the same
- *  .env can stay pointed at Fireworks for the anthropic-proxy models.
+/** Read OpenRouter auth for either Claude's proxy environment or OpenCode.
+ *  OpenCode can also fall back to credentials stored by `opencode auth login`.
  */
-function buildOpenRouterEnv(model: ModelConfig): EnvOverrides {
+function getOpenRouterApiKey(): string | undefined {
   const fileEnv = readEnvFile();
-  const apiKey =
-    process.env.OPENROUTER_API_KEY || fileEnv?.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      `OPENROUTER_API_KEY is not set (checked process.env and .env). ` +
-        `Required to run OpenRouter model "${model.id}".`
-    );
-  }
-
-  // Pin every Claude Code model slot to this model id so internal sub-model
-  // calls (sonnet/haiku/opus defaults) also route through OpenRouter.
-  const modelId = model.model;
-  return {
-    ANTHROPIC_BASE_URL: OPENROUTER_BASE_URL,
-    ANTHROPIC_API_KEY: apiKey,
-    ANTHROPIC_AUTH_TOKEN: undefined,
-    ANTHROPIC_MODEL: modelId,
-    ANTHROPIC_SMALL_FAST_MODEL: modelId,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: modelId,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: modelId,
-    ANTHROPIC_DEFAULT_OPUS_MODEL: modelId,
-  };
-}
-
-function buildCliCommand(
-  model: ModelConfig,
-  prompt: string,
-  interactive: boolean
-): { cmd: string; args: string[]; env?: EnvOverrides } {
-  const claudeModeArgs = interactive ? [] : ["-p"];
-
-  switch (model.cli) {
-    case "claude":
-      return {
-        cmd: "claude",
-        args: [
-          ...claudeModeArgs,
-          "--model",
-          model.model,
-          "--max-turns",
-          "500",
-          "--dangerously-skip-permissions",
-          "--permission-mode",
-          "bypassPermissions",
-          prompt,
-        ],
-      };
-
-    case "codex":
-      return {
-        cmd: "codex",
-        args: [
-          "exec",
-          "--model",
-          model.model,
-          "--full-auto",
-          "-c",
-          `model_max_output_tokens=${MAX_OUTPUT_TOKENS.codex}`,
-          prompt,
-        ],
-      };
-
-    case "gemini":
-      // Note: Gemini CLI doesn't have a CLI flag for max output tokens
-      // It uses ~/.gemini/settings.json - user should configure manually if needed
-      return {
-        cmd: "gemini",
-        args: [
-          "--model",
-          model.model,
-          "--approval-mode",
-          "yolo",
-          "--skip-trust",
-          prompt,
-        ],
-      };
-
-    case "anthropic-proxy":
-    case "openrouter": {
-      // Models served through an Anthropic-compatible endpoint, driven by the
-      // Claude Code CLI with ANTHROPIC_* env vars pointed at the provider's
-      // base URL. "anthropic-proxy" reads base URL + auth from .env (Fireworks);
-      // "openrouter" pins OpenRouter's base URL and reads OPENROUTER_API_KEY.
-      // Both share the same --bare CLI invocation so multiple proxied models
-      // can coexist without manually editing .env between runs.
-      const proxyArgs = [
-        ...claudeModeArgs,
-        "--bare",
-        "--model",
-        model.model,
-        "--max-turns",
-        "500",
-        "--dangerously-skip-permissions",
-        "--permission-mode",
-        "bypassPermissions",
-        ...(model.supportsVision === false ? ["--disallowed-tools", "computer_20250124", "--"] : []),
-        prompt,
-      ];
-      return {
-        cmd: "claude",
-        args: proxyArgs,
-        env:
-          model.cli === "openrouter"
-            ? buildOpenRouterEnv(model)
-            : buildAnthropicProxyEnv(model),
-      };
-    }
-
-    default:
-      throw new Error(`Unknown CLI type: ${(model as ModelConfig).cli}`);
-  }
+  return process.env.OPENROUTER_API_KEY || fileEnv?.OPENROUTER_API_KEY;
 }
 
 function createTempDir(): string {
@@ -442,19 +321,15 @@ async function runCliOnce(
   logPrefix: string,
   interactive: boolean
 ): Promise<void> {
-  const { cmd, args, env } = buildCliCommand(model, prompt, interactive);
+  const { cmd, args, env } = buildHarnessCommand(model, prompt, {
+    interactive,
+    anthropicProxyEnv:
+      model.host === "fireworks" ? buildAnthropicProxyEnv(model) : undefined,
+    openRouterApiKey:
+      model.host === "openrouter" ? getOpenRouterApiKey() : undefined,
+  });
 
-  const spawnEnv = {
-    ...process.env,
-    ...env,
-    // Ensure Claude max tokens is always set for claude CLI
-    CLAUDE_CODE_MAX_OUTPUT_TOKENS: String(MAX_OUTPUT_TOKENS.claude),
-  };
-  for (const [key, value] of Object.entries(spawnEnv)) {
-    if (value === undefined) {
-      delete spawnEnv[key as keyof typeof spawnEnv];
-    }
-  }
+  const spawnEnv = buildHarnessSpawnEnv(model, env);
 
   await new Promise<void>((resolve, reject) => {
     console.log(`${logPrefix} Running in sandbox: ${tempDir}`);
@@ -462,10 +337,10 @@ async function runCliOnce(
     // audited against the intended model (guards against silent CLI fallbacks).
     const modelFlagIdx = args.indexOf("--model");
     const invokedModel = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : "(no --model flag)";
-    const invocationMode = interactive ? "(interactive)" : "-p";
+    const invocationMode = interactive ? "(interactive)" : "(non-interactive)";
     console.log(`${logPrefix} Command: ${cmd} ${invocationMode} --model ${invokedModel} ...`);
     if (interactive) {
-      console.log(`${logPrefix} Type /exit when Claude finishes to continue validation (do not press Ctrl+C).`);
+      console.log(`${logPrefix} Exit the harness when it finishes to continue validation (do not press Ctrl+C).`);
     }
 
     const proc = spawn(cmd, args, {
@@ -644,7 +519,9 @@ async function main(): Promise<void> {
     : models;
 
   if (options.interactive && options.concurrency !== 1) {
-    console.error("--interactive requires --concurrency 1 so Claude can own the terminal.");
+    console.error(
+      "--interactive requires --concurrency 1 so the harness can own the terminal."
+    );
     process.exit(1);
   }
 
@@ -653,12 +530,12 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const nonClaudeModels = targetModels.filter(
-    (model) => !["claude", "anthropic-proxy", "openrouter"].includes(model.cli)
+  const nonInteractiveModels = targetModels.filter(
+    (model) => !["claude", "opencode"].includes(model.harness)
   );
-  if (options.interactive && nonClaudeModels.length > 0) {
+  if (options.interactive && nonInteractiveModels.length > 0) {
     console.error(
-      `--interactive only supports Claude-based models. Unsupported: ${nonClaudeModels.map((model) => model.id).join(", ")}`
+      `--interactive only supports Claude and OpenCode harnesses. Unsupported: ${nonInteractiveModels.map((model) => model.id).join(", ")}`
     );
     process.exit(1);
   }
@@ -697,7 +574,7 @@ async function main(): Promise<void> {
 
   console.log(`Total tasks: ${taskCount}`);
   console.log(`Concurrency: ${options.concurrency}`);
-  console.log(`Claude mode: ${options.interactive ? "interactive" : "print"}`);
+  console.log(`Harness mode: ${options.interactive ? "interactive" : "non-interactive"}`);
   console.log();
 
   // Track stats
