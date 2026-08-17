@@ -5,7 +5,8 @@ import { getModel, models, publishedModels } from "../lib/models.config.ts";
 import {
   buildHarnessCommand,
   buildHarnessSpawnEnv,
-  OPENCODE_SANDBOX_CONFIG,
+  MAX_OUTPUT_TOKENS,
+  OPENCODE_UNRESTRICTED_CONFIG,
 } from "../lib/harness-command.ts";
 
 test("configures Qwen3.8 27B for OpenCode through OpenRouter", () => {
@@ -17,15 +18,16 @@ test("configures Qwen3.8 27B for OpenCode through OpenRouter", () => {
     harness: "opencode",
     host: "openrouter",
     model: "qwen/qwen3.8-27b",
+    variant: "xhigh",
     color: "bg-cyan-700",
     provider: "qwen",
-    published: false,
+    published: true,
   });
 });
 
-test("keeps unpublished models available to generation but out of public UI exports", () => {
+test("publishes Qwen in the public UI model list", () => {
   assert.ok(models.some((model) => model.id === "qwen-3.8-27b"));
-  assert.ok(!publishedModels.some((model) => model.id === "qwen-3.8-27b"));
+  assert.ok(publishedModels.some((model) => model.id === "qwen-3.8-27b"));
 });
 
 test("preserves exact harness commands and provider environments", () => {
@@ -45,7 +47,8 @@ test("preserves exact harness commands and provider environments", () => {
     ANTHROPIC_DEFAULT_OPUS_MODEL: "moonshotai/kimi-k3",
   };
   const openCodeEnv = {
-    OPENCODE_CONFIG_CONTENT: JSON.stringify(OPENCODE_SANDBOX_CONFIG),
+    OPENCODE_CONFIG_CONTENT: JSON.stringify(OPENCODE_UNRESTRICTED_CONFIG),
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: String(MAX_OUTPUT_TOKENS.opencode),
     OPENROUTER_API_KEY: "test-openrouter-key",
   };
 
@@ -153,6 +156,8 @@ test("preserves exact harness commands and provider environments", () => {
         args: [
           "run",
           "--pure",
+          "--variant",
+          "xhigh",
           "--model",
           "openrouter/qwen/qwen3.8-27b",
           prompt,
@@ -168,6 +173,8 @@ test("preserves exact harness commands and provider environments", () => {
         cmd: "opencode",
         args: [
           "--pure",
+          "--variant",
+          "xhigh",
           "--model",
           "openrouter/qwen/qwen3.8-27b",
           "--prompt",
@@ -210,19 +217,18 @@ test("lets OpenCode use credentials from its auth store", () => {
   assert.equal(command.cmd, "opencode");
   assert.equal(command.env?.OPENROUTER_API_KEY, undefined);
   assert.equal(
-    command.env?.OPENCODE_CONFIG_CONTENT,
-    JSON.stringify(OPENCODE_SANDBOX_CONFIG)
+    command.env?.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX,
+    String(MAX_OUTPUT_TOKENS.opencode)
   );
 });
 
-test("restricts OpenCode to in-workspace file operations", () => {
-  assert.deepEqual(OPENCODE_SANDBOX_CONFIG.permission, {
-    "*": "deny",
-    read: "allow",
-    edit: "allow",
-    glob: "allow",
-    grep: "allow",
-    external_directory: "deny",
+test("lets OpenCode use the model's full OpenRouter output capacity", () => {
+  assert.equal(MAX_OUTPUT_TOKENS.opencode, 131072);
+});
+
+test("gives OpenCode unrestricted tool permissions like the other harnesses", () => {
+  assert.deepEqual(OPENCODE_UNRESTRICTED_CONFIG.permission, {
+    "*": "allow",
   });
 });
 
@@ -249,7 +255,11 @@ test("scrubs unrelated secrets from the OpenCode child environment", () => {
   assert.equal(spawnEnv.OPENROUTER_API_KEY, "test-openrouter-key");
   assert.equal(
     spawnEnv.OPENCODE_CONFIG_CONTENT,
-    JSON.stringify(OPENCODE_SANDBOX_CONFIG)
+    JSON.stringify(OPENCODE_UNRESTRICTED_CONFIG)
+  );
+  assert.equal(
+    spawnEnv.OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX,
+    String(MAX_OUTPUT_TOKENS.opencode)
   );
   assert.equal(spawnEnv.OPENAI_API_KEY, undefined);
   assert.equal(spawnEnv.ANTHROPIC_API_KEY, undefined);
@@ -275,5 +285,6 @@ test("installed OpenCode accepts the flags used by generation", (t) => {
   assert.match(tuiOutput, /--model\b/);
   assert.match(tuiOutput, /--prompt\b/);
   assert.match(runOutput, /--pure\b/);
+  assert.match(runOutput, /--variant\b/);
   assert.match(runOutput, /--model\b/);
 });

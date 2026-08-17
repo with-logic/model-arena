@@ -42,6 +42,9 @@ export interface ModelConfig {
   /** Model identifier passed to the CLI tool (e.g., "opus", "gpt-5.1", "gemini-3") */
   model: string;
 
+  /** Optional harness-specific model variant (for example, reasoning effort). */
+  variant?: string;
+
   /** Tailwind CSS class for the model's color indicator */
   color: string;
 
@@ -297,9 +300,10 @@ export const models: ModelConfig[] = [
     harness: "opencode",
     host: "openrouter",
     model: "qwen/qwen3.8-27b",
+    variant: "xhigh",
     color: "bg-cyan-700",
     provider: "qwen",
-    published: false,
+    published: true,
   },
   {
     id: "glm-5.2",

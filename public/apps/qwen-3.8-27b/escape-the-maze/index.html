@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<title>Escape the Maze</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #05070f;
+    --panel: rgba(148, 163, 184, 0.07);
+    --panel-border: rgba(148, 163, 184, 0.16);
+    --text: #e6edf7;
+    --muted: #8b98ad;
+    --cyan: #22d3ee;
+    --emerald: #34d399;
+    --amber: #fbbf24;
+    --violet: #a78bfa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; }
+  body {
+    font-family: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(1000px 600px at 15% -10%, rgba(34, 211, 238, 0.10), transparent 60%),
+      radial-gradient(900px 600px at 110% 15%, rgba(167, 139, 250, 0.10), transparent 60%),
+      radial-gradient(800px 500px at 50% 120%, rgba(52, 211, 153, 0.07), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 28px 16px 44px;
+    touch-action: manipulation;
+  }
+  .app { width: 100%; max-width: 780px; display: flex; flex-direction: column; gap: 16px; }
+
+  header { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  h1 {
+    font-size: clamp(26px, 4.5vw, 36px);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #e6edf7 10%, #7dd3fc 55%, #22d3ee 90%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tagline { color: var(--muted); font-size: 14px; margin-top: 5px; }
+  .sound-btn {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: color .15s, border-color .15s;
+  }
+  .sound-btn:hover { color: var(--text); border-color: rgba(148,163,184,.35); }
+  .sound-btn.off { opacity: .55; }
+
+  .hud { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    padding: 10px 14px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .stat label {
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    margin-bottom: 4px;
+    font-weight: 600;
+  }
+  .stat span { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+  #time { color: var(--cyan); }
+  #shortest { color: var(--amber); }
+  #best { color: var(--emerald); }
+
+  .board-wrap {
+    position: relative;
+    background: rgba(2, 6, 23, 0.65);
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    padding: 10px;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  canvas { display: block; width: 100%; height: auto; border-radius: 10px; }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(4, 8, 20, 0.55);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-radius: 18px;
+    transition: opacity .25s ease;
+    z-index: 5;
+  }
+  .overlay.hidden { opacity: 0; pointer-events: none; }
+  .win-card {
+    background: linear-gradient(180deg, rgba(17, 25, 44, 0.97), rgba(9, 13, 27, 0.97));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    padding: 24px 28px 26px;
+    text-align: center;
+    width: min(350px, 88%);
+    box-shadow: 0 28px 90px rgba(0, 0, 0, 0.55);
+    animation: pop .38s cubic-bezier(.2, 1.4, .4, 1);
+  }
+  @keyframes pop { from { transform: scale(.82) translateY(10px); opacity: 0; } }
+  .win-card h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.24em;
+    color: var(--emerald);
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .final-time {
+    font-size: 42px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    margin: 2px 0 4px;
+  }
+  .breakdown { color: var(--muted); font-size: 13px; min-height: 18px; }
+  .breakdown .dim { opacity: .65; padding: 0 2px; }
+  .chip-row { min-height: 26px; margin-bottom: 8px; }
+  .chip {
+    display: inline-block;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    padding: 4px 11px;
+    border-radius: 999px;
+    margin: 0 4px 4px;
+  }
+  .chip-perfect { background: rgba(251,191,36,.14); color: var(--amber); border: 1px solid rgba(251,191,36,.45); }
+  .chip-best { background: rgba(52,211,153,.14); color: var(--emerald); border: 1px solid rgba(52,211,153,.45); }
+  .meter { height: 8px; background: rgba(148,163,184,.15); border-radius: 999px; overflow: hidden; margin: 14px 0 7px; }
+  .meter-fill {
+    height: 100%;
+    width: 0;
+    background: linear-gradient(90deg, var(--cyan), var(--emerald));
+    border-radius: 999px;
+    transition: width .7s cubic-bezier(.2, .8, .2, 1);
+  }
+  .meter-label { color: var(--muted); font-size: 12.5px; margin-bottom: 18px; font-variant-numeric: tabular-nums; }
+
+  .controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .seg {
+    display: inline-flex;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 4px;
+    gap: 4px;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 14px;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: rgba(34,211,238,.16); color: var(--cyan); }
+  .hint { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+  kbd {
+    background: rgba(148,163,184,.12);
+    border: 1px solid rgba(148,163,184,.28);
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-family: inherit;
+    color: var(--text);
+  }
+  .btn {
+    border: 0;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    border-radius: 12px;
+    padding: 11px 20px;
+    transition: transform .12s, box-shadow .15s, filter .15s;
+  }
+  .btn:active { transform: scale(.96); }
+  .btn.primary {
+    background: linear-gradient(135deg, #22d3ee, #3b82f6);
+    color: #04121a;
+    box-shadow: 0 8px 26px rgba(34, 211, 238, 0.35);
+  }
+  .btn.primary:hover { filter: brightness(1.08); box-shadow: 0 10px 32px rgba(34, 211, 238, 0.5); }
+  .btn.ghost {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+  }
+  .btn.ghost:hover { border-color: rgba(148,163,184,.4); }
+
+  .dpad {
+    display: none;
+    grid-template-columns: repeat(3, 58px);
+    grid-template-rows: repeat(2, 58px);
+    gap: 8px;
+    justify-content: center;
+    margin-top: 2px;
+  }
+  .dpad button {
+    font-size: 20px;
+    line-height: 1;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    color: var(--text);
+    border-radius: 14px;
+    cursor: pointer;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .dpad button:active { background: rgba(34,211,238,.22); }
+  .dpad [data-dir="0"] { grid-column: 2; grid-row: 1; }
+  .dpad [data-dir="3"] { grid-column: 1; grid-row: 2; }
+  .dpad [data-dir="2"] { grid-column: 2; grid-row: 2; }
+  .dpad [data-dir="1"] { grid-column: 3; grid-row: 2; }
+
+  @media (hover: none) and (pointer: coarse) {
+    .dpad { display: grid; }
+    .hint { display: none; }
+  }
+  @media (max-width: 560px) {
+    .hud { grid-template-columns: repeat(2, 1fr); }
+    .stat span { font-size: 18px; }
+    .controls { justify-content: center; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header>
+    <div>
+      <h1>Escape the Maze</h1>
+      <p class="tagline">Reach the golden portal. Take the shortest route for a time bonus.</p>
+    </div>
+    <button class="sound-btn" id="soundBtn" type="button">Sound: On</button>
+  </header>
+
+  <div class="hud">
+    <div class="stat"><label>Time</label><span id="time">0:00.00</span></div>
+    <div class="stat"><label>Steps</label><span id="steps">0</span></div>
+    <div class="stat"><label>Shortest</label><span id="shortest">—</span></div>
+    <div class="stat"><label>Best</label><span id="best">—</span></div>
+  </div>
+
+  <div class="board-wrap" id="boardWrap">
+    <canvas id="board" role="img" aria-label="Maze game board"></canvas>
+    <div class="overlay hidden" id="overlay">
+      <div class="win-card">
+        <div class="chip-row">
+          <span class="chip chip-perfect" id="chipPerfect" hidden>Perfect path</span>
+          <span class="chip chip-best" id="chipBest" hidden>New best</span>
+        </div>
+        <h2>Escaped</h2>
+        <div class="final-time" id="finalTime">0:00.00</div>
+        <div class="breakdown" id="breakdown"></div>
+        <div class="meter"><div class="meter-fill" id="meterFill"></div></div>
+        <div class="meter-label" id="meterLabel"></div>
+        <button class="btn primary" id="againBtn" type="button">Play again</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Maze size">
+      <button type="button" data-size="small">Small</button>
+      <button type="button" data-size="medium" class="active">Medium</button>
+      <button type="button" data-size="large">Large</button>
+    </div>
+    <div class="hint">
+      <span>Move</span>
+      <kbd>&uarr;</kbd><kbd>&darr;</kbd><kbd>&larr;</kbd><kbd>&rarr;</kbd>
+      <span>or</span>
+      <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+      <span>&middot; new maze</span>
+      <kbd>R</kbd>
+    </div>
+    <button class="btn primary" id="replayBtn" type="button">New maze</button>
+  </div>
+
+  <div class="dpad" aria-label="Touch controls">
+    <button type="button" data-dir="0" aria-label="Up">&#9650;</button>
+    <button type="button" data-dir="3" aria-label="Left">&#9664;</button>
+    <button type="button" data-dir="2" aria-label="Down">&#9660;</button>
+    <button type="button" data-dir="1" aria-label="Right">&#9654;</button>
+  </div>
+</main>
+
+<script>
+(() => {
+"use strict";
+
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const el = {
+  time: document.getElementById("time"),
+  steps: document.getElementById("steps"),
+  shortest: document.getElementById("shortest"),
+  best: document.getElementById("best"),
+  overlay: document.getElementById("overlay"),
+  finalTime: document.getElementById("finalTime"),
+  breakdown: document.getElementById("breakdown"),
+  meterFill: document.getElementById("meterFill"),
+  meterLabel: document.getElementById("meterLabel"),
+  chipPerfect: document.getElementById("chipPerfect"),
+  chipBest: document.getElementById("chipBest"),
+  again: document.getElementById("againBtn"),
+  replay: document.getElementById("replayBtn"),
+  sound: document.getElementById("soundBtn"),
+  wrap: document.getElementById("boardWrap"),
+  sizeBtns: Array.from(document.querySelectorAll(".seg button[data-size]")),
+};
+
+const SIZES = {
+  small: { cols: 13, rows: 9 },
+  medium: { cols: 19, rows: 13 },
+  large: { cols: 27, rows: 19 },
+};
+const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+const OPP = [2, 3, 0, 1];
+const KEYMAP = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 };
+const SPEED = 13;
+const BONUS_MS = 5000;
+const BEST_KEY = "escape-the-maze-best";
+
+let sizeKey = "medium";
+let cols, rows, cell, W, H;
+let cells;
+let shortestPath;
+let player, pos, from, to, moving, moveT;
+let steps, startTime, finished, finalMs, bonusMs;
+let held = [];
+let trail = [];
+let confetti = [];
+let soundOn = true;
+let best = loadBest();
+
+const AudioFX = {
+  ctx: null,
+  ensure() {
+    if (!this.ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (AC) this.ctx = new AC();
+    }
+    if (this.ctx && this.ctx.state === "suspended") this.ctx.resume();
+  },
+  tone(freq, dur, type, vol, delay) {
+    if (!soundOn) return;
+    this.ensure();
+    if (!this.ctx) return;
+    const t0 = this.ctx.currentTime + (delay || 0);
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0, t0);
+    g.gain.linearRampToValueAtTime(vol, t0 + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g);
+    g.connect(this.ctx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  },
+  move() { this.tone(430, 0.06, "triangle", 0.022); },
+  bump() { this.tone(95, 0.09, "sawtooth", 0.018); },
+  win() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.24, "sine", 0.055, i * 0.09)); },
+};
+
+function loadBest() {
+  try { return JSON.parse(localStorage.getItem(BEST_KEY) || "{}"); }
+  catch (e) { return {}; }
+}
+function saveBest() {
+  try { localStorage.setItem(BEST_KEY, JSON.stringify(best)); }
+  catch (e) {}
+}
+
+function generateMaze() {
+  cells = Array.from({ length: cols * rows }, () => ({ w: [1, 1, 1, 1], v: 0 }));
+  const stack = [0];
+  cells[0].v = 1;
+  while (stack.length) {
+    const i = stack[stack.length - 1];
+    const x = i % cols, y = (i / cols) | 0;
+    const opts = [];
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const ni = ny * cols + nx;
+      if (!cells[ni].v) opts.push([d, ni]);
+    }
+    if (!opts.length) { stack.pop(); continue; }
+    const pick = opts[(Math.random() * opts.length) | 0];
+    cells[i].w[pick[0]] = 0;
+    cells[pick[1]].w[OPP[pick[0]]] = 0;
+    cells[pick[1]].v = 1;
+    stack.push(pick[1]);
+  }
+}
+
+function solveMaze() {
+  const n = cols * rows;
+  const start = 0, end = n - 1;
+  const prev = new Int32Array(n).fill(-1);
+  const q = new Int32Array(n);
+  let head = 0, tail = 0;
+  q[tail++] = start;
+  prev[start] = start;
+  while (head < tail) {
+    const i = q[head++];
+    if (i === end) break;
+    const x = i % cols, y = (i / cols) | 0;
+    for (let d = 0; d < 4; d++) {
+      if (cells[i].w[d]) continue;
+      const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const ni = ny * cols + nx;
+      if (prev[ni] !== -1) continue;
+      prev[ni] = i;
+      q[tail++] = ni;
+    }
+  }
+  const path = [];
+  for (let c = end; c !== start; c = prev[c]) path.push(c);
+  path.push(start);
+  path.reverse();
+  return path;
+}
+
+function fmt(ms) {
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const c = Math.floor((ms % 1000) / 10);
+  return m + ":" + String(s).padStart(2, "0") + "." + String(c).padStart(2, "0");
+}
+
+function newGame() {
+  const s = SIZES[sizeKey];
+  cols = s.cols;
+  rows = s.rows;
+  cell = Math.max(18, Math.min(46, Math.floor(700 / cols)));
+  W = cols * cell;
+  H = rows * cell;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  el.wrap.style.maxWidth = (W + 20) + "px";
+  generateMaze();
+  shortestPath = solveMaze();
+  player = { x: 0, y: 0 };
+  pos = { x: 0, y: 0 };
+  from = { x: 0, y: 0 };
+  to = { x: 0, y: 0 };
+  moving = false;
+  moveT = 0;
+  steps = 0;
+  startTime = null;
+  finished = false;
+  finalMs = 0;
+  bonusMs = 0;
+  held = [];
+  trail = [];
+  confetti = [];
+  el.overlay.classList.add("hidden");
+  el.time.textContent = "0:00.00";
+  el.time.style.color = "";
+  el.steps.textContent = "0";
+  el.shortest.textContent = String(shortestPath.length - 1);
+  el.best.textContent = best[sizeKey] !== undefined ? fmt(best[sizeKey]) : "—";
+  el.meterFill.style.width = "0%";
+}
+
+function tryMove(d, silent) {
+  if (finished || moving) return;
+  const i = player.y * cols + player.x;
+  if (cells[i].w[d]) {
+    if (!silent) AudioFX.bump();
+    return;
+  }
+  player.x += DIRS[d][0];
+  player.y += DIRS[d][1];
+  steps++;
+  el.steps.textContent = String(steps);
+  from = { x: pos.x, y: pos.y };
+  to = { x: player.x, y: player.y };
+  moving = true;
+  moveT = 0;
+  if (startTime === null) startTime = performance.now();
+  trail.push({ x: from.x, y: from.y, t: performance.now() });
+  if (trail.length > 14) trail.shift();
+  if (!silent) AudioFX.move();
+}
+
+function spawnConfetti() {
+  const gx = (cols - 0.5) * cell, gy = (rows - 0.5) * cell;
+  const colors = ["#22d3ee", "#34d399", "#fbbf24", "#a78bfa", "#f472b6"];
+  for (let i = 0; i < 150; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = 60 + Math.random() * 280;
+    confetti.push({
+      x: gx, y: gy,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp - 130,
+      age: 0,
+      life: 1.5 + Math.random() * 1.3,
+      size: 3 + Math.random() * 4.5,
+      color: colors[(Math.random() * colors.length) | 0],
+      rot: Math.random() * Math.PI,
+      vr: (Math.random() - 0.5) * 12,
+      rect: Math.random() < 0.5,
+    });
+  }
+}
+
+function win() {
+  finished = true;
+  finalMs = performance.now() - startTime;
+  const shortestSteps = shortestPath.length - 1;
+  const perfect = steps <= shortestSteps;
+  bonusMs = perfect ? BONUS_MS : 0;
+  const final = Math.max(0, finalMs - bonusMs);
+  const prevBest = best[sizeKey];
+  const isBest = prevBest === undefined || final < prevBest;
+  if (isBest) {
+    best[sizeKey] = final;
+    saveBest();
+    el.best.textContent = fmt(final);
+  }
+  const eff = Math.min(100, Math.round((shortestSteps / steps) * 100));
+  el.time.textContent = fmt(finalMs);
+  el.time.style.color = "var(--amber)";
+  el.finalTime.textContent = fmt(final);
+  el.breakdown.innerHTML = bonusMs
+    ? "Raw " + fmt(finalMs) + ' <span class="dim">&minus;</span> ' + (BONUS_MS / 1000).toFixed(2) + "s perfect-path bonus"
+    : "Raw time " + fmt(finalMs);
+  el.meterFill.style.width = eff + "%";
+  el.meterLabel.textContent = steps + " steps · shortest is " + shortestSteps + " · " + eff + "% efficient";
+  el.chipPerfect.hidden = !perfect;
+  el.chipBest.hidden = !isBest;
+  el.overlay.classList.remove("hidden");
+  spawnConfetti();
+  AudioFX.win();
+}
+
+function drawFloor() {
+  ctx.fillStyle = "rgba(148,163,184,0.045)";
+  for (let y = 0; y < rows; y++)
+    for (let x = 0; x < cols; x++)
+      if ((x + y) % 2 === 0) ctx.fillRect(x * cell, y * cell, cell, cell);
+}
+
+function drawWalls() {
+  const lw = Math.max(3, cell * 0.16);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  const passes = [
+    [lw * 2.8, "rgba(56,189,248,0.16)"],
+    [lw, "#dbeafe"],
+  ];
+  for (const pass of passes) {
+    ctx.lineWidth = pass[0];
+    ctx.strokeStyle = pass[1];
+    ctx.beginPath();
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const c = cells[y * cols + x];
+        const px = x * cell, py = y * cell;
+        if (c.w[0]) { ctx.moveTo(px, py); ctx.lineTo(px + cell, py); }
+        if (c.w[3]) { ctx.moveTo(px, py); ctx.lineTo(px, py + cell); }
+        if (x === cols - 1 && c.w[1]) { ctx.moveTo(px + cell, py); ctx.lineTo(px + cell, py + cell); }
+        if (y === rows - 1 && c.w[2]) { ctx.moveTo(px, py + cell); ctx.lineTo(px + cell, py + cell); }
+      }
+    }
+    ctx.stroke();
+  }
+}
+
+function drawSolution(now) {
+  const a = 0.3 + 0.22 * Math.sin(now / 250);
+  ctx.strokeStyle = "rgba(251,191,36," + a.toFixed(3) + ")";
+  ctx.lineWidth = Math.max(3, cell * 0.18);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.beginPath();
+  for (let k = 0; k < shortestPath.length; k++) {
+    const i = shortestPath[k];
+    const x = ((i % cols) + 0.5) * cell;
+    const y = (((i / cols) | 0) + 0.5) * cell;
+    if (k === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function drawStart() {
+  const x = cell * 0.5, y = cell * 0.5;
+  const r = cell * 0.28;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.2);
+  g.addColorStop(0, "rgba(52,211,153,0.5)");
+  g.addColorStop(1, "rgba(52,211,153,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.2, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = "rgba(52,211,153,0.9)";
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.55, 0, 7);
+  ctx.fill();
+}
+
+function drawGoal(now) {
+  const x = (cols - 0.5) * cell, y = (rows - 0.5) * cell;
+  const pulse = 0.5 + 0.5 * Math.sin(now / 280);
+  const r = cell * (0.3 + 0.06 * pulse);
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6);
+  g.addColorStop(0, "rgba(251,191,36," + (0.35 + 0.25 * pulse).toFixed(3) + ")");
+  g.addColorStop(1, "rgba(251,191,36,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.6, 0, 7);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(251,191,36," + (0.5 + 0.4 * pulse).toFixed(3) + ")";
+  ctx.lineWidth = Math.max(2, cell * 0.07);
+  ctx.beginPath();
+  ctx.arc(x, y, r * (1.15 + 0.3 * pulse), 0, 7);
+  ctx.stroke();
+  ctx.fillStyle = "#fbbf24";
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.62, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = "#fff7e0";
+  ctx.beginPath();
+  ctx.arc(x, y, r * 0.28, 0, 7);
+  ctx.fill();
+}
+
+function drawTrail(now) {
+  const life = 450;
+  for (const p of trail) {
+    const age = now - p.t;
+    if (age > life) continue;
+    const a = 1 - age / life;
+    const x = (p.x + 0.5) * cell, y = (p.y + 0.5) * cell;
+    ctx.fillStyle = "rgba(34,211,238," + (0.28 * a).toFixed(3) + ")";
+    ctx.beginPath();
+    ctx.arc(x, y, cell * 0.16 * (0.5 + 0.5 * a), 0, 7);
+    ctx.fill();
+  }
+  trail = trail.filter((p) => now - p.t <= life);
+}
+
+function drawAvatar() {
+  const x = (pos.x + 0.5) * cell, y = (pos.y + 0.5) * cell;
+  const r = cell * 0.3;
+  const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
+  glow.addColorStop(0, "rgba(34,211,238,0.55)");
+  glow.addColorStop(1, "rgba(34,211,238,0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.4, 0, 7);
+  ctx.fill();
+  const body = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, r * 0.1, x, y, r);
+  body.addColorStop(0, "#c5f4ff");
+  body.addColorStop(0.5, "#22d3ee");
+  body.addColorStop(1, "#0e7490");
+  ctx.fillStyle = body;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.beginPath();
+  ctx.arc(x - r * 0.32, y - r * 0.16, r * 0.15, 0, 7);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + r * 0.32, y - r * 0.16, r * 0.15, 0, 7);
+  ctx.fill();
+}
+
+function drawConfetti() {
+  for (const p of confetti) {
+    const a = Math.max(0, 1 - p.age / p.life);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = p.color;
+    if (p.rect) {
+      ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, p.size / 2, 0, 7);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function draw(now) {
+  ctx.clearRect(0, 0, W, H);
+  drawFloor();
+  drawWalls();
+  if (finished) drawSolution(now);
+  drawStart();
+  drawGoal(now);
+  drawTrail(now);
+  drawAvatar();
+  drawConfetti();
+}
+
+let last = performance.now();
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (moving) {
+    moveT += dt * SPEED;
+    if (moveT >= 1) {
+      pos = { x: to.x, y: to.y };
+      moving = false;
+      if (player.x === cols - 1 && player.y === rows - 1) win();
+    } else {
+      const t = moveT * moveT * (3 - 2 * moveT);
+      pos.x = from.x + (to.x - from.x) * t;
+      pos.y = from.y + (to.y - from.y) * t;
+    }
+  } else if (!finished && held.length) {
+    tryMove(held[held.length - 1], true);
+  }
+  for (const p of confetti) {
+    p.age += dt;
+    p.vy += 330 * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.rot += p.vr * dt;
+  }
+  confetti = confetti.filter((p) => p.age < p.life && p.y < H + 30);
+  if (startTime !== null && !finished) el.time.textContent = fmt(now - startTime);
+  draw(now);
+  requestAnimationFrame(tick);
+}
+
+window.addEventListener("keydown", (e) => {
+  const d = KEYMAP[e.code];
+  if (d !== undefined) {
+    e.preventDefault();
+    if (!held.includes(d)) held.push(d);
+    AudioFX.ensure();
+    if (!finished) tryMove(d, false);
+    return;
+  }
+  if (e.code === "KeyR") {
+    e.preventDefault();
+    newGame();
+    return;
+  }
+  if ((e.code === "Enter" || e.code === "Space") && !el.overlay.classList.contains("hidden")) {
+    e.preventDefault();
+    newGame();
+  }
+  AudioFX.ensure();
+});
+window.addEventListener("keyup", (e) => {
+  const d = KEYMAP[e.code];
+  if (d !== undefined) held = held.filter((h) => h !== d);
+});
+window.addEventListener("blur", () => { held = []; });
+
+let touchStart = null;
+canvas.addEventListener("touchstart", (e) => {
+  const t = e.changedTouches[0];
+  touchStart = { x: t.clientX, y: t.clientY };
+}, { passive: true });
+canvas.addEventListener("touchend", (e) => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  touchStart = null;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+  const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+  AudioFX.ensure();
+  if (!finished) tryMove(d, false);
+}, { passive: true });
+
+document.querySelectorAll(".dpad [data-dir]").forEach((btn) => {
+  const d = Number(btn.dataset.dir);
+  const down = (e) => {
+    e.preventDefault();
+    if (!held.includes(d)) held.push(d);
+    AudioFX.ensure();
+    if (!finished) tryMove(d, false);
+  };
+  const up = () => { held = held.filter((h) => h !== d); };
+  btn.addEventListener("pointerdown", down);
+  btn.addEventListener("pointerup", up);
+  btn.addEventListener("pointerleave", up);
+  btn.addEventListener("pointercancel", up);
+});
+
+el.replay.addEventListener("click", () => newGame());
+el.again.addEventListener("click", () => newGame());
+el.sizeBtns.forEach((b) => b.addEventListener("click", () => {
+  sizeKey = b.dataset.size;
+  el.sizeBtns.forEach((x) => x.classList.toggle("active", x === b));
+  newGame();
+}));
+el.sound.addEventListener("click", () => {
+  soundOn = !soundOn;
+  el.sound.textContent = soundOn ? "Sound: On" : "Sound: Off";
+  el.sound.classList.toggle("off", !soundOn);
+  if (soundOn) AudioFX.ensure();
+});
+
+el.sizeBtns.forEach((x) => x.classList.toggle("active", x.dataset.size === sizeKey));
+newGame();
+requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>

@@ -5,6 +5,7 @@ export type EnvOverrides = Record<string, string | undefined>;
 export const MAX_OUTPUT_TOKENS = {
   claude: 128000,
   codex: 100000,
+  opencode: 131072,
 } as const;
 
 export interface HarnessCommandOptions {
@@ -21,25 +22,14 @@ export interface HarnessCommand {
 
 const OPENROUTER_ANTHROPIC_BASE_URL = "https://openrouter.ai/api";
 
-/**
- * OpenCode loads this as its highest-precedence runtime configuration through
- * OPENCODE_CONFIG_CONTENT. Generation only needs to inspect and edit files in
- * the disposable working directory; every other tool and external path fails
- * closed.
- */
-export const OPENCODE_SANDBOX_CONFIG = {
+export const OPENCODE_UNRESTRICTED_CONFIG = {
   permission: {
-    "*": "deny",
-    read: "allow",
-    edit: "allow",
-    glob: "allow",
-    grep: "allow",
-    external_directory: "deny",
+    "*": "allow",
   },
 } as const;
 
-const OPENCODE_SANDBOX_CONFIG_CONTENT = JSON.stringify(
-  OPENCODE_SANDBOX_CONFIG
+const OPENCODE_UNRESTRICTED_CONFIG_CONTENT = JSON.stringify(
+  OPENCODE_UNRESTRICTED_CONFIG
 );
 
 // Runtime and auth-store discovery variables that are safe to expose to the
@@ -134,8 +124,10 @@ function buildOpenCodeCommand(
   options: HarnessCommandOptions
 ): HarnessCommand {
   const modelId = `${model.host}/${model.model}`;
+  const variantArgs = model.variant ? ["--variant", model.variant] : [];
   const env: EnvOverrides = {
-    OPENCODE_CONFIG_CONTENT: OPENCODE_SANDBOX_CONFIG_CONTENT,
+    OPENCODE_CONFIG_CONTENT: OPENCODE_UNRESTRICTED_CONFIG_CONTENT,
+    OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX: String(MAX_OUTPUT_TOKENS.opencode),
     ...(model.host === "openrouter" && options.openRouterApiKey
       ? { OPENROUTER_API_KEY: options.openRouterApiKey }
       : {}),
@@ -144,14 +136,14 @@ function buildOpenCodeCommand(
   if (options.interactive) {
     return {
       cmd: "opencode",
-      args: ["--pure", "--model", modelId, "--prompt", prompt],
+      args: ["--pure", ...variantArgs, "--model", modelId, "--prompt", prompt],
       env,
     };
   }
 
   return {
     cmd: "opencode",
-    args: ["run", "--pure", "--model", modelId, prompt],
+    args: ["run", "--pure", ...variantArgs, "--model", modelId, prompt],
     env,
   };
 }

@@ -48,8 +48,8 @@ npm run generate -- qwen-3.8-27b
 ```
 
 OpenCode receives the fully qualified model ID `openrouter/qwen/qwen3.8-27b`.
-After its generated apps are committed, set the model's `published` flag to
-`true` to include it in the public comparison and stats.
+The model is included in the public comparison and stats once its generated
+apps are present.
 
 ## Build Your Own
 
