@@ -1,0 +1,868 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#08080d">
+<title>Webcam Filter Playground</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='100' height='100' rx='24' fill='url(%23g)'/%3E%3C/svg%3E">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #08080d;
+    background-image: radial-gradient(1100px 560px at 50% -12%, #16162a 0%, #08080d 62%);
+    color: #e9e9f2;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 20px 10px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: #a7a7c0;
+    white-space: nowrap;
+  }
+  .brand .mark {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+    background: linear-gradient(135deg, #8b5cf6, #22d3ee);
+    box-shadow: 0 0 14px #8b5cf688;
+    flex: none;
+  }
+  .hud { display: flex; align-items: center; gap: 12px; }
+  select {
+    background: #12121c;
+    color: #cfcfe2;
+    border: 1px solid #26263a;
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12px;
+    padding: 6px 8px;
+    outline: none;
+    cursor: pointer;
+    max-width: 180px;
+  }
+  select:focus-visible { border-color: #8b5cf6; }
+  .live {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    color: #4ade80;
+  }
+  .live i {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #4ade80;
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  .live.off { color: #5b5b72; }
+  .live.off i { background: #5b5b72; animation: none; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+  main {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 0 20px 6px;
+  }
+
+  .stage {
+    position: relative;
+    width: min(100%, calc((100vh - 248px) * 1.7778));
+    width: min(100%, calc((100dvh - 248px) * 1.7778));
+    aspect-ratio: 16 / 9;
+    border-radius: 14px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid #23232f;
+    box-shadow:
+      0 24px 80px -28px #000,
+      0 0 70px -18px var(--glow, #8b5cf666);
+    transition: box-shadow .45s ease;
+  }
+  .stage:fullscreen {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: auto;
+    border-radius: 0;
+    border: none;
+  }
+  #view { width: 100%; height: 100%; display: block; }
+  .flash {
+    position: absolute;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .flash.go { animation: flash .38s ease-out; }
+  @keyframes flash { 0% { opacity: .85; } 100% { opacity: 0; } }
+  .hint {
+    position: absolute;
+    left: 0; right: 0; bottom: 14px;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: .04em;
+    color: #8a8aa4;
+    pointer-events: none;
+  }
+  .error {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #0b0b12f0;
+    text-align: center;
+    padding: 24px;
+  }
+  .error h3 { font-size: 15px; font-weight: 600; }
+  .error p {
+    font-size: 13px;
+    line-height: 1.55;
+    color: #9a9ab6;
+    max-width: 400px;
+  }
+  .hidden { display: none !important; }
+
+  .camfeed {
+    position: fixed;
+    top: -9999px; left: -9999px;
+    width: 2px; height: 2px;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    max-width: 920px;
+  }
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #9a9ab6;
+    background: #101018;
+    border: 1px solid #232334;
+    border-radius: 999px;
+    padding: 7px 13px;
+    cursor: pointer;
+    transition: color .18s, border-color .18s, background .18s, transform .18s, box-shadow .18s;
+  }
+  .chip:hover { color: #dcdcec; border-color: #34344c; transform: translateY(-1px); }
+  .chip:focus-visible { outline: none; border-color: #8b5cf6; }
+  .chip.on {
+    color: #fff;
+    background: #1b1b2e;
+    border-color: var(--glow, #8b5cf6);
+    box-shadow: 0 0 18px -6px var(--glow, #8b5cf6);
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+
+  .shots {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 64px;
+    width: 100%;
+    justify-content: center;
+  }
+  .thumbs { display: flex; gap: 8px; }
+  .thumb {
+    width: 88px;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid transparent;
+    background: #101018;
+    cursor: pointer;
+    opacity: .72;
+    transition: opacity .15s, border-color .15s, box-shadow .15s;
+    animation: pop .18s ease-out;
+  }
+  .thumb:hover { opacity: 1; }
+  .thumb.sel {
+    opacity: 1;
+    border-color: var(--glow, #8b5cf6);
+    box-shadow: 0 0 14px -4px var(--glow, #8b5cf6);
+  }
+  .thumb canvas { width: 100%; height: 100%; display: block; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+
+  .actions { display: flex; gap: 8px; flex: none; }
+  button.primary {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #7c3aed, #06b6d4);
+    border: none;
+    border-radius: 10px;
+    padding: 10px 18px;
+    cursor: pointer;
+    box-shadow: 0 8px 24px -10px #7c3aed99;
+    transition: transform .15s, filter .15s;
+  }
+  button.primary:hover { transform: translateY(-1px); filter: brightness(1.12); }
+  button.primary:active { transform: translateY(0); }
+  button.ghost {
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: #9a9ab6;
+    background: transparent;
+    border: 1px solid #26263a;
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: color .15s, border-color .15s;
+  }
+  button.ghost:hover { color: #dcdcec; border-color: #3a3a55; }
+  button:disabled { opacity: .38; cursor: default; transform: none; filter: none; }
+  button:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+
+  footer {
+    padding: 8px 20px 14px;
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: .05em;
+    color: #55556e;
+  }
+  footer kbd {
+    font-family: inherit;
+    font-size: 10px;
+    color: #8a8aa4;
+    background: #14141f;
+    border: 1px solid #26263a;
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin: 0 1px;
+  }
+
+  @media (max-width: 640px) {
+    header { padding: 12px 14px 8px; }
+    main { padding: 0 12px 4px; gap: 10px; }
+    .brand { letter-spacing: .12em; font-size: 11px; }
+    .chip { font-size: 11.5px; padding: 6px 10px; }
+    .thumb { width: 64px; }
+    select { max-width: 120px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand"><span class="mark"></span>Webcam Filter Playground</div>
+  <div class="hud">
+    <select id="camSelect" class="hidden" aria-label="Choose camera"></select>
+    <span id="live" class="live off" aria-live="polite"><i></i>LIVE</span>
+  </div>
+</header>
+
+<main>
+  <div class="stage" id="stage">
+    <canvas id="view"></canvas>
+    <div class="flash" id="flash"></div>
+    <div class="hint" id="hint">Starting camera&hellip;</div>
+    <div class="error hidden" id="errorBox" role="alert">
+      <h3>Camera unavailable</h3>
+      <p id="errText"></p>
+      <button class="primary" id="retryBtn">Try again</button>
+    </div>
+  </div>
+
+  <div class="chips" id="chips" role="tablist" aria-label="Filters"></div>
+
+  <div class="shots">
+    <div class="thumbs" id="thumbs" aria-label="Snapshots"></div>
+    <div class="actions">
+      <button class="primary" id="snapBtn">Snapshot</button>
+      <button class="ghost" id="saveBtn" disabled>Save</button>
+      <button class="ghost hidden" id="clearBtn">Clear</button>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <kbd>Space</kbd> snapshot &middot; <kbd>S</kbd> save &middot; <kbd>&larr;</kbd> <kbd>&rarr;</kbd> switch filter &middot; <kbd>F</kbd> fullscreen
+</footer>
+
+<video id="cam" class="camfeed" playsinline muted autoplay></video>
+<noscript><p style="padding:20px;text-align:center">This app needs JavaScript to run.</p></noscript>
+
+<script>
+(() => {
+  'use strict';
+
+  const $ = (id) => document.getElementById(id);
+  const view = $('view');
+  const stage = $('stage');
+  const ctx = view.getContext('2d', { willReadFrequently: true });
+  const srcCanvas = document.createElement('canvas');
+  const srcCtx = srcCanvas.getContext('2d', { willReadFrequently: true });
+  const video = $('cam');
+  const camSelect = $('camSelect');
+  const liveEl = $('live');
+  const hintEl = $('hint');
+  const errBox = $('errorBox');
+  const errText = $('errText');
+  const retryBtn = $('retryBtn');
+  const chipsEl = $('chips');
+  const thumbsEl = $('thumbs');
+  const snapBtn = $('snapBtn');
+  const saveBtn = $('saveBtn');
+  const clearBtn = $('clearBtn');
+  const flashEl = $('flash');
+
+  let stream = null;
+  let W = 0, H = 0;
+  let buf = null, vignette = null, gray = null;
+  let active = 0;
+  const shots = [];
+  let selectedShot = null;
+
+  /* ---------------- color LUTs ---------------- */
+
+  function makeLUT(stops) {
+    const lut = new Uint8ClampedArray(256 * 3);
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let a = stops[0], b = stops[stops.length - 1];
+      for (let s = 0; s < stops.length - 1; s++) {
+        if (t >= stops[s][0] && t <= stops[s + 1][0]) { a = stops[s]; b = stops[s + 1]; break; }
+      }
+      const f = b[0] === a[0] ? 0 : (t - a[0]) / (b[0] - a[0]);
+      lut[i * 3]     = a[1] + (b[1] - a[1]) * f;
+      lut[i * 3 + 1] = a[2] + (b[2] - a[2]) * f;
+      lut[i * 3 + 2] = a[3] + (b[3] - a[3]) * f;
+    }
+    return lut;
+  }
+
+  const THERMAL = makeLUT([
+    [0,    6,  6, 42],
+    [0.22, 64, 10, 140],
+    [0.45, 180, 25, 90],
+    [0.62, 235, 70, 40],
+    [0.78, 255, 140, 25],
+    [0.9,  255, 215, 60],
+    [1,    255, 255, 225]
+  ]);
+  const DUO = makeLUT([
+    [0,   16,  5, 46],
+    [0.5, 122, 42, 152],
+    [1,   255, 138, 226]
+  ]);
+
+  /* ---------------- effects ---------------- */
+
+  function fxNoir(s, w, h, t, o) {
+    for (let i = 0, p = 0; i < s.length; i += 4, p++) {
+      const l = 0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2];
+      let v = (l - 128) * 1.4 + 130;
+      v *= vignette[p];
+      v += (Math.random() - 0.5) * 7;
+      o[i] = v; o[i + 1] = v; o[i + 2] = v; o[i + 3] = 255;
+    }
+  }
+
+  function fxInvert(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      o[i] = 255 - s[i];
+      o[i + 1] = 255 - s[i + 1];
+      o[i + 2] = 255 - s[i + 2];
+      o[i + 3] = 255;
+    }
+  }
+
+  function fxThermal(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      const l = (0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2]) | 0;
+      const j = l * 3;
+      o[i] = THERMAL[j]; o[i + 1] = THERMAL[j + 1]; o[i + 2] = THERMAL[j + 2]; o[i + 3] = 255;
+    }
+  }
+
+  function fxXRay(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      const v = 255 - (0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2]);
+      o[i] = v * 0.3;
+      o[i + 1] = v * 0.72;
+      o[i + 2] = v * 1.12;
+      o[i + 3] = 255;
+    }
+  }
+
+  function fxDuotone(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      const l = (0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2]) | 0;
+      const j = l * 3;
+      o[i] = DUO[j]; o[i + 1] = DUO[j + 1]; o[i + 2] = DUO[j + 2]; o[i + 3] = 255;
+    }
+  }
+
+  function fxNeon(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      const r = s[i], g = s[i + 1], b = s[i + 2];
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      o[i]     = (l + (r - l) * 2.3 - 128) * 1.22 + 128;
+      o[i + 1] = (l + (g - l) * 2.3 - 128) * 1.22 + 128;
+      o[i + 2] = ((l + (b - l) * 2.3 - 128) * 1.22 + 128) * 1.06;
+      o[i + 3] = 255;
+    }
+  }
+
+  function fxGlitch(s, w, h, t, o) {
+    o.set(s);
+    const sh = 3 + (((t * 0.01) | 0) % 5);
+    for (let y = 0; y < h; y++) {
+      const row = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        const i = row + x * 4;
+        const xl = x > sh ? x - sh : 0;
+        const xr = x + sh < w ? x + sh : w - 1;
+        o[i] = s[row + xl * 4];
+        o[i + 2] = s[row + xr * 4 + 2];
+      }
+    }
+    const slices = 2 + ((Math.random() * 3) | 0);
+    for (let k = 0; k < slices; k++) {
+      const sy = (Math.random() * h) | 0;
+      const shh = 4 + ((Math.random() * 18) | 0);
+      const dx = ((Math.random() - 0.5) * 44) | 0;
+      for (let y = sy; y < Math.min(h, sy + shh); y++) {
+        const a = y * w * 4;
+        for (let x = 0; x < w; x++) {
+          const sx = x + dx;
+          if (sx < 0 || sx >= w) continue;
+          const i = a + x * 4, j = a + sx * 4;
+          o[i] = s[j]; o[i + 1] = s[j + 1]; o[i + 2] = s[j + 2];
+        }
+      }
+    }
+    if (Math.random() < 0.5) {
+      for (let k = 0; k < 3; k++) {
+        const bx = (Math.random() * w) | 0;
+        const by = (Math.random() * h) | 0;
+        const bw = 20 + ((Math.random() * 80) | 0);
+        const bh = 2 + ((Math.random() * 6) | 0);
+        for (let y = by; y < Math.min(h, by + bh); y++) {
+          for (let x = bx; x < Math.min(w, bx + bw); x++) {
+            const i = (y * w + x) * 4;
+            const v = (Math.random() * 255) | 0;
+            o[i] = v; o[i + 1] = v; o[i + 2] = v;
+          }
+        }
+      }
+    }
+  }
+
+  function fxVHS(s, w, h, t, o) {
+    const bar = ((t * 0.12) % (h + 120)) - 60;
+    for (let y = 0; y < h; y++) {
+      const scan = (y & 1) ? 0.8 : 1;
+      const lift = (y > bar && y < bar + 36) ? 1.12 : 1;
+      const rowMul = scan * lift;
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const xl = x > 2 ? x - 2 : 0;
+        const xr = x + 2 < w ? x + 2 : w - 1;
+        const r = s[(y * w + xl) * 4];
+        const g = s[i + 1];
+        const b = s[(y * w + xr) * 4 + 2];
+        const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        const n = (Math.random() - 0.5) * 16;
+        o[i]     = (l + (r - l) * 0.75 + n) * rowMul;
+        o[i + 1] = (l + (g - l) * 0.75 + n) * rowMul;
+        o[i + 2] = (l + (b - l) * 0.75 + n) * rowMul;
+        o[i + 3] = 255;
+      }
+    }
+  }
+
+  function fxPixelate(s, w, h, t, o) {
+    const b = Math.max(4, Math.round(w / 72));
+    for (let by = 0; by < h; by += b) {
+      for (let bx = 0; bx < w; bx += b) {
+        let r = 0, g = 0, bl = 0, n = 0;
+        const ey = Math.min(h, by + b), ex = Math.min(w, bx + b);
+        for (let y = by; y < ey; y++) {
+          for (let x = bx; x < ex; x++) {
+            const i = (y * w + x) * 4;
+            r += s[i]; g += s[i + 1]; bl += s[i + 2]; n++;
+          }
+        }
+        r /= n; g /= n; bl /= n;
+        for (let y = by; y < ey; y++) {
+          for (let x = bx; x < ex; x++) {
+            const i = (y * w + x) * 4;
+            o[i] = r; o[i + 1] = g; o[i + 2] = bl; o[i + 3] = 255;
+          }
+        }
+      }
+    }
+  }
+
+  function fxEdge(s, w, h, t, o) {
+    for (let i = 0, p = 0; i < s.length; i += 4, p++) {
+      gray[p] = 0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2];
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        let m = 0;
+        if (x > 0 && x < w - 1 && y > 0 && y < h - 1) {
+          const p = y * w + x;
+          const gx = -gray[p - w - 1] - 2 * gray[p - 1] - gray[p + w - 1]
+                    + gray[p - w + 1] + 2 * gray[p + 1] + gray[p + w + 1];
+          const gy = -gray[p - w - 1] - 2 * gray[p - w] - gray[p - w + 1]
+                    + gray[p + w - 1] + 2 * gray[p + w] + gray[p + w + 1];
+          m = Math.sqrt(gx * gx + gy * gy) * 0.9;
+          if (m > 255) m = 255;
+        }
+        const i = (y * w + x) * 4;
+        o[i] = m; o[i + 1] = m; o[i + 2] = m; o[i + 3] = 255;
+      }
+    }
+  }
+
+  function quant6(v) { return Math.round(v / 51) * 51; }
+
+  function fxComic(s, w, h, t, o) {
+    for (let i = 0, p = 0; i < s.length; i += 4, p++) {
+      const r = s[i], g = s[i + 1], b = s[i + 2];
+      const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      o[i]     = quant6(l + (r - l) * 1.6);
+      o[i + 1] = quant6(l + (g - l) * 1.6);
+      o[i + 2] = quant6(l + (b - l) * 1.6);
+      o[i + 3] = 255;
+      gray[p] = l;
+    }
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const p = y * w + x;
+        const gx = -gray[p - w - 1] - 2 * gray[p - 1] - gray[p + w - 1]
+                  + gray[p - w + 1] + 2 * gray[p + 1] + gray[p + w + 1];
+        const gy = -gray[p - w - 1] - 2 * gray[p - w] - gray[p - w + 1]
+                  + gray[p + w - 1] + 2 * gray[p + w] + gray[p + w + 1];
+        if (gx * gx + gy * gy > 12000) {
+          const i = p * 4;
+          o[i] = 25; o[i + 1] = 25; o[i + 2] = 30;
+        }
+      }
+    }
+  }
+
+  function fxDream(s, w, h, t, o) {
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const j = ((y >> 2) * w + (x >> 2)) * 4;
+        let r = s[i] * 0.55 + s[j] * 0.45;
+        let g = s[i + 1] * 0.55 + s[j + 1] * 0.45;
+        let b = s[i + 2] * 0.55 + s[j + 2] * 0.45;
+        const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        o[i]     = (l + (r - l) * 1.15) + 12;
+        o[i + 1] = (l + (g - l) * 1.15) + 12;
+        o[i + 2] = (l + (b - l) * 1.15) + 12;
+        o[i + 3] = 255;
+      }
+    }
+  }
+
+  function fxMatrix(s, w, h, t, o) {
+    for (let i = 0; i < s.length; i += 4) {
+      let g = (0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2]) * 1.1;
+      if (Math.random() < 0.004) g = 255;
+      o[i] = g * 0.12;
+      o[i + 1] = g;
+      o[i + 2] = g * 0.3;
+      o[i + 3] = 255;
+    }
+  }
+
+  const EFFECTS = [
+    { name: 'Original', accent: '#8a8aa4' },
+    { name: 'Noir',     accent: '#e5e5ef', fn: fxNoir },
+    { name: 'Invert',   accent: '#f472b6', fn: fxInvert },
+    { name: 'Thermal',  accent: '#fb923c', fn: fxThermal },
+    { name: 'X-Ray',    accent: '#38bdf8', fn: fxXRay },
+    { name: 'Duotone',  accent: '#c084fc', fn: fxDuotone },
+    { name: 'Neon',     accent: '#22d3ee', fn: fxNeon },
+    { name: 'Glitch',   accent: '#f43f5e', fn: fxGlitch },
+    { name: 'VHS',      accent: '#a3e635', fn: fxVHS },
+    { name: 'Pixelate', accent: '#facc15', fn: fxPixelate },
+    { name: 'Edge',     accent: '#e2e8f0', fn: fxEdge },
+    { name: 'Comic',    accent: '#fb7185', fn: fxComic },
+    { name: 'Dream',    accent: '#c4b5fd', fn: fxDream },
+    { name: 'Matrix',   accent: '#4ade80', fn: fxMatrix }
+  ];
+
+  /* ---------------- render loop ---------------- */
+
+  function fitCanvas() {
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+    const sc = Math.min(1, 960 / Math.max(vw, vh), Math.sqrt(460000 / (vw * vh)));
+    const w = Math.max(2, Math.round(vw * sc / 2) * 2);
+    const h = Math.max(2, Math.round(vh * sc / 2) * 2);
+    if (w === W && h === H) return;
+    W = w; H = h;
+    view.width = W; view.height = H;
+    srcCanvas.width = W; srcCanvas.height = H;
+    buf = new Uint8ClampedArray(W * H * 4);
+    gray = new Float32Array(W * H);
+    vignette = new Float32Array(W * H);
+    const cx = W / 2, cy = H / 2, maxd = Math.hypot(cx, cy);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const d = Math.hypot(x - cx, y - cy) / maxd;
+        vignette[y * W + x] = 1 - 0.5 * Math.pow(d, 2.4);
+      }
+    }
+  }
+
+  function tick(t) {
+    requestAnimationFrame(tick);
+    if (video.readyState < 2 || !video.videoWidth) return;
+    fitCanvas();
+    srcCtx.save();
+    srcCtx.translate(W, 0);
+    srcCtx.scale(-1, 1);
+    srcCtx.drawImage(video, 0, 0, W, H);
+    srcCtx.restore();
+    const s = srcCtx.getImageData(0, 0, W, H).data;
+    const fx = EFFECTS[active].fn;
+    if (fx) {
+      fx(s, W, H, t, buf);
+      ctx.putImageData(new ImageData(buf, W, H), 0, 0);
+    } else {
+      ctx.putImageData(new ImageData(s, W, H), 0, 0);
+    }
+  }
+  requestAnimationFrame(tick);
+
+  /* ---------------- camera ---------------- */
+
+  function stopStream() {
+    if (stream) {
+      stream.getTracks().forEach((tr) => tr.stop());
+      stream = null;
+    }
+  }
+
+  function setLive(on) { liveEl.classList.toggle('off', !on); }
+
+  async function startCamera(deviceId) {
+    stopStream();
+    errBox.classList.add('hidden');
+    setLive(false);
+    hintEl.textContent = 'Starting camera…';
+    hintEl.classList.remove('hidden');
+    try {
+      const videoC = deviceId
+        ? { deviceId: { exact: deviceId } }
+        : { facingMode: 'user' };
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: Object.assign({}, videoC, { width: { ideal: 1280 }, height: { ideal: 720 } }),
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      setLive(true);
+      hintEl.classList.add('hidden');
+      refreshCams();
+    } catch (err) {
+      setLive(false);
+      hintEl.classList.add('hidden');
+      showCameraError(err);
+    }
+  }
+
+  function showCameraError(err) {
+    let msg;
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      msg = 'This browser cannot access the camera. Try a modern browser over https or localhost.';
+    } else if (err.name === 'NotAllowedError' || err.name === 'SecurityError') {
+      msg = 'Camera access was blocked. Allow camera permission for this page, then try again.';
+    } else if (err.name === 'NotFoundError' || err.name === 'OverconstrainedError') {
+      msg = 'No camera was found on this device.';
+    } else if (err.name === 'NotReadableError') {
+      msg = 'The camera is already in use by another application.';
+    } else {
+      msg = 'The camera could not be started (' + (err.name || 'unknown error') + ').';
+    }
+    errText.textContent = msg;
+    errBox.classList.remove('hidden');
+  }
+
+  retryBtn.addEventListener('click', () => startCamera(camSelect.value || undefined));
+
+  async function refreshCams() {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter((d) => d.kind === 'videoinput');
+      camSelect.innerHTML = '';
+      if (cams.length < 2) { camSelect.classList.add('hidden'); return; }
+      camSelect.classList.remove('hidden');
+      cams.forEach((d, i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || 'Camera ' + (i + 1);
+        camSelect.appendChild(opt);
+      });
+      const track = stream && stream.getVideoTracks()[0];
+      const cur = track && track.getSettings().deviceId;
+      if (cur) camSelect.value = cur;
+    } catch (e) { /* non-fatal */ }
+  }
+  camSelect.addEventListener('change', () => startCamera(camSelect.value));
+
+  /* ---------------- filters UI ---------------- */
+
+  function setFilter(i) {
+    active = i;
+    Array.prototype.forEach.call(chipsEl.children, (c, j) => c.classList.toggle('on', j === i));
+    document.documentElement.style.setProperty('--glow', EFFECTS[i].accent + '99');
+  }
+
+  EFFECTS.forEach((fx, i) => {
+    const b = document.createElement('button');
+    b.className = 'chip';
+    b.type = 'button';
+    b.setAttribute('role', 'tab');
+    const dot = document.createElement('span');
+    dot.className = 'dot';
+    dot.style.background = fx.accent;
+    b.appendChild(dot);
+    b.appendChild(document.createTextNode(fx.name));
+    b.addEventListener('click', () => setFilter(i));
+    chipsEl.appendChild(b);
+  });
+  setFilter(0);
+
+  /* ---------------- snapshots ---------------- */
+
+  function doFlash() {
+    flashEl.classList.remove('go');
+    void flashEl.offsetWidth;
+    flashEl.classList.add('go');
+  }
+
+  function addShot() {
+    if (!W || !H) return;
+    const c = document.createElement('canvas');
+    c.width = view.width;
+    c.height = view.height;
+    c.getContext('2d').drawImage(view, 0, 0);
+    shots.push(c);
+    if (shots.length > 8) shots.shift();
+    selectedShot = c;
+    renderShots();
+    doFlash();
+  }
+
+  function renderShots() {
+    thumbsEl.innerHTML = '';
+    shots.forEach((c) => {
+      const d = document.createElement('div');
+      d.className = 'thumb' + (c === selectedShot ? ' sel' : '');
+      d.title = 'Click to select · double-click to save';
+      const img = document.createElement('canvas');
+      img.width = 96; img.height = 54;
+      img.getContext('2d').drawImage(c, 0, 0, 96, 54);
+      d.appendChild(img);
+      d.addEventListener('click', () => { selectedShot = c; renderShots(); });
+      d.addEventListener('dblclick', () => saveShot(c));
+      thumbsEl.appendChild(d);
+    });
+    saveBtn.disabled = shots.length === 0;
+    clearBtn.classList.toggle('hidden', shots.length === 0);
+  }
+
+  function saveShot(c) {
+    const a = document.createElement('a');
+    const name = EFFECTS[active].name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    a.download = 'webcam-playground-' + name + '-' + Date.now() + '.png';
+    a.href = c.toDataURL('image/png');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  snapBtn.addEventListener('click', addShot);
+  saveBtn.addEventListener('click', () => { if (selectedShot) saveShot(selectedShot); });
+  clearBtn.addEventListener('click', () => {
+    shots.length = 0;
+    selectedShot = null;
+    renderShots();
+  });
+
+  /* ---------------- keyboard ---------------- */
+
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else if (stage.requestFullscreen) {
+      stage.requestFullscreen();
+    }
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      addShot();
+    } else if (e.key === 's' || e.key === 'S') {
+      if (selectedShot) saveShot(selectedShot);
+    } else if (e.key === 'ArrowRight') {
+      setFilter((active + 1) % EFFECTS.length);
+    } else if (e.key === 'ArrowLeft') {
+      setFilter((active - 1 + EFFECTS.length) % EFFECTS.length);
+    } else if (e.key === 'f' || e.key === 'F') {
+      toggleFullscreen();
+    }
+  });
+
+  /* ---------------- go ---------------- */
+
+  startCamera();
+})();
+</script>
+</body>
+</html>

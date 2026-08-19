@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import fs from "fs/promises";
 import path from "path";
-import { models, providers } from "@/lib/models.config";
+import { publishedModels, providers } from "@/lib/models.config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-static";
@@ -73,7 +73,7 @@ export default async function OpengraphImage() {
     loadFont("WorkSans-Medium.ttf"),
   ]);
 
-  const modelCount = models.length;
+  const modelCount = publishedModels.length;
 
   return new ImageResponse(
     (
@@ -246,7 +246,7 @@ export default async function OpengraphImage() {
           }}
         >
           {providers.map((p) => {
-            const groupModels = models.filter((m) => m.provider === p.id);
+            const groupModels = publishedModels.filter((m) => m.provider === p.id);
             return (
               <div
                 key={p.id}

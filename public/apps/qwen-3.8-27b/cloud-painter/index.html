@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="description" content="Cloud Painter — paint the sky with fluffy clouds, stars, hearts and more!">
+<title>Cloud Painter — paint the sky!</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☁️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;overflow:hidden;overscroll-behavior:none;
+    font-family:'Baloo 2','Comic Sans MS',ui-rounded,system-ui,sans-serif;
+    background:#8fd0ff;
+    user-select:none;-webkit-user-select:none;
+  }
+  #sky{position:fixed;inset:0;display:block;touch-action:none;cursor:none;}
+  .panel{
+    background:rgba(255,255,255,0.72);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border-radius:22px;
+    box-shadow:0 10px 30px rgba(70,110,180,0.22), inset 0 0 0 2px rgba(255,255,255,0.65);
+  }
+  .topbar{
+    position:fixed;top:12px;left:12px;right:12px;z-index:10;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 16px;flex-wrap:wrap;
+  }
+  .title{
+    font-size:26px;font-weight:800;color:#fff;letter-spacing:0.5px;white-space:nowrap;
+    text-shadow:0 2px 12px rgba(70,100,170,0.6), 0 1px 0 rgba(255,255,255,0.35);
+  }
+  .top-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .save{
+    border:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:16px;color:#fff;
+    padding:10px 18px;border-radius:999px;
+    background:linear-gradient(135deg,#ff9ecf,#ff7eb6);
+    box-shadow:0 5px 0 #e2649f, 0 8px 18px rgba(255,126,182,0.4);
+    transition:transform .12s, box-shadow .12s;
+  }
+  .save:hover{transform:translateY(-2px);}
+  .save:active{transform:translateY(4px);box-shadow:0 1px 0 #e2649f;}
+  .seg{display:flex;gap:4px;background:rgba(255,255,255,0.55);padding:4px;border-radius:999px;}
+  .seg button{
+    width:40px;height:40px;border:none;border-radius:999px;background:transparent;
+    font-size:20px;cursor:pointer;transition:all .15s;
+  }
+  .seg button.active{background:#fff;box-shadow:0 2px 8px rgba(90,120,180,0.3);}
+  .toolbar{
+    position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:10;
+    display:flex;flex-direction:column;gap:8px;padding:12px 14px;max-width:96vw;
+  }
+  .row{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;}
+  .btn{
+    width:52px;height:52px;border:none;border-radius:18px;background:#fff;
+    font-size:26px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 4px 0 rgba(140,170,220,0.55), 0 6px 14px rgba(90,130,190,0.18);
+    transition:transform .12s, box-shadow .12s, background .15s;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.05);}
+  .btn:active{transform:translateY(2px);box-shadow:0 1px 0 rgba(140,170,220,0.55);}
+  .btn.active{
+    background:#fff3bf;transform:scale(1.1);
+    box-shadow:0 4px 0 #f5c542, 0 6px 16px rgba(245,197,66,0.45);
+  }
+  input[type=range]{width:120px;accent-color:#ff7eb6;cursor:pointer;}
+  .hint{
+    position:fixed;left:50%;top:56%;transform:translateX(-50%);z-index:5;
+    padding:14px 26px;font-size:20px;font-weight:700;color:#5b7fb5;white-space:nowrap;
+    background:rgba(255,255,255,0.8);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border-radius:999px;box-shadow:0 10px 30px rgba(70,110,180,0.25);
+    animation:bob 2.2s ease-in-out infinite;
+    pointer-events:none;transition:opacity .7s, transform .7s;
+  }
+  .hint.hide{opacity:0;transform:translateX(-50%) translateY(24px) scale(0.9);}
+  @keyframes bob{0%,100%{margin-top:0}50%{margin-top:-12px}}
+  @media (max-width:640px){
+    .title{font-size:20px;}
+    .btn{width:46px;height:46px;font-size:22px;}
+    .save{font-size:14px;padding:8px 14px;}
+    input[type=range]{width:90px;}
+    .hint{font-size:16px;}
+  }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+
+<header class="panel topbar">
+  <div class="title">☁️ Cloud Painter</div>
+  <div class="top-right">
+    <button id="saveBtn" class="save">💾 Save my sky</button>
+    <div class="seg" id="todSeg">
+      <button data-tod="day" class="active" title="Daytime">☀️</button>
+      <button data-tod="dusk" title="Sunset">🌇</button>
+      <button data-tod="night" title="Night">🌙</button>
+    </div>
+  </div>
+</header>
+
+<div class="hint" id="hint">👆 Drag to paint fluffy clouds!</div>
+
+<div class="panel toolbar">
+  <div class="row" id="brushRow"></div>
+  <div class="row">
+    <input type="range" id="sizeSlider" min="24" max="90" value="46" title="Brush size">
+    <button class="btn" id="undoBtn" title="Undo">↩️</button>
+    <button class="btn" id="clearBtn" title="Clear the sky">🧹</button>
+    <button class="btn" id="planeBtn" title="Fly a plane">✈️</button>
+    <button class="btn" id="soundBtn" title="Sound on / off">🔊</button>
+  </div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+const canvas = document.getElementById('sky');
+const ctx = canvas.getContext('2d');
+const hint = document.getElementById('hint');
+
+let W = 0, H = 0;
+let brushSize = 46;
+let current = 0;
+let painting = false;
+let lastX = 0, lastY = 0;
+let hintHidden = false;
+let soundOn = true;
+let planeTimer = 6;
+let actx = null;
+let lastPuff = 0;
+
+const stamps = [];
+const planes = [];
+const bgClouds = [];
+const stars = [];
+const pointer = { x: 0, y: 0, active: false };
+
+const pick = a => a[(Math.random() * a.length) | 0];
+const css = c => 'rgb(' + (c[0] | 0) + ',' + (c[1] | 0) + ',' + (c[2] | 0) + ')';
+function easeOutBack(t){
+  const c1 = 1.70158, c3 = c1 + 1;
+  return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+}
+function rr(g, x, y, w, h, r){
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
+}
+
+function makeSprite(w, h, draw){
+  const c = document.createElement('canvas');
+  c.width = w * 2; c.height = h * 2;
+  const g = c.getContext('2d');
+  g.scale(2, 2);
+  draw(g, w, h);
+  return c;
+}
+
+function cloudSprite(puffs){
+  return makeSprite(160, 110, (g, w, h) => {
+    const path = new Path2D();
+    for (const [x, y, r] of puffs){
+      path.moveTo(x + r, y);
+      path.arc(x, y, r, 0, 7);
+    }
+    g.save();
+    g.translate(0, 5);
+    g.fillStyle = 'rgba(150,190,230,0.35)';
+    g.fill(path);
+    g.restore();
+    g.fillStyle = '#ffffff';
+    g.fill(path);
+    g.save();
+    g.clip(path);
+    const grad = g.createLinearGradient(0, 40, 0, 108);
+    grad.addColorStop(0, 'rgba(190,220,245,0)');
+    grad.addColorStop(1, 'rgba(168,204,240,0.55)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+    g.restore();
+  });
+}
+
+function starSprite(){
+  return makeSprite(120, 120, g => {
+    const cx = 60, cy = 62, R = 42, r = 19;
+    const path = new Path2D();
+    for (let i = 0; i < 10; i++){
+      const ang = -Math.PI / 2 + i * Math.PI / 5;
+      const rad = i % 2 === 0 ? R : r;
+      const x = cx + Math.cos(ang) * rad, y = cy + Math.sin(ang) * rad;
+      if (i) path.lineTo(x, y); else path.moveTo(x, y);
+    }
+    path.closePath();
+    g.lineJoin = 'round';
+    g.lineWidth = 16;
+    g.strokeStyle = '#ffd93d';
+    g.fillStyle = '#ffd93d';
+    g.fill(path);
+    g.stroke(path);
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.beginPath();
+    g.ellipse(48, 44, 10, 7, -0.6, 0, 7);
+    g.fill();
+  });
+}
+
+function heartSprite(color){
+  return makeSprite(120, 110, g => {
+    const p = new Path2D();
+    p.moveTo(60, 92);
+    p.bezierCurveTo(18, 64, 14, 30, 40, 26);
+    p.bezierCurveTo(54, 24, 60, 36, 60, 44);
+    p.bezierCurveTo(60, 36, 66, 24, 80, 26);
+    p.bezierCurveTo(106, 30, 102, 64, 60, 92);
+    p.closePath();
+    g.fillStyle = color;
+    g.fill(p);
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    g.beginPath();
+    g.ellipse(42, 40, 9, 6, -0.7, 0, 7);
+    g.fill();
+  });
+}
+
+function balloonSprite(color){
+  return makeSprite(120, 160, g => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.ellipse(60, 58, 34, 42, 0, 0, 7);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.45)';
+    g.beginPath();
+    g.ellipse(47, 42, 11, 16, -0.3, 0, 7);
+    g.fill();
+    g.fillStyle = color;
+    g.beginPath();
+    g.moveTo(54, 99);
+    g.lineTo(66, 99);
+    g.lineTo(60, 108);
+    g.closePath();
+    g.fill();
+    g.strokeStyle = 'rgba(255,255,255,0.85)';
+    g.lineWidth = 2.5;
+    g.lineCap = 'round';
+    g.beginPath();
+    g.moveTo(60, 108);
+    g.quadraticCurveTo(70, 124, 58, 138);
+    g.quadraticCurveTo(48, 150, 56, 158);
+    g.stroke();
+  });
+}
+
+function flowerSprite(petal){
+  return makeSprite(120, 120, g => {
+    g.translate(60, 60);
+    for (let i = 0; i < 6; i++){
+      g.save();
+      g.rotate(i * Math.PI / 3);
+      g.fillStyle = petal;
+      g.beginPath();
+      g.ellipse(0, -26, 15, 24, 0, 0, 7);
+      g.fill();
+      g.restore();
+    }
+    g.fillStyle = '#ffd166';
+    g.beginPath();
+    g.arc(0, 0, 15, 0, 7);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    g.beginPath();
+    g.arc(-5, -5, 5, 0, 7);
+    g.fill();
+  });
+}
+
+function butterflySprite(c1, c2){
+  return makeSprite(130, 120, g => {
+    g.translate(65, 60);
+    g.fillStyle = c2;
+    g.beginPath(); g.ellipse(-24, 26, 15, 19, 0.5, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(24, 26, 15, 19, -0.5, 0, 7); g.fill();
+    g.fillStyle = c1;
+    g.beginPath(); g.ellipse(-26, -14, 20, 26, 0.35, 0, 7); g.fill();
+    g.beginPath(); g.ellipse(26, -14, 20, 26, -0.35, 0, 7); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.55)';
+    g.beginPath(); g.arc(-26, -16, 7, 0, 7); g.fill();
+    g.beginPath(); g.arc(26, -16, 7, 0, 7); g.fill();
+    g.fillStyle = '#7a6a5a';
+    g.beginPath(); g.ellipse(0, 4, 5, 22, 0, 0, 7); g.fill();
+    g.beginPath(); g.arc(0, -22, 6, 0, 7); g.fill();
+    g.strokeStyle = '#7a6a5a';
+    g.lineWidth = 2;
+    g.lineCap = 'round';
+    g.beginPath(); g.moveTo(-2, -27); g.quadraticCurveTo(-10, -40, -16, -42); g.stroke();
+    g.beginPath(); g.moveTo(2, -27); g.quadraticCurveTo(10, -40, 16, -42); g.stroke();
+  });
+}
+
+const cloudSprites = [
+  cloudSprite([[34,72,26],[62,52,34],[96,58,30],[124,74,24],[140,84,18],[22,84,18]]),
+  cloudSprite([[40,70,30],[78,48,36],[118,60,30],[138,78,20],[26,82,20]]),
+  cloudSprite([[30,74,24],[58,56,32],[92,50,34],[122,62,28],[142,80,18],[18,86,15]])
+];
+
+const BRUSHES = [
+  { id:'cloud',     emoji:'☁️', name:'Cloud',     unit:110, spacing:0.45, rot:0.22, sprites:cloudSprites },
+  { id:'star',      emoji:'⭐', name:'Star',      unit:95,  spacing:0.9,  rot:0.5,  sprites:[starSprite()] },
+  { id:'heart',     emoji:'💖', name:'Heart',     unit:95,  spacing:0.9,  rot:0.3,  sprites:[heartSprite('#ff8fab'), heartSprite('#ff6b9d')] },
+  { id:'balloon',   emoji:'🎈', name:'Balloon',   unit:150, spacing:0.85, rot:0.15, sprites:['#ff8fab','#ffd166','#8ecae6','#b5e48c','#c3a6ff'].map(balloonSprite) },
+  { id:'flower',    emoji:'🌸', name:'Flower',    unit:95,  spacing:0.8,  rot:0.5,  sprites:['#ffb3c6','#c3a6ff','#ffd6a5','#a8e6cf','#ff9ecf'].map(flowerSprite) },
+  { id:'butterfly', emoji:'🦋', name:'Butterfly', unit:100, spacing:0.85, rot:0.3,  sprites:[['#ff9ecf','#c3a6ff'],['#8ecae6','#5eead4'],['#ffd166','#ff9e64'],['#b5e48c','#8ecae6']].map(p => butterflySprite(p[0], p[1])) }
+];
+
+const PRESETS = {
+  day:   { top:[125,199,247], mid:[178,224,255], bot:[235,249,255], hillB:[183,232,170], hillF:[146,217,140], tree:[96,186,124],  trunk:[176,137,104], sunY:0.17, sunC:[255,214,64], sunA:1,    moonA:0,    starA:0   },
+  dusk:  { top:[124,104,192], mid:[248,168,198], bot:[255,216,158], hillB:[186,160,220], hillF:[156,124,208], tree:[128,100,182], trunk:[150,112,128], sunY:0.34, sunC:[255,158,94], sunA:1,    moonA:0.15, starA:0.4 },
+  night: { top:[34,44,92],    mid:[56,70,130],   bot:[96,112,172],  hillB:[88,98,152],   hillF:[68,78,130],   tree:[54,64,112],   trunk:[74,64,96],    sunY:0.55, sunC:[255,158,94], sunA:0,    moonA:1,    starA:1   }
+};
+let cur = JSON.parse(JSON.stringify(PRESETS.day));
+let target = PRESETS.day;
+
+const bgLayers = [
+  { speed:6,  count:4, sMin:1.0, sMax:1.8, alpha:0.5,  yMin:0.06, yMax:0.4  },
+  { speed:10, count:3, sMin:1.5, sMax:2.4, alpha:0.65, yMin:0.1,  yMax:0.45 },
+  { speed:16, count:3, sMin:2.0, sMax:3.2, alpha:0.8,  yMin:0.12, yMax:0.5  }
+];
+
+const PLANE_COLORS = [
+  ['#ff8fab','#ffd6e0'], ['#8ecae6','#d6f0fb'], ['#ffd166','#ffedc2'],
+  ['#b5e48c','#e4f6da'], ['#c3a6ff','#e9e0ff']
+];
+
+const TREE_X = [0.08, 0.24, 0.47, 0.71, 0.9];
+
+function genStars(){
+  stars.length = 0;
+  for (let i = 0; i < 70; i++){
+    stars.push({
+      fx: Math.random(), fy: Math.random() * 0.72,
+      r: 0.8 + Math.random() * 1.7,
+      ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.6
+    });
+  }
+}
+
+function genBg(){
+  bgClouds.length = 0;
+  for (const L of bgLayers){
+    for (let i = 0; i < L.count; i++){
+      bgClouds.push({
+        L,
+        x: Math.random() * (W + 400) - 200,
+        y: (L.yMin + Math.random() * (L.yMax - L.yMin)) * H,
+        s: L.sMin + Math.random() * (L.sMax - L.sMin),
+        sp: (Math.random() * cloudSprites.length) | 0
+      });
+    }
+  }
+}
+
+function resize(){
+  W = window.innerWidth;
+  H = window.innerHeight;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  genStars();
+}
+window.addEventListener('resize', resize);
+
+function audio(){
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+
+function puff(){
+  if (!soundOn) return;
+  const now = performance.now();
+  if (now - lastPuff < 55) return;
+  lastPuff = now;
+  let a;
+  try { a = audio(); } catch (e) { return; }
+  const t = a.currentTime;
+  const len = Math.floor(a.sampleRate * 0.16);
+  const buf = a.createBuffer(1, len, a.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.8);
+  const src = a.createBufferSource();
+  src.buffer = buf;
+  const f = a.createBiquadFilter();
+  f.type = 'lowpass';
+  f.frequency.value = 600 + Math.random() * 700;
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.14, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+  src.connect(f); f.connect(g); g.connect(a.destination);
+  src.start(t);
+}
+
+function whoosh(){
+  if (!soundOn) return;
+  let a;
+  try { a = audio(); } catch (e) { return; }
+  const t = a.currentTime;
+  const o = a.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(280, t);
+  o.frequency.exponentialRampToValueAtTime(720, t + 0.35);
+  const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.06, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.4);
+  o.connect(g); g.connect(a.destination);
+  o.start(t); o.stop(t + 0.45);
+}
+
+function chime(){
+  if (!soundOn) return;
+  let a;
+  try { a = audio(); } catch (e) { return; }
+  const t = a.currentTime;
+  [[660, 0], [880, 0.12], [1100, 0.24]].forEach(pair => {
+    const f = pair[0], dt = pair[1];
+    const o = a.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = f;
+    const g = a.createGain();
+    g.gain.setValueAtTime(0.0001, t + dt);
+    g.gain.exponentialRampToValueAtTime(0.07, t + dt + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dt + 0.3);
+    o.connect(g); g.connect(a.destination);
+    o.start(t + dt); o.stop(t + dt + 0.35);
+  });
+}
+
+function stamp(x, y){
+  const b = BRUSHES[current];
+  const sp = pick(b.sprites);
+  const size = brushSize * (0.85 + Math.random() * 0.3);
+  stamps.push({
+    sp, x, y,
+    s: size / b.unit,
+    rot: (Math.random() * 2 - 1) * b.rot,
+    drift: 3 + Math.random() * 5,
+    bobA: 2 + Math.random() * 3,
+    bobF: 0.4 + Math.random() * 0.8,
+    ph: Math.random() * 6.28,
+    born: performance.now()
+  });
+  if (stamps.length > 500) stamps.shift();
+  puff();
+  if (!hintHidden){
+    hintHidden = true;
+    hint.classList.add('hide');
+  }
+}
+
+function spawnPlane(dir, x){
+  const colors = pick(PLANE_COLORS);
+  planes.push({
+    x: (x === undefined) ? (dir > 0 ? -180 : W + 180) : x,
+    y0: H * (0.1 + Math.random() * 0.35),
+    y: 0, dir,
+    s: 0.65 + Math.random() * 0.45,
+    speed: 45 + Math.random() * 40,
+    ph: Math.random() * 6.28,
+    tilt: 0,
+    main: colors[0], light: colors[1]
+  });
+}
+
+function pos(e){
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  painting = true;
+  const p = pos(e);
+  pointer.x = p.x; pointer.y = p.y; pointer.active = true;
+  lastX = p.x; lastY = p.y;
+  stamp(p.x, p.y);
+});
+canvas.addEventListener('pointermove', e => {
+  const p = pos(e);
+  pointer.x = p.x; pointer.y = p.y; pointer.active = true;
+  if (!painting) return;
+  const spacing = Math.max(6, brushSize * BRUSHES[current].spacing);
+  let dx = p.x - lastX, dy = p.y - lastY, d = Math.hypot(dx, dy);
+  let n = 0;
+  while (d >= spacing && n < 50){
+    const f = spacing / d;
+    lastX += dx * f;
+    lastY += dy * f;
+    stamp(lastX, lastY);
+    dx = p.x - lastX;
+    dy = p.y - lastY;
+    d = Math.hypot(dx, dy);
+    n++;
+  }
+  if (n === 50){ lastX = p.x; lastY = p.y; }
+});
+const endPaint = () => { painting = false; };
+canvas.addEventListener('pointerup', endPaint);
+canvas.addEventListener('pointercancel', endPaint);
+canvas.addEventListener('pointerleave', () => { pointer.active = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+const brushRow = document.getElementById('brushRow');
+BRUSHES.forEach((b, i) => {
+  const el = document.createElement('button');
+  el.className = 'btn' + (i === 0 ? ' active' : '');
+  el.title = b.name;
+  el.textContent = b.emoji;
+  el.addEventListener('click', () => {
+    current = i;
+    brushRow.querySelectorAll('.btn').forEach((x, j) => x.classList.toggle('active', j === i));
+  });
+  brushRow.appendChild(el);
+});
+
+document.getElementById('sizeSlider').addEventListener('input', e => {
+  brushSize = +e.target.value;
+});
+
+document.getElementById('undoBtn').addEventListener('click', () => { stamps.pop(); });
+document.getElementById('clearBtn').addEventListener('click', () => { stamps.length = 0; });
+document.getElementById('planeBtn').addEventListener('click', () => {
+  spawnPlane(Math.random() < 0.5 ? 1 : -1);
+  whoosh();
+});
+const soundBtn = document.getElementById('soundBtn');
+soundBtn.addEventListener('click', () => {
+  soundOn = !soundOn;
+  soundBtn.textContent = soundOn ? '🔊' : '🔇';
+});
+
+document.querySelectorAll('#todSeg button').forEach(el => {
+  el.addEventListener('click', () => {
+    target = PRESETS[el.dataset.tod];
+    document.querySelectorAll('#todSeg button').forEach(x => x.classList.toggle('active', x === el));
+  });
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  canvas.toBlob(b => {
+    if (!b) return;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(b);
+    a.download = 'my-cloud-sky.png';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+  chime();
+});
+
+function hillY(x, base, amp, freq, phase){
+  return H * base - Math.sin(x / W * Math.PI * 2 * freq + phase) * H * amp;
+}
+
+function drawHill(base, amp, freq, phase, color){
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(0, H + 2);
+  for (let x = 0; x <= W + 16; x += 16) ctx.lineTo(x, hillY(x, base, amp, freq, phase));
+  ctx.lineTo(W + 2, H + 2);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawTree(x, y, s){
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.fillStyle = css(cur.trunk);
+  rr(ctx, -4, -20, 8, 24, 3);
+  ctx.fill();
+  ctx.fillStyle = css(cur.tree);
+  const blobs = [[0,-32,17],[-13,-23,12],[13,-23,12],[0,-17,13]];
+  for (const b of blobs){
+    ctx.beginPath();
+    ctx.arc(b[0], b[1], b[2], 0, 7);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawTrees(){
+  for (const fx of TREE_X){
+    const x = fx * W;
+    const y = hillY(x, 0.93, 0.04, 2.1, 4.0) + 10;
+    const s = 0.7 + ((fx * 97) % 1) * 0.55;
+    drawTree(x, y, s);
+  }
+}
+
+function drawSky(){
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, css(cur.top));
+  g.addColorStop(0.55, css(cur.mid));
+  g.addColorStop(1, css(cur.bot));
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawStars(t){
+  if (cur.starA < 0.02) return;
+  ctx.save();
+  ctx.fillStyle = '#ffffff';
+  for (const s of stars){
+    ctx.globalAlpha = cur.starA * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph)));
+    ctx.beginPath();
+    ctx.arc(s.fx * W, s.fy * H, s.r, 0, 7);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawSun(t){
+  if (cur.sunA < 0.02) return;
+  const sx = W * 0.8, sy = H * cur.sunY;
+  const c = cur.sunC;
+  ctx.save();
+  ctx.globalAlpha = cur.sunA;
+  const glow = ctx.createRadialGradient(sx, sy, 8, sx, sy, 120);
+  glow.addColorStop(0, 'rgba(' + (c[0]|0) + ',' + (c[1]|0) + ',' + (c[2]|0) + ',0.55)');
+  glow.addColorStop(1, 'rgba(' + (c[0]|0) + ',' + (c[1]|0) + ',' + (c[2]|0) + ',0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 120, 0, 7);
+  ctx.fill();
+  ctx.translate(sx, sy);
+  ctx.rotate(t * 0.12);
+  ctx.fillStyle = 'rgba(' + (c[0]|0) + ',' + (c[1]|0) + ',' + (c[2]|0) + ',0.6)';
+  for (let i = 0; i < 8; i++){
+    ctx.save();
+    ctx.rotate(i * Math.PI / 4);
+    rr(ctx, 46, -5, 26, 10, 5);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.rotate(-t * 0.12);
+  ctx.fillStyle = css(c);
+  ctx.beginPath();
+  ctx.arc(0, 0, 38, 0, 7);
+  ctx.fill();
+  const fa = Math.min(1, cur.sunA);
+  ctx.fillStyle = 'rgba(196,138,16,' + (0.85 * fa) + ')';
+  ctx.beginPath(); ctx.arc(-12, -6, 4.5, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(12, -6, 4.5, 0, 7); ctx.fill();
+  ctx.strokeStyle = 'rgba(196,138,16,' + (0.85 * fa) + ')';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(0, 4, 14, Math.PI * 0.2, Math.PI * 0.8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawMoon(){
+  if (cur.moonA < 0.02) return;
+  const mx = W * 0.22, my = H * 0.24;
+  ctx.save();
+  ctx.globalAlpha = cur.moonA;
+  const glow = ctx.createRadialGradient(mx, my, 6, mx, my, 90);
+  glow.addColorStop(0, 'rgba(253,246,216,0.4)');
+  glow.addColorStop(1, 'rgba(253,246,216,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(mx, my, 90, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = '#fdf6d8';
+  ctx.beginPath();
+  ctx.arc(mx, my, 32, 0, 7);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(214,203,160,0.55)';
+  const craters = [[-10,-8,6],[9,5,4.5],[0,-14,3.5],[12,-10,3]];
+  for (const cr of craters){
+    ctx.beginPath();
+    ctx.arc(mx + cr[0], my + cr[1], cr[2], 0, 7);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+function drawBgClouds(){
+  for (const c of bgClouds){
+    const sp = cloudSprites[c.sp];
+    ctx.globalAlpha = c.L.alpha * (1 - 0.5 * cur.starA);
+    ctx.drawImage(sp, c.x - 80 * c.s, c.y - 55 * c.s, 160 * c.s, 110 * c.s);
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawStamps(t){
+  for (const st of stamps){
+    const age = (t * 1000 - st.born) / 350;
+    const pop = age >= 1 ? 1 : easeOutBack(Math.max(0, Math.min(1, age)));
+    const bob = Math.sin(t * st.bobF + st.ph) * st.bobA;
+    const sc = st.s * pop;
+    if (sc <= 0.001) continue;
+    ctx.save();
+    ctx.translate(st.x, st.y + bob);
+    ctx.rotate(st.rot);
+    ctx.scale(sc, sc);
+    ctx.globalAlpha = 0.97;
+    const w = st.sp.width / 2, h = st.sp.height / 2;
+    ctx.drawImage(st.sp, -w / 2, -h / 2, w, h);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawPlanes(t){
+  for (const p of planes){
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(p.dir * p.s, p.s);
+    ctx.rotate(p.tilt);
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([16, 12]);
+    ctx.lineDashOffset = -t * 70;
+    ctx.beginPath();
+    ctx.moveTo(-58, 5);
+    ctx.lineTo(-185, 5);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = p.main;
+    ctx.beginPath();
+    ctx.moveTo(-38, -6);
+    ctx.quadraticCurveTo(-56, -34, -66, -36);
+    ctx.quadraticCurveTo(-62, -12, -46, -2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    rr(ctx, -55, -14, 104, 28, 14);
+    ctx.fill();
+    ctx.fillStyle = p.light;
+    rr(ctx, -50, 3, 94, 8, 4);
+    ctx.fill();
+    ctx.fillStyle = p.main;
+    ctx.save();
+    ctx.translate(-4, 7);
+    ctx.rotate(-0.1);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 26, 9, 0, 0, 7);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#bfe6ff';
+    for (const wx of [-18, -2, 14]){
+      ctx.beginPath();
+      ctx.arc(wx, -2, 4, 0, 7);
+      ctx.fill();
+    }
+    ctx.beginPath();
+    ctx.arc(30, -5, 8, 0, 7);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+    ctx.fillStyle = '#9aa7b8';
+    ctx.beginPath();
+    ctx.arc(52, 0, 4, 0, 7);
+    ctx.fill();
+    const ph = Math.abs(Math.sin(t * 26 + p.ph));
+    ctx.fillStyle = 'rgba(150,165,185,0.5)';
+    ctx.beginPath();
+    ctx.ellipse(52, 0, 3.5, 4 + 13 * ph, 0, 0, 7);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawCursor(t){
+  if (!pointer.active) return;
+  ctx.save();
+  ctx.translate(pointer.x, pointer.y);
+  const r = brushSize * 0.55;
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 7]);
+  ctx.lineDashOffset = -t * 40;
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, 7);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r, 0, 7);
+  ctx.fill();
+  ctx.restore();
+}
+
+function update(dt, t){
+  const k = 1 - Math.exp(-2.5 * dt);
+  for (const key in target){
+    const tv = target[key];
+    if (Array.isArray(tv)){
+      const cv = cur[key];
+      for (let i = 0; i < 3; i++) cv[i] += (tv[i] - cv[i]) * k;
+    } else {
+      cur[key] += (tv - cur[key]) * k;
+    }
+  }
+  for (const c of bgClouds){
+    c.x -= c.L.speed * dt;
+    if (c.x < -380){
+      c.x = W + 380;
+      c.y = (c.L.yMin + Math.random() * (c.L.yMax - c.L.yMin)) * H;
+    }
+  }
+  for (const st of stamps){
+    st.x -= st.drift * dt;
+    if (st.x < -160) st.x = W + 160;
+  }
+  for (let i = planes.length - 1; i >= 0; i--){
+    const p = planes[i];
+    p.x += p.dir * p.speed * dt;
+    p.y = p.y0 + Math.sin(t * 1.1 + p.ph) * 9;
+    p.tilt = Math.cos(t * 1.1 + p.ph) * 0.05;
+    if ((p.dir > 0 && p.x > W + 240) || (p.dir < 0 && p.x < -240)) planes.splice(i, 1);
+  }
+  planeTimer -= dt;
+  if (planes.length < 3 && planeTimer <= 0){
+    spawnPlane(Math.random() < 0.5 ? 1 : -1);
+    planeTimer = 5 + Math.random() * 7;
+  }
+}
+
+function render(t){
+  drawSky();
+  drawStars(t);
+  drawMoon();
+  drawSun(t);
+  drawBgClouds();
+  drawHill(0.86, 0.05, 1.3, 1.2, css(cur.hillB));
+  drawHill(0.93, 0.04, 2.1, 4.0, css(cur.hillF));
+  drawTrees();
+  drawStamps(t);
+  drawPlanes(t);
+  drawCursor(t);
+}
+
+let last = performance.now();
+function frame(now){
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  const t = now / 1000;
+  update(dt, t);
+  render(t);
+  requestAnimationFrame(frame);
+}
+
+resize();
+genBg();
+spawnPlane(1, W * 0.35);
+spawnPlane(-1, W * 0.7);
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#06080f" />
+<title>Interactive World Clock</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%8D%3C/text%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #06080f;
+    --card: #0b101d;
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #eef1f8;
+    --muted: #8b93a7;
+    --accent: #7aa7ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { height: 100%; }
+  body {
+    min-height: 100%;
+    font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(1100px 700px at 85% -10%, rgba(59, 76, 153, 0.35), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(38, 58, 110, 0.30), transparent 55%),
+      var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  button { font-family: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  /* ---------- background starfield ---------- */
+  #bgStars { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+  #bgStars i {
+    position: absolute; background: #fff; border-radius: 50%; opacity: 0.15;
+    animation: twinkle 4s ease-in-out infinite;
+  }
+  @keyframes twinkle { 0%, 100% { opacity: 0.08; } 50% { opacity: 0.45; } }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 40;
+    background: rgba(6, 8, 15, 0.72);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .header-inner {
+    max-width: 1240px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-icon {
+    width: 42px; height: 42px; border-radius: 13px; flex: none;
+    background: linear-gradient(135deg, #4f7df3, #7a5cff);
+    display: grid; place-items: center; color: #fff;
+    box-shadow: 0 6px 18px rgba(79, 125, 243, 0.35);
+  }
+  .brand-icon svg { width: 22px; height: 22px; }
+  h1 { font-size: 17px; font-weight: 800; letter-spacing: -0.01em; }
+  .local-line {
+    display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted); margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
+  #localTime { color: var(--text); font-weight: 600; }
+  .local-label {
+    text-transform: uppercase; font-size: 10px; letter-spacing: 0.1em;
+    color: rgba(139, 147, 167, 0.7);
+  }
+  .live-dot {
+    width: 7px; height: 7px; border-radius: 50%; background: #3ddc84; flex: none;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(61, 220, 132, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(61, 220, 132, 0); }
+  }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .seg {
+    display: flex; background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border); border-radius: 11px; padding: 3px;
+  }
+  .seg button {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 13px; font-weight: 600; padding: 6px 14px;
+    border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  .seg button.active {
+    background: #e8ecf6; color: #0a0e1a;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+  .add-btn {
+    display: inline-flex; align-items: center; gap: 7px;
+    border: 0; cursor: pointer; color: #fff;
+    font-size: 13.5px; font-weight: 700;
+    background: linear-gradient(135deg, #4f7df3, #6a5cff);
+    padding: 9px 16px; border-radius: 11px;
+    box-shadow: 0 6px 18px rgba(79, 125, 243, 0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .add-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(79, 125, 243, 0.45); }
+  .add-btn:active { transform: translateY(0); }
+  .add-btn svg { width: 14px; height: 14px; }
+
+  /* ---------- layout ---------- */
+  main { max-width: 1240px; margin: 0 auto; padding: 28px 24px 40px; }
+  .grid {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(252px, 1fr));
+  }
+  footer {
+    max-width: 1240px; margin: 0 auto; padding: 0 24px 44px;
+    text-align: center; font-size: 12px; color: rgba(139, 147, 167, 0.6);
+  }
+
+  /* ---------- city card ---------- */
+  .card {
+    --accent: #8ea2ff;
+    position: relative; border-radius: 20px; overflow: hidden;
+    background: var(--card); border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    animation: cardIn 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45);
+  }
+  @keyframes cardIn { from { opacity: 0; transform: translateY(16px) scale(0.97); } }
+  .card.removing { animation: cardOut 0.25s ease forwards; pointer-events: none; }
+  @keyframes cardOut { to { opacity: 0; transform: scale(0.92); } }
+
+  .sky { position: relative; height: 104px; background: #0a0f1e; overflow: hidden; }
+  .sky::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  .card[data-phase="night"] .sky {
+    background: linear-gradient(180deg, #04060f 0%, #0a1030 55%, #1c2258 100%);
+  }
+  .card[data-phase="morning"] .sky {
+    background: linear-gradient(180deg, #16224e 0%, #5b3a78 42%, #c85a4e 72%, #ff9e5e 100%);
+  }
+  .card[data-phase="afternoon"] .sky {
+    background: linear-gradient(180deg, #1d6fd0 0%, #3f97e0 55%, #8ecdf0 100%);
+  }
+  .card[data-phase="evening"] .sky {
+    background: linear-gradient(180deg, #1c1440 0%, #55306e 45%, #b44a52 75%, #ff9a4d 100%);
+  }
+
+  .stars { position: absolute; inset: 0; }
+  .stars i {
+    position: absolute; background: #fff; border-radius: 50%;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+
+  .sky-icon {
+    position: absolute; left: 50%; bottom: -10px; transform: translateX(-50%);
+    width: 74px; height: 74px;
+  }
+  .sky-icon svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  .card[data-phase="afternoon"] .sky-icon svg { filter: drop-shadow(0 0 16px rgba(255, 215, 94, 0.55)); }
+  .card[data-phase="morning"] .sky-icon svg { filter: drop-shadow(0 0 14px rgba(255, 178, 94, 0.5)); }
+  .card[data-phase="evening"] .sky-icon svg { filter: drop-shadow(0 0 14px rgba(255, 138, 74, 0.5)); }
+  .card[data-phase="night"] .sky-icon svg { filter: drop-shadow(0 0 12px rgba(240, 238, 220, 0.35)); }
+  .spin { transform-box: fill-box; transform-origin: center; animation: spin 36s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .moon-float { animation: floaty 6s ease-in-out infinite; }
+  @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+  .phase-chip {
+    position: absolute; top: 12px; left: 12px; z-index: 2;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 11px 4px 9px; border-radius: 999px;
+    background: rgba(8, 10, 20, 0.35);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: rgba(255, 255, 255, 0.92);
+  }
+  .phase-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+  }
+  .remove {
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(8, 10, 20, 0.35); color: rgba(255, 255, 255, 0.85);
+    cursor: pointer; display: grid; place-items: center; opacity: 0.75;
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    transition: background 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  }
+  .remove:hover { background: rgba(220, 60, 60, 0.55); opacity: 1; transform: scale(1.08); }
+
+  .body { padding: 14px 18px 16px; }
+  .city-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .flag { font-size: 22px; line-height: 1; flex: none; }
+  .city-names { min-width: 0; }
+  .city-name {
+    font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .city-country {
+    font-size: 12px; color: var(--muted); font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+  }
+  .clock-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .time {
+    font-size: 36px; font-weight: 600; line-height: 1.05;
+    letter-spacing: -0.02em; color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+  .ampm { font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: 0.06em; }
+  .date-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; min-height: 20px; }
+  .date { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .day-offset {
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    background: rgba(122, 167, 255, 0.14); color: #a8c4ff;
+    border: 1px solid rgba(122, 167, 255, 0.25);
+    white-space: nowrap;
+  }
+  .progress {
+    height: 3px; border-radius: 99px; overflow: hidden;
+    background: rgba(255, 255, 255, 0.07);
+  }
+  .progress i {
+    display: block; height: 100%; width: 0; border-radius: 99px;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    transition: width 0.3s linear;
+  }
+
+  /* ---------- empty state ---------- */
+  .empty { text-align: center; padding: 90px 20px; color: var(--muted); }
+  .empty svg { width: 54px; height: 54px; opacity: 0.5; margin-bottom: 18px; }
+  .empty h2 { color: var(--text); font-size: 19px; font-weight: 700; margin-bottom: 6px; }
+  .empty p { font-size: 14px; margin-bottom: 22px; }
+
+  /* ---------- search overlay ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(3, 5, 10, 0.62);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    display: none; align-items: flex-start; justify-content: center;
+    padding: 10vh 16px 16px;
+  }
+  .overlay.open { display: flex; animation: fadeIn 0.18s ease; }
+  @keyframes fadeIn { from { opacity: 0; } }
+  .panel {
+    width: min(580px, 100%);
+    background: #0c111f; border: 1px solid var(--border); border-radius: 20px;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+    animation: panelIn 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  @keyframes panelIn { from { opacity: 0; transform: translateY(-14px) scale(0.98); } }
+  .search-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 16px; border-bottom: 1px solid var(--border);
+  }
+  .search-row > svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
+  #citySearch {
+    flex: 1; min-width: 0; background: transparent; border: 0; outline: none;
+    color: var(--text); font-size: 15px;
+  }
+  #citySearch::placeholder { color: var(--muted); }
+  .close-btn {
+    width: 28px; height: 28px; flex: none; border-radius: 8px;
+    border: 1px solid var(--border); background: rgba(255, 255, 255, 0.05);
+    color: var(--muted); cursor: pointer; display: grid; place-items: center;
+    transition: all 0.15s ease;
+  }
+  .close-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.1); }
+  .list { max-height: min(52vh, 460px); overflow-y: auto; padding: 8px; }
+  .list::-webkit-scrollbar { width: 10px; }
+  .list::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 99px; border: 3px solid #0c111f; }
+  .row {
+    display: grid; grid-template-columns: 28px minmax(0, 1fr) auto auto;
+    align-items: center; gap: 10px;
+    width: 100%; text-align: left;
+    background: transparent; border: 0; color: var(--text);
+    font-size: 14.5px; padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  }
+  .row:hover, .row.sel { background: rgba(255, 255, 255, 0.06); }
+  .row.added { opacity: 0.45; cursor: default; }
+  .r-flag { font-size: 20px; }
+  .r-main { display: flex; flex-direction: column; min-width: 0; }
+  .r-name { font-weight: 600; }
+  .r-country {
+    font-size: 12.5px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .r-time { font-size: 13px; color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .r-badge {
+    font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: #3ddc84;
+  }
+  .no-results { padding: 32px; text-align: center; color: var(--muted); font-size: 14px; }
+  .list-hint {
+    padding: 10px 16px; border-top: 1px solid var(--border);
+    font-size: 11.5px; color: var(--muted);
+    display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+  }
+  kbd {
+    font-family: inherit; font-size: 10.5px; color: var(--text);
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid var(--border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 5px;
+  }
+
+  @media (max-width: 560px) {
+    .header-inner { padding: 12px 16px; }
+    main { padding: 20px 16px 32px; }
+    .grid { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+    .time { font-size: 30px; }
+    .overlay { padding-top: 6vh; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div id="bgStars" aria-hidden="true"></div>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>
+          <path d="M3.6 9h16.8M3.6 15h16.8"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>World Clock</h1>
+        <div class="local-line">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span id="localTime">--:--:--</span>
+          <span aria-hidden="true">·</span>
+          <span id="localDate"></span>
+          <span class="local-label">your time</span>
+        </div>
+      </div>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Hour format">
+        <button type="button" data-mode="12" aria-pressed="false">12h</button>
+        <button type="button" data-mode="24" aria-pressed="true">24h</button>
+      </div>
+      <button class="add-btn" id="addBtn" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+          <path d="M12 5v14M5 12h14"></path>
+        </svg>
+        Add city
+      </button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="grid" id="cityGrid"></div>
+  <div class="empty" id="empty" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="9"></circle>
+      <ellipse cx="12" cy="12" rx="4" ry="9"></ellipse>
+      <path d="M3.6 9h16.8M3.6 15h16.8"></path>
+    </svg>
+    <h2>No cities yet</h2>
+    <p>Add a city to start comparing times across the world.</p>
+    <button class="add-btn" id="emptyAdd" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true">
+        <path d="M12 5v14M5 12h14"></path>
+      </svg>
+      Add a city
+    </button>
+  </div>
+</main>
+
+<footer>Times update live from IANA time zones · Your cities are saved in this browser</footer>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Add a city">
+  <div class="panel">
+    <div class="search-row">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7"></circle>
+        <path d="M20 20l-3.5-3.5"></path>
+      </svg>
+      <input id="citySearch" type="text" placeholder="Search cities, countries, time zones…" autocomplete="off" spellcheck="false" />
+      <button class="close-btn" id="closeSearch" type="button" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="list" id="cityList"></div>
+    <div class="list-hint">
+      <span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span>
+      <span><kbd>Enter</kbd> add</span>
+      <span><kbd>Esc</kbd> close</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------- data ---------------- */
+  const CITIES = [
+    { name: 'New York', tz: 'America/New_York', flag: '🇺🇸', country: 'United States' },
+    { name: 'Los Angeles', tz: 'America/Los_Angeles', flag: '🇺🇸', country: 'United States' },
+    { name: 'Chicago', tz: 'America/Chicago', flag: '🇺🇸', country: 'United States' },
+    { name: 'Miami', tz: 'America/New_York', flag: '🇺🇸', country: 'United States' },
+    { name: 'Denver', tz: 'America/Denver', flag: '🇺🇸', country: 'United States' },
+    { name: 'Anchorage', tz: 'America/Anchorage', flag: '🇺🇸', country: 'United States' },
+    { name: 'Honolulu', tz: 'Pacific/Honolulu', flag: '🇺🇸', country: 'United States' },
+    { name: 'Toronto', tz: 'America/Toronto', flag: '🇨🇦', country: 'Canada' },
+    { name: 'Vancouver', tz: 'America/Vancouver', flag: '🇨🇦', country: 'Canada' },
+    { name: 'Mexico City', tz: 'America/Mexico_City', flag: '🇲🇽', country: 'Mexico' },
+    { name: 'Havana', tz: 'America/Havana', flag: '🇨🇺', country: 'Cuba' },
+    { name: 'Bogotá', tz: 'America/Bogota', flag: '🇨🇴', country: 'Colombia' },
+    { name: 'Lima', tz: 'America/Lima', flag: '🇵🇪', country: 'Peru' },
+    { name: 'São Paulo', tz: 'America/Sao_Paulo', flag: '🇧🇷', country: 'Brazil' },
+    { name: 'Buenos Aires', tz: 'America/Argentina/Buenos_Aires', flag: '🇦🇷', country: 'Argentina' },
+    { name: 'Santiago', tz: 'America/Santiago', flag: '🇨🇱', country: 'Chile' },
+    { name: 'Caracas', tz: 'America/Caracas', flag: '🇻🇪', country: 'Venezuela' },
+    { name: 'Montevideo', tz: 'America/Montevideo', flag: '🇺🇾', country: 'Uruguay' },
+    { name: 'London', tz: 'Europe/London', flag: '🇬🇧', country: 'United Kingdom' },
+    { name: 'Dublin', tz: 'Europe/Dublin', flag: '🇮🇪', country: 'Ireland' },
+    { name: 'Lisbon', tz: 'Europe/Lisbon', flag: '🇵🇹', country: 'Portugal' },
+    { name: 'Madrid', tz: 'Europe/Madrid', flag: '🇪🇸', country: 'Spain' },
+    { name: 'Paris', tz: 'Europe/Paris', flag: '🇫🇷', country: 'France' },
+    { name: 'Amsterdam', tz: 'Europe/Amsterdam', flag: '🇳🇱', country: 'Netherlands' },
+    { name: 'Berlin', tz: 'Europe/Berlin', flag: '🇩🇪', country: 'Germany' },
+    { name: 'Zurich', tz: 'Europe/Zurich', flag: '🇨🇭', country: 'Switzerland' },
+    { name: 'Rome', tz: 'Europe/Rome', flag: '🇮🇹', country: 'Italy' },
+    { name: 'Vienna', tz: 'Europe/Vienna', flag: '🇦🇹', country: 'Austria' },
+    { name: 'Warsaw', tz: 'Europe/Warsaw', flag: '🇵🇱', country: 'Poland' },
+    { name: 'Prague', tz: 'Europe/Prague', flag: '🇨🇿', country: 'Czechia' },
+    { name: 'Stockholm', tz: 'Europe/Stockholm', flag: '🇸🇪', country: 'Sweden' },
+    { name: 'Oslo', tz: 'Europe/Oslo', flag: '🇳🇴', country: 'Norway' },
+    { name: 'Copenhagen', tz: 'Europe/Copenhagen', flag: '🇩🇰', country: 'Denmark' },
+    { name: 'Helsinki', tz: 'Europe/Helsinki', flag: '🇫🇮', country: 'Finland' },
+    { name: 'Reykjavík', tz: 'Atlantic/Reykjavik', flag: '🇮🇸', country: 'Iceland' },
+    { name: 'Athens', tz: 'Europe/Athens', flag: '🇬🇷', country: 'Greece' },
+    { name: 'Istanbul', tz: 'Europe/Istanbul', flag: '🇹🇷', country: 'Türkiye' },
+    { name: 'Moscow', tz: 'Europe/Moscow', flag: '🇷🇺', country: 'Russia' },
+    { name: 'Kyiv', tz: 'Europe/Kyiv', flag: '🇺🇦', country: 'Ukraine' },
+    { name: 'Cairo', tz: 'Africa/Cairo', flag: '🇪🇬', country: 'Egypt' },
+    { name: 'Lagos', tz: 'Africa/Lagos', flag: '🇳🇬', country: 'Nigeria' },
+    { name: 'Nairobi', tz: 'Africa/Nairobi', flag: '🇰🇪', country: 'Kenya' },
+    { name: 'Johannesburg', tz: 'Africa/Johannesburg', flag: '🇿🇦', country: 'South Africa' },
+    { name: 'Casablanca', tz: 'Africa/Casablanca', flag: '🇲🇦', country: 'Morocco' },
+    { name: 'Tel Aviv', tz: 'Asia/Jerusalem', flag: '🇮🇱', country: 'Israel' },
+    { name: 'Dubai', tz: 'Asia/Dubai', flag: '🇦🇪', country: 'United Arab Emirates' },
+    { name: 'Doha', tz: 'Asia/Qatar', flag: '🇶🇦', country: 'Qatar' },
+    { name: 'Riyadh', tz: 'Asia/Riyadh', flag: '🇸🇦', country: 'Saudi Arabia' },
+    { name: 'Tehran', tz: 'Asia/Tehran', flag: '🇮🇷', country: 'Iran' },
+    { name: 'Mumbai', tz: 'Asia/Kolkata', flag: '🇮🇳', country: 'India' },
+    { name: 'Karachi', tz: 'Asia/Karachi', flag: '🇵🇰', country: 'Pakistan' },
+    { name: 'Dhaka', tz: 'Asia/Dhaka', flag: '🇧🇩', country: 'Bangladesh' },
+    { name: 'Bangkok', tz: 'Asia/Bangkok', flag: '🇹🇭', country: 'Thailand' },
+    { name: 'Jakarta', tz: 'Asia/Jakarta', flag: '🇮🇩', country: 'Indonesia' },
+    { name: 'Singapore', tz: 'Asia/Singapore', flag: '🇸🇬', country: 'Singapore' },
+    { name: 'Kuala Lumpur', tz: 'Asia/Kuala_Lumpur', flag: '🇲🇾', country: 'Malaysia' },
+    { name: 'Manila', tz: 'Asia/Manila', flag: '🇵🇭', country: 'Philippines' },
+    { name: 'Hong Kong', tz: 'Asia/Hong_Kong', flag: '🇭🇰', country: 'China' },
+    { name: 'Shanghai', tz: 'Asia/Shanghai', flag: '🇨🇳', country: 'China' },
+    { name: 'Tokyo', tz: 'Asia/Tokyo', flag: '🇯🇵', country: 'Japan' },
+    { name: 'Seoul', tz: 'Asia/Seoul', flag: '🇰🇷', country: 'South Korea' },
+    { name: 'Taipei', tz: 'Asia/Taipei', flag: '🇹🇼', country: 'Taiwan' },
+    { name: 'Ulaanbaatar', tz: 'Asia/Ulaanbaatar', flag: '🇲🇳', country: 'Mongolia' },
+    { name: 'Tbilisi', tz: 'Asia/Tbilisi', flag: '🇬🇪', country: 'Georgia' },
+    { name: 'Almaty', tz: 'Asia/Almaty', flag: '🇰🇿', country: 'Kazakhstan' },
+    { name: 'Sydney', tz: 'Australia/Sydney', flag: '🇦🇺', country: 'Australia' },
+    { name: 'Melbourne', tz: 'Australia/Melbourne', flag: '🇦🇺', country: 'Australia' },
+    { name: 'Perth', tz: 'Australia/Perth', flag: '🇦🇺', country: 'Australia' },
+    { name: 'Auckland', tz: 'Pacific/Auckland', flag: '🇳🇿', country: 'New Zealand' },
+    { name: 'Suva', tz: 'Pacific/Fiji', flag: '🇫🇯', country: 'Fiji' },
+    { name: "Nuku'alofa", tz: 'Pacific/Tongatapu', flag: '🇹🇴', country: 'Tonga' },
+    { name: 'Kiritimati', tz: 'Pacific/Kiritimati', flag: '🇰🇮', country: 'Kiribati' }
+  ];
+
+  const DEFAULTS = ['New York', 'London', 'Tokyo', 'Sydney'];
+  const STORE_KEY = 'interactive-world-clock-v1';
+
+  const PHASES = {
+    night:     { label: 'Night',     accent: '#8ea2ff' },
+    morning:   { label: 'Morning',   accent: '#ffb25e' },
+    afternoon: { label: 'Afternoon', accent: '#ffd75e' },
+    evening:   { label: 'Evening',   accent: '#ff8a5e' }
+  };
+
+  function byName(n) { return CITIES.find(c => c.name === n) || null; }
+
+  /* ---------------- state ---------------- */
+  function loadState() {
+    const fallback = { cities: DEFAULTS.map(byName).filter(Boolean), hour12: false };
+    try {
+      const raw = localStorage.getItem(STORE_KEY);
+      if (!raw) return fallback;
+      const s = JSON.parse(raw);
+      const cities = Array.isArray(s.cities)
+        ? s.cities.map(c => byName(c && c.name)).filter(Boolean)
+        : fallback.cities;
+      return { cities, hour12: typeof s.hour12 === 'boolean' ? s.hour12 : false };
+    } catch (e) { return fallback; }
+  }
+  const state = loadState();
+  function save() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {}
+  }
+
+  /* ---------------- time helpers ---------------- */
+  const timeFmtCache = new Map();
+  const dateFmtCache = new Map();
+  const abbrFmtCache = new Map();
+
+  function getTimeFmt(tz) {
+    const key = tz || 'local';
+    let f = timeFmtCache.get(key);
+    if (!f) {
+      const opts = {
+        hourCycle: 'h23', hour: '2-digit', minute: '2-digit', second: '2-digit',
+        weekday: 'short', month: 'short', day: 'numeric'
+      };
+      if (tz) opts.timeZone = tz;
+      f = new Intl.DateTimeFormat('en-US', opts);
+      timeFmtCache.set(key, f);
+    }
+    return f;
+  }
+  function getDateFmt(tz) {
+    const key = tz || 'local';
+    let f = dateFmtCache.get(key);
+    if (!f) {
+      const opts = { year: 'numeric', month: '2-digit', day: '2-digit' };
+      if (tz) opts.timeZone = tz;
+      f = new Intl.DateTimeFormat('en-CA', opts);
+      dateFmtCache.set(key, f);
+    }
+    return f;
+  }
+  function getAbbrFmt(tz) {
+    let f = abbrFmtCache.get(tz);
+    if (!f) {
+      f = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' });
+      abbrFmtCache.set(tz, f);
+    }
+    return f;
+  }
+  function partsFor(tz, date) {
+    const p = {};
+    for (const x of getTimeFmt(tz).formatToParts(date)) p[x.type] = x.value;
+    return p;
+  }
+  function tzAbbr(tz, date) {
+    const p = getAbbrFmt(tz).formatToParts(date);
+    const x = p.find(x => x.type === 'timeZoneName');
+    return x ? x.value : '';
+  }
+  function phaseForHour(h) {
+    if (h >= 5 && h < 11) return 'morning';
+    if (h >= 11 && h < 17) return 'afternoon';
+    if (h >= 17 && h < 21) return 'evening';
+    return 'night';
+  }
+  function pad(n) { return String(n).padStart(2, '0'); }
+
+  /* ---------------- sky icons ---------------- */
+  function rayLines(cx, cy, r1, r2, angles, color, w) {
+    return angles.map(deg => {
+      const a = deg * Math.PI / 180;
+      const x1 = (cx + r1 * Math.cos(a)).toFixed(1);
+      const y1 = (cy - r1 * Math.sin(a)).toFixed(1);
+      const x2 = (cx + r2 * Math.cos(a)).toFixed(1);
+      const y2 = (cy - r2 * Math.sin(a)).toFixed(1);
+      return '<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 +
+        '" stroke="' + color + '" stroke-width="' + w + '" stroke-linecap="round"/>';
+    }).join('');
+  }
+
+  function iconSVG(phase, uid) {
+    if (phase === 'afternoon') {
+      const angles = [0, 45, 90, 135, 180, 225, 270, 315];
+      return '<svg viewBox="0 0 80 80">' +
+        '<g class="spin">' + rayLines(40, 34, 17, 24, angles, '#ffe08a', 3) + '</g>' +
+        '<circle cx="40" cy="34" r="12" fill="#ffd75e"/>' +
+        '</svg>';
+    }
+    if (phase === 'morning') {
+      const angles = [20, 50, 80, 110, 140, 160];
+      return '<svg viewBox="0 0 80 80">' +
+        rayLines(40, 56, 18, 25, angles, '#ffc07a', 3) +
+        '<path d="M 27 56 A 13 13 0 0 1 53 56 Z" fill="#ffb25e"/>' +
+        '<line x1="8" y1="56.5" x2="72" y2="56.5" stroke="rgba(255,255,255,0.55)" stroke-width="2" stroke-linecap="round"/>' +
+        '</svg>';
+    }
+    if (phase === 'evening') {
+      const angles = [25, 55, 90, 125, 155];
+      return '<svg viewBox="0 0 80 80">' +
+        rayLines(40, 56, 16, 22, angles, '#ff9a5c', 3) +
+        '<path d="M 29 56 A 11 11 0 0 1 51 56 Z" fill="#ff8a4a"/>' +
+        '<line x1="8" y1="56.5" x2="72" y2="56.5" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round"/>' +
+        '</svg>';
+    }
+    return '<svg viewBox="0 0 80 80">' +
+      '<defs><mask id="mooncut-' + uid + '">' +
+      '<rect x="0" y="0" width="80" height="80" fill="white"/>' +
+      '<circle cx="47" cy="31" r="12" fill="black"/>' +
+      '</mask></defs>' +
+      '<g class="moon-float"><circle cx="40" cy="38" r="14" fill="#f2eedd" mask="url(#mooncut-' + uid + ')"/></g>' +
+      '</svg>';
+  }
+
+  function makeStars(container, count) {
+    container.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+      const s = document.createElement('i');
+      const size = (Math.random() * 1.8 + 0.8).toFixed(1);
+      s.style.left = (Math.random() * 100).toFixed(1) + '%';
+      s.style.top = (Math.random() * 68).toFixed(1) + '%';
+      s.style.width = size + 'px';
+      s.style.height = size + 'px';
+      s.style.animationDuration = (2 + Math.random() * 3).toFixed(2) + 's';
+      s.style.animationDelay = (Math.random() * 3).toFixed(2) + 's';
+      container.appendChild(s);
+    }
+  }
+
+  /* ---------------- cards ---------------- */
+  const grid = document.getElementById('cityGrid');
+  const emptyEl = document.getElementById('empty');
+  const cardEls = new Map();
+
+  function createCard(city) {
+    const el = document.createElement('article');
+    el.className = 'card';
+    el.dataset.tz = city.tz;
+    el.innerHTML =
+      '<div class="sky">' +
+        '<span class="phase-chip"><i class="phase-dot"></i><span class="phase-label"></span></span>' +
+        '<button class="remove" type="button" title="Remove ' + city.name + '" aria-label="Remove ' + city.name + '">' +
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">' +
+            '<path d="M6 6l12 12M18 6L6 18"></path>' +
+          '</svg>' +
+        '</button>' +
+        '<div class="stars"></div>' +
+        '<div class="sky-icon"></div>' +
+      '</div>' +
+      '<div class="body">' +
+        '<div class="city-row">' +
+          '<span class="flag" aria-hidden="true">' + city.flag + '</span>' +
+          '<div class="city-names">' +
+            '<h3 class="city-name">' + city.name + '</h3>' +
+            '<span class="city-country">' + city.country + '</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="clock-row">' +
+          '<span class="time">--:--:--</span><span class="ampm"></span>' +
+        '</div>' +
+        '<div class="date-row">' +
+          '<span class="date"></span><span class="day-offset" hidden></span>' +
+        '</div>' +
+        '<div class="progress"><i></i></div>' +
+      '</div>';
+    el.querySelector('.remove').addEventListener('click', () => removeCity(city.name));
+    return el;
+  }
+
+  function bindCardRefs(card) {
+    card._time = card.querySelector('.time');
+    card._ampm = card.querySelector('.ampm');
+    card._dateEl = card.querySelector('.date');
+    card._offset = card.querySelector('.day-offset');
+    card._progress = card.querySelector('.progress i');
+    card._progressWrap = card.querySelector('.progress');
+    card._ccEl = card.querySelector('.city-country');
+  }
+
+  function applyPhase(card, phase) {
+    card.dataset.phase = phase;
+    const info = PHASES[phase];
+    card.style.setProperty('--accent', info.accent);
+    card.querySelector('.phase-label').textContent = info.label;
+    card.querySelector('.sky-icon').innerHTML = iconSVG(phase, card.dataset.uid);
+    makeStars(card.querySelector('.stars'),
+      phase === 'night' ? 18 : phase === 'evening' ? 8 : 0);
+  }
+
+  function mountCard(city, index) {
+    const card = createCard(city);
+    card.dataset.uid = Math.random().toString(36).slice(2, 9);
+    bindCardRefs(card);
+    const p = partsFor(city.tz, new Date());
+    applyPhase(card, phaseForHour(+p.hour));
+    if (index > 0) card.style.animationDelay = (index * 45) + 'ms';
+    grid.appendChild(card);
+    cardEls.set(city.name, card);
+    return card;
+  }
+
+  function addCity(city) {
+    if (!city || state.cities.some(c => c.name === city.name)) return;
+    state.cities.push(city);
+    save();
+    mountCard(city, 0);
+    updateEmpty();
+  }
+
+  function removeCity(name) {
+    state.cities = state.cities.filter(c => c.name !== name);
+    save();
+    const card = cardEls.get(name);
+    cardEls.delete(name);
+    if (card) {
+      card.classList.add('removing');
+      card.addEventListener('animationend', () => card.remove(), { once: true });
+    }
+    updateEmpty();
+  }
+
+  function updateEmpty() {
+    emptyEl.hidden = state.cities.length > 0;
+    grid.style.display = state.cities.length > 0 ? 'grid' : 'none';
+  }
+
+  /* ---------------- tick ---------------- */
+  const localTimeEl = document.getElementById('localTime');
+  const localDateEl = document.getElementById('localDate');
+
+  function setText(el, v) { if (el.textContent !== v) el.textContent = v; }
+
+  function tick() {
+    const now = new Date();
+    const localKey = getDateFmt(null).format(now);
+
+    const lp = partsFor(null, now);
+    setText(localTimeEl, state.hour12
+      ? ((+lp.hour) % 12 || 12) + ':' + lp.minute + ':' + lp.second + ' ' + (+lp.hour < 12 ? 'AM' : 'PM')
+      : lp.hour + ':' + lp.minute + ':' + lp.second);
+    setText(localDateEl, lp.weekday + ', ' + lp.month + ' ' + lp.day);
+
+    for (const city of state.cities) {
+      const card = cardEls.get(city.name);
+      if (!card) continue;
+      const p = partsFor(city.tz, now);
+      const h = +p.hour;
+      const m = +p.minute;
+      const s = +p.second;
+
+      if (state.hour12) {
+        setText(card._time, ((h % 12) || 12) + ':' + p.minute + ':' + p.second);
+        setText(card._ampm, h < 12 ? 'AM' : 'PM');
+      } else {
+        setText(card._time, p.hour + ':' + p.minute + ':' + p.second);
+        setText(card._ampm, '');
+      }
+
+      const dateStr = p.weekday + ', ' + p.month + ' ' + p.day;
+      if (card._date !== dateStr) { setText(card._dateEl, dateStr); card._date = dateStr; }
+
+      const ccStr = city.country + ' · ' + tzAbbr(city.tz, now);
+      if (card._cc !== ccStr) { setText(card._ccEl, ccStr); card._cc = ccStr; }
+
+      const cityKey = getDateFmt(city.tz).format(now);
+      const diff = Math.round((Date.parse(cityKey) - Date.parse(localKey)) / 86400000);
+      if (diff !== 0) {
+        card._offset.hidden = false;
+        const txt = (diff > 0 ? '+' : '−') + Math.abs(diff) + (Math.abs(diff) === 1 ? ' day' : ' days');
+        if (card._offTxt !== txt) { card._offset.textContent = txt; card._offTxt = txt; }
+      } else {
+        card._offset.hidden = true;
+      }
+
+      const pct = ((h * 3600 + m * 60 + s) / 86400) * 100;
+      card._progress.style.width = pct.toFixed(2) + '%';
+      card._progressWrap.title = pct.toFixed(0) + '% of the day elapsed in ' + city.name;
+
+      const ph = phaseForHour(h);
+      if (card._phase !== ph) { card._phase = ph; applyPhase(card, ph); }
+    }
+  }
+
+  /* ---------------- search overlay ---------------- */
+  const overlay = document.getElementById('overlay');
+  const input = document.getElementById('citySearch');
+  const list = document.getElementById('cityList');
+  let selIndex = -1;
+  let visible = [];
+
+  function rowTime(p) {
+    const h = +p.hour;
+    if (state.hour12) {
+      return ((h % 12) || 12) + ':' + p.minute + ' ' + (h < 12 ? 'AM' : 'PM');
+    }
+    return p.hour + ':' + p.minute;
+  }
+
+  function filterList(q) {
+    q = q.trim().toLowerCase();
+    visible = CITIES.filter(c =>
+      !q ||
+      c.name.toLowerCase().includes(q) ||
+      c.country.toLowerCase().includes(q) ||
+      c.tz.toLowerCase().includes(q)
+    );
+    list.innerHTML = '';
+    selIndex = visible.length ? 0 : -1;
+    const now = new Date();
+    visible.slice(0, 40).forEach((c, i) => {
+      const added = state.cities.some(x => x.name === c.name);
+      const p = partsFor(c.tz, now);
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.className = 'row' + (added ? ' added' : '') + (i === selIndex ? ' sel' : '');
+      row.innerHTML =
+        '<span class="r-flag" aria-hidden="true">' + c.flag + '</span>' +
+        '<span class="r-main">' +
+          '<span class="r-name">' + c.name + '</span>' +
+          '<span class="r-country">' + c.country + ' · ' + tzAbbr(c.tz, now) + '</span>' +
+        '</span>' +
+        '<span class="r-time">' + rowTime(p) + '</span>' +
+        '<span class="r-badge">' + (added ? 'Added' : '') + '</span>';
+      if (!added) {
+        row.addEventListener('click', () => { addCity(c); closeSearch(); });
+      }
+      list.appendChild(row);
+    });
+    if (!visible.length) {
+      list.innerHTML = '<div class="no-results">No cities found</div>';
+    }
+  }
+
+  function moveSel(d) {
+    const all = Array.from(list.querySelectorAll('.row'));
+    if (!all.length) return;
+    selIndex = (selIndex + d + all.length) % all.length;
+    all.forEach((r, i) => r.classList.toggle('sel', i === selIndex));
+    all[selIndex].scrollIntoView({ block: 'nearest' });
+  }
+
+  function openSearch() {
+    overlay.classList.add('open');
+    input.value = '';
+    filterList('');
+    setTimeout(() => input.focus(), 30);
+  }
+  function closeSearch() {
+    overlay.classList.remove('open');
+    input.blur();
+  }
+
+  input.addEventListener('input', () => filterList(input.value));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); moveSel(1); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); moveSel(-1); }
+    else if (e.key === 'Enter') {
+      e.preventDefault();
+      const c = visible[selIndex];
+      if (c && !state.cities.some(x => x.name === c.name)) {
+        addCity(c);
+        closeSearch();
+      }
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && overlay.classList.contains('open')) closeSearch();
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeSearch(); });
+  document.getElementById('closeSearch').addEventListener('click', closeSearch);
+  document.getElementById('addBtn').addEventListener('click', openSearch);
+  document.getElementById('emptyAdd').addEventListener('click', openSearch);
+
+  /* ---------------- 12/24h toggle ---------------- */
+  const segButtons = Array.from(document.querySelectorAll('.seg button'));
+  function updateSegUI() {
+    segButtons.forEach(b => {
+      const active = (b.dataset.mode === '12') === state.hour12;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-pressed', String(active));
+    });
+  }
+  segButtons.forEach(b => b.addEventListener('click', () => {
+    state.hour12 = b.dataset.mode === '12';
+    save();
+    updateSegUI();
+    tick();
+  }));
+
+  /* ---------------- background stars ---------------- */
+  (function () {
+    const c = document.getElementById('bgStars');
+    for (let i = 0; i < 90; i++) {
+      const s = document.createElement('i');
+      const sz = (Math.random() * 1.6 + 0.6).toFixed(1);
+      s.style.left = (Math.random() * 100).toFixed(1) + '%';
+      s.style.top = (Math.random() * 100).toFixed(1) + '%';
+      s.style.width = sz + 'px';
+      s.style.height = sz + 'px';
+      s.style.animationDuration = (3 + Math.random() * 5).toFixed(2) + 's';
+      s.style.animationDelay = (Math.random() * 6).toFixed(2) + 's';
+      c.appendChild(s);
+    }
+  })();
+
+  /* ---------------- init ---------------- */
+  state.cities.forEach((c, i) => mountCard(c, i));
+  updateSegUI();
+  updateEmpty();
+  tick();
+  setInterval(tick, 250);
+})();
+</script>
+</body>
+</html>

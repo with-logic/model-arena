@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ocean Wave Simulation</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; background: #04121f; overscroll-behavior: none; }
+canvas#scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+canvas#scene:active { cursor: grabbing; }
+#vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, transparent 52%, rgba(2, 10, 20, 0.30) 100%); }
+#ui { position: fixed; inset: 0; pointer-events: none; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: rgba(255,255,255,0.92); opacity: 0; transition: opacity 1.6s ease 0.3s; user-select: none; -webkit-user-select: none; }
+body.loaded #ui { opacity: 1; }
+#title { position: absolute; top: 30px; left: 34px; }
+#title h1 { font-family: 'Cormorant Garamond', Georgia, serif; font-weight: 500; font-size: 31px; letter-spacing: 0.045em; line-height: 1.1; text-shadow: 0 2px 24px rgba(0, 12, 28, 0.45); }
+#title p { margin-top: 8px; font-size: 10.5px; font-weight: 400; letter-spacing: 0.30em; text-transform: uppercase; opacity: 0.62; text-shadow: 0 1px 12px rgba(0, 12, 28, 0.4); }
+#panel { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: min(400px, calc(100vw - 44px)); padding: 20px 22px 16px; background: rgba(7, 19, 33, 0.44); border: 1px solid rgba(255,255,255,0.14); border-radius: 18px; backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 8, 20, 0.4); pointer-events: auto; }
+.ctl { margin-bottom: 14px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; gap: 12px; }
+.row label { font-size: 10.5px; font-weight: 500; letter-spacing: 0.20em; text-transform: uppercase; opacity: 0.72; white-space: nowrap; }
+.row span { font-size: 12px; font-weight: 400; opacity: 0.92; font-variant-numeric: tabular-nums; white-space: nowrap; }
+input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; background: transparent; cursor: pointer; display: block; }
+input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 3px; background: linear-gradient(90deg, rgba(255,255,255,0.55), rgba(255,255,255,0.16)); }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: -5.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.12), 0 0 12px rgba(255,255,255,0.55); transition: transform 0.15s ease; }
+input[type=range]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+input[type=range]::-moz-range-track { height: 3px; border-radius: 3px; background: rgba(255,255,255,0.30); }
+input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; border-radius: 50%; background: #fff; box-shadow: 0 0 0 3px rgba(255,255,255,0.12), 0 0 12px rgba(255,255,255,0.55); }
+#presets { display: flex; gap: 6px; margin-top: 16px; }
+#presets button { flex: 1; padding: 7px 2px; font-family: inherit; font-size: 10px; font-weight: 500; letter-spacing: 0.10em; text-transform: uppercase; color: rgba(255,255,255,0.82); background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.13); border-radius: 999px; cursor: pointer; transition: background 0.25s ease, border-color 0.25s ease; }
+#presets button:hover { background: rgba(255,255,255,0.18); border-color: rgba(255,255,255,0.30); }
+#hint { position: absolute; right: 34px; bottom: 34px; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; opacity: 0.42; }
+#loader { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: #04121f; transition: opacity 1.2s ease; }
+body.loaded #loader { opacity: 0; pointer-events: none; }
+#loader .dot { width: 7px; height: 7px; border-radius: 50%; background: rgba(255,255,255,0.75); animation: pulse 1.3s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.25; transform: scale(0.75); } 50% { opacity: 1; transform: scale(1.2); } }
+#loader p { font-family: 'Inter', sans-serif; font-size: 10.5px; letter-spacing: 0.32em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+@media (max-width: 640px) {
+  #hint { display: none; }
+  #title { top: 22px; left: 22px; }
+  #title h1 { font-size: 25px; }
+  #panel { bottom: 18px; padding: 16px 18px 13px; }
+}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="vignette"></div>
+<div id="ui">
+  <header id="title">
+    <h1>Ocean Wave Simulation</h1>
+    <p>A real-time study of wind &middot; swell &middot; light</p>
+  </header>
+  <div id="panel">
+    <div class="ctl">
+      <div class="row"><label for="wind">Wind speed</label><span id="windVal"></span></div>
+      <input id="wind" type="range" min="0" max="25" step="0.1" value="8" aria-label="Wind speed">
+    </div>
+    <div class="ctl">
+      <div class="row"><label for="wave">Wave height</label><span id="waveVal"></span></div>
+      <input id="wave" type="range" min="0.1" max="2" step="0.05" value="1" aria-label="Wave height">
+    </div>
+    <div class="ctl">
+      <div class="row"><label for="time">Lighting</label><span id="timeVal"></span></div>
+      <input id="time" type="range" min="0" max="24" step="0.05" value="16.5" aria-label="Time of day">
+    </div>
+    <div id="presets">
+      <button data-hour="5.9">Dawn</button>
+      <button data-hour="12">Midday</button>
+      <button data-hour="17.7">Golden</button>
+      <button data-hour="18.9">Dusk</button>
+      <button data-hour="23.5">Night</button>
+    </div>
+  </div>
+  <div id="hint">drag to look &middot; scroll to zoom</div>
+</div>
+<div id="loader"><div class="dot"></div><p id="loaderMsg">composing the sea</p></div>
+<script>
+setTimeout(function () {
+  if (!window.__oceanStarted) {
+    var m = document.getElementById('loaderMsg');
+    if (m) m.textContent = 'still loading — check your connection';
+  }
+}, 9000);
+</script>
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const canvas = document.getElementById('scene');
+const loaderMsg = document.getElementById('loaderMsg');
+
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+} catch (err) {
+  loaderMsg.textContent = 'webgl unavailable in this browser';
+  throw err;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x04121f, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 4000);
+
+const SHARED = `
+uniform vec3 uSunDir;
+uniform vec3 uSunColor;
+uniform float uTime;
+uniform float uWind;
+uniform float uDayFactor;
+uniform float uNightFactor;
+uniform float uDuskFactor;
+uniform float uCloud;
+
+float hash21(vec2 p) {
+  p = fract(p * vec2(234.34, 435.345));
+  p += dot(p, p + 34.23);
+  return fract(p.x * p.y);
+}
+float hash31(vec3 p) {
+  p = fract(p * 0.1031);
+  p += dot(p, p.zyx + 31.32);
+  return fract((p.x + p.y) * p.z);
+}
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm2(vec2 p) {
+  float v = 0.0;
+  float a = 0.62;
+  for (int i = 0; i < 2; i++) { v += a * vnoise(p); p *= 2.13; a *= 0.5; }
+  return v;
+}
+float fbm4(vec2 p) {
+  float v = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) { v += a * vnoise(p); p *= 2.07; a *= 0.5; }
+  return v;
+}
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+vec3 skyColor(vec3 dir) {
+  float y = dir.y;
+  vec3 zen = mix(vec3(0.010, 0.016, 0.045), vec3(0.09, 0.25, 0.55), uDayFactor);
+  vec3 hor = mix(vec3(0.035, 0.055, 0.11), vec3(0.55, 0.70, 0.82), uDayFactor);
+  float sunAz = clamp(dot(normalize(dir.xz), normalize(uSunDir.xz)), 0.0, 1.0);
+  hor = mix(hor, vec3(0.95, 0.48, 0.20) * (0.55 + 0.45 * uDayFactor), uDuskFactor * pow(sunAz, 2.0) * 0.75);
+  float t = pow(clamp(y, 0.0, 1.0), 0.55);
+  vec3 col = mix(hor, zen, t);
+  col = mix(col, hor * 0.55, 1.0 - smoothstep(-0.12, 0.0, y));
+
+  float sunAmt = clamp(dot(dir, uSunDir), 0.0, 1.0);
+  float sunVis = clamp(uSunDir.y * 5.0 + 0.2, 0.0, 1.0);
+  col += uSunColor * (smoothstep(0.99965, 0.99990, sunAmt) * 2.5
+    + pow(sunAmt, 400.0) * 0.5
+    + pow(sunAmt, 32.0) * 0.12
+    + pow(sunAmt, 4.0) * 0.025) * sunVis;
+
+  float mAmt = clamp(dot(dir, -uSunDir), 0.0, 1.0);
+  col += vec3(0.72, 0.80, 0.95) * (smoothstep(0.99955, 0.99985, mAmt) * 1.4
+    + pow(mAmt, 400.0) * 0.10) * uNightFactor;
+
+  if (uNightFactor > 0.02 && y > 0.05) {
+    vec3 g = dir * 240.0;
+    vec3 id = floor(g);
+    float h = hash31(id);
+    vec3 f = fract(g) - 0.5;
+    float star = step(0.997, h) * (1.0 - smoothstep(0.05, 0.45, length(f)));
+    star *= 0.55 + 0.45 * sin(uTime * 1.5 + h * 80.0);
+    col += vec3(0.85, 0.90, 1.0) * star * uNightFactor * 0.9;
+  }
+
+  if (y > 0.015) {
+    vec2 cuv = dir.xz / (y + 0.18);
+    cuv = cuv * 1.15 + vec2(uTime * 0.006 * (0.4 + uWind * 0.06), uTime * 0.002);
+    float c = smoothstep(0.52, 0.85, fbm4(cuv));
+    c = max(c, smoothstep(0.56, 0.88, fbm4(cuv * 2.7 + 13.7)) * 0.7);
+    c *= 1.0 - 0.35 * smoothstep(0.55, 1.0, y);
+    float fade = smoothstep(0.015, 0.10, y);
+    vec3 cLit = mix(vec3(0.85, 0.88, 0.94), uSunColor, 0.30);
+    vec3 cCol = mix(vec3(0.04, 0.055, 0.10), cLit, uDayFactor);
+    cCol = mix(cCol, uSunColor * 1.15, uDuskFactor * 0.30);
+    col = mix(col, cCol, c * fade * uCloud * 0.5);
+  }
+  return col;
+}
+`;
+
+const SKY_VERT = `
+varying vec3 vDir;
+void main() {
+  vDir = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const SKY_FRAG = `
+varying vec3 vDir;
+void main() {
+  vec3 dir = normalize(vDir);
+  vec3 col = skyColor(dir);
+  col = aces(col);
+  col = pow(col, vec3(0.4545));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const WATER_VERT = `
+uniform float uTime;
+uniform float uWind;
+uniform float uWaveAmp;
+
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+varying float vCrest;
+
+vec3 addWave(vec3 d, float amp, float Q, float k, float w, vec3 p, float t, inout vec3 T, inout vec3 B) {
+  float f = k * (d.x * p.x + d.z * p.z) - w * t;
+  float s = sin(f);
+  float c = cos(f);
+  float qa = Q * amp * k;
+  T += vec3(-d.x * d.x * s, d.x * c, -d.x * d.z * s) * qa;
+  B += vec3(-d.x * d.z * s, d.z * c, -d.z * d.z * s) * qa;
+  return vec3(d.x * c * Q * amp, s * amp, d.z * c * Q * amp);
+}
+
+void main() {
+  vec3 p = vec3(position.x, 0.0, position.z);
+  float t = uTime * (0.85 + uWind * 0.015);
+  float a = uWaveAmp;
+  vec3 T = vec3(1.0, 0.0, 0.0);
+  vec3 B = vec3(0.0, 0.0, 1.0);
+  vec3 disp = vec3(0.0);
+
+  disp += addWave(normalize(vec3(0.250, 0.0, -0.968)), 1.00 * a, 0.12, 0.104720, 1.013559, p, t, T, B);
+  disp += addWave(normalize(vec3(0.500, 0.0, -0.866)), 0.80 * a, 0.14, 0.139626, 1.170355, p, t, T, B);
+  disp += addWave(normalize(vec3(0.050, 0.0, -0.999)), 0.62 * a, 0.16, 0.184799, 1.346432, p, t, T, B);
+  disp += addWave(normalize(vec3(0.650, 0.0, -0.760)), 0.50 * a, 0.18, 0.241661, 1.539706, p, t, T, B);
+  disp += addWave(normalize(vec3(-0.300, 0.0, -0.954)), 0.40 * a, 0.20, 0.314159, 1.755534, p, t, T, B);
+  disp += addWave(normalize(vec3(0.800, 0.0, -0.600)), 0.32 * a, 0.22, 0.418879, 2.027118, p, t, T, B);
+  disp += addWave(normalize(vec3(-0.550, 0.0, -0.835)), 0.26 * a, 0.24, 0.545416, 2.313122, p, t, T, B);
+  disp += addWave(normalize(vec3(0.150, 0.0, -0.989)), 0.21 * a, 0.26, 0.698132, 2.616998, p, t, T, B);
+  disp += addWave(normalize(vec3(-0.700, 0.0, -0.714)), 0.17 * a, 0.28, 0.897598, 2.967395, p, t, T, B);
+  disp += addWave(normalize(vec3(0.500, 0.0, -0.866)), 0.14 * a, 0.30, 1.142400, 3.347678, p, t, T, B);
+  disp += addWave(normalize(vec3(-0.200, 0.0, -0.980)), 0.11 * a, 0.32, 1.495997, 3.830892, p, t, T, B);
+  disp += addWave(normalize(vec3(0.350, 0.0, -0.937)), 0.09 * a, 0.34, 1.963495, 4.388837, p, t, T, B);
+
+  float chop = uWind * 0.0055;
+  disp += addWave(normalize(vec3(0.300, 0.0, -0.954)), chop, 0.35, 2.617994, 5.067900, p, t * 1.35, T, B);
+  disp += addWave(normalize(vec3(-0.400, 0.0, -0.917)), chop * 0.72, 0.40, 3.695991, 6.021500, p, t * 1.70, T, B);
+
+  vec3 wp = p + disp;
+  vWorldPos = wp;
+  vCrest = disp.y;
+  vNormal = normalize(cross(B, T));
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(wp, 1.0);
+}
+`;
+
+const WATER_FRAG = `
+uniform vec3 uCamPos;
+uniform vec3 uCamForward;
+uniform float uWaveAmp;
+
+varying vec3 vWorldPos;
+varying vec3 vNormal;
+varying float vCrest;
+
+vec3 fogSky(vec3 dir) {
+  float y = dir.y;
+  vec3 zen = mix(vec3(0.010, 0.016, 0.045), vec3(0.09, 0.25, 0.55), uDayFactor);
+  vec3 hor = mix(vec3(0.035, 0.055, 0.11), vec3(0.55, 0.70, 0.82), uDayFactor);
+  float sunAz = clamp(dot(normalize(dir.xz), normalize(uSunDir.xz)), 0.0, 1.0);
+  hor = mix(hor, vec3(0.95, 0.48, 0.20) * (0.55 + 0.45 * uDayFactor), uDuskFactor * pow(sunAz, 2.0) * 0.75);
+  vec3 col = mix(hor, zen, pow(clamp(y, 0.0, 1.0), 0.55));
+  float sunAmt = clamp(dot(dir, uSunDir), 0.0, 1.0);
+  float sunVis = clamp(uSunDir.y * 5.0 + 0.2, 0.0, 1.0);
+  col += uSunColor * (pow(sunAmt, 32.0) * 0.12 + pow(sunAmt, 4.0) * 0.025) * sunVis;
+  return col;
+}
+
+void main() {
+  vec3 N = normalize(vNormal);
+  vec3 V = normalize(uCamPos - vWorldPos);
+
+  vec2 mp = vWorldPos.xz * 1.35;
+  vec2 moff = uTime * vec2(0.42, 0.27);
+  float e = 0.55;
+  float h0 = fbm2(mp + moff);
+  float hx = fbm2(mp + vec2(e, 0.0) + moff);
+  float hz = fbm2(mp + vec2(0.0, e) + moff);
+  float ms = 0.02 + uWind * 0.004;
+  N = normalize(N + vec3((h0 - hx) / e, 0.0, (h0 - hz) / e) * ms * 1.6);
+
+  float ndv = max(dot(N, V), 0.0);
+  float fresnel = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
+
+  vec3 R = reflect(-V, N);
+  vec3 sky = skyColor(R);
+  sky = mix(sky, sky * vec3(0.88, 0.97, 1.08), 0.18);
+
+  vec3 deep = vec3(0.003, 0.026, 0.048);
+  vec3 shal = vec3(0.008, 0.105, 0.140);
+  vec3 waterCol = mix(shal, deep, clamp(ndv * 1.7, 0.0, 1.0));
+  waterCol *= 0.10 + 0.90 * uDayFactor + 0.16 * uNightFactor;
+
+  float crest = smoothstep(0.6, 1.8, vCrest / max(uWaveAmp, 0.08));
+  float sss = pow(max(dot(V, -uSunDir), 0.0), 3.0) * crest;
+  waterCol += uSunColor * sss * vec3(0.0, 0.32, 0.22) * uDayFactor * 0.9;
+
+  vec3 col = mix(waterCol, sky, clamp(fresnel, 0.0, 1.0));
+
+  vec3 H = normalize(V + uSunDir);
+  float nh = max(dot(N, H), 0.0);
+  col += uSunColor * (pow(nh, 420.0) * 1.0 + pow(nh, 48.0) * 0.08) * (0.12 + 0.88 * uDayFactor);
+
+  vec3 Hm = normalize(V - uSunDir);
+  col += vec3(0.55, 0.65, 0.85) * pow(max(dot(N, Hm), 0.0), 320.0) * 0.4 * uNightFactor;
+
+  float foamCrest = smoothstep(2.0, 4.0, vCrest / max(uWaveAmp, 0.08));
+  vec2 fp = vWorldPos.xz * vec2(0.40, 1.10) + uTime * vec2(0.22, 0.10) * (0.5 + uWind * 0.05);
+  float fn = fbm4(fp);
+  float foam = smoothstep(0.62, 0.90, fn) * foamCrest * (0.10 + uWind * 0.03);
+  foam = clamp(foam, 0.0, 1.0);
+  vec3 foamCol = mix(vec3(0.50, 0.58, 0.66), vec3(0.97, 0.99, 1.0), uDayFactor);
+  foamCol *= 0.18 + 0.80 * uDayFactor + 0.12 * uNightFactor;
+  col = mix(col, foamCol, foam * 0.55);
+
+  float dist = length(uCamPos - vWorldPos);
+  float fogF = 1.0 - exp(-dist * dist * 4.5e-5);
+  vec3 fogDir = normalize(vec3(uCamForward.x, 0.02, uCamForward.z));
+  col = mix(col, fogSky(fogDir), clamp(fogF, 0.0, 1.0));
+
+  col = aces(col);
+  col = pow(col, vec3(0.4545));
+  gl_FragColor = vec4(col, 1.0);
+}
+`;
+
+const U = {
+  uTime: { value: 0 },
+  uSunDir: { value: new THREE.Vector3(0, 1, -0.5).normalize() },
+  uSunColor: { value: new THREE.Color(1, 0.95, 0.85) },
+  uCamPos: { value: new THREE.Vector3() },
+  uCamForward: { value: new THREE.Vector3(0, 0, -1) },
+  uWind: { value: 8 },
+  uWaveAmp: { value: 1 },
+  uDayFactor: { value: 1 },
+  uNightFactor: { value: 0 },
+  uDuskFactor: { value: 0 },
+  uCloud: { value: 0.65 },
+};
+
+const sky = new THREE.Mesh(
+  new THREE.SphereGeometry(1500, 48, 24),
+  new THREE.ShaderMaterial({
+    uniforms: U,
+    vertexShader: SKY_VERT,
+    fragmentShader: SHARED + SKY_FRAG,
+    side: THREE.BackSide,
+    depthWrite: false,
+  })
+);
+sky.renderOrder = -10;
+scene.add(sky);
+
+const waterGeo = new THREE.PlaneGeometry(420, 420, 512, 512);
+waterGeo.rotateX(-Math.PI / 2);
+const water = new THREE.Mesh(
+  waterGeo,
+  new THREE.ShaderMaterial({
+    uniforms: U,
+    vertexShader: WATER_VERT,
+    fragmentShader: SHARED + WATER_FRAG,
+  })
+);
+scene.add(water);
+
+const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+
+const orbit = {
+  target: new THREE.Vector3(0, 1.4, 0),
+  theta: 0.0, phi: 1.30, radius: 34,
+  tTheta: 0.0, tPhi: 1.30, tRadius: 34,
+  lastInteract: -1e9,
+};
+const PHI_MIN = 0.92, PHI_MAX = 1.52;
+const R_MIN = 14, R_MAX = 90;
+
+function updateCamera(dt) {
+  const now = performance.now();
+  if (now - orbit.lastInteract > 4000) orbit.tTheta += dt * 0.012;
+  const k = 1 - Math.exp(-dt * 6);
+  orbit.theta += (orbit.tTheta - orbit.theta) * k;
+  orbit.phi += (orbit.tPhi - orbit.phi) * k;
+  orbit.radius += (orbit.tRadius - orbit.radius) * k;
+  const sp = Math.sin(orbit.phi), cp = Math.cos(orbit.phi);
+  camera.position.set(
+    orbit.target.x + orbit.radius * sp * Math.sin(orbit.theta),
+    orbit.target.y + orbit.radius * cp,
+    orbit.target.z + orbit.radius * sp * Math.cos(orbit.theta)
+  );
+  camera.lookAt(orbit.target);
+}
+
+const pointers = new Map();
+let pinchDist = 0;
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+  orbit.lastInteract = performance.now();
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinchDist > 0) orbit.tRadius = clamp(orbit.tRadius * pinchDist / d, R_MIN, R_MAX);
+    pinchDist = d;
+  } else {
+    orbit.tTheta -= dx * 0.0045;
+    orbit.tPhi = clamp(orbit.tPhi - dy * 0.0045, PHI_MIN, PHI_MAX);
+  }
+  orbit.lastInteract = performance.now();
+});
+const endPointer = (e) => { pointers.delete(e.pointerId); pinchDist = 0; };
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  orbit.tRadius = clamp(orbit.tRadius * (1 + e.deltaY * 0.001), R_MIN, R_MAX);
+  orbit.lastInteract = performance.now();
+}, { passive: false });
+canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+
+const state = { wind: 8, waveAmp: 1.0, hour: 16.5 };
+let hourAnim = null;
+
+const windEl = document.getElementById('wind');
+const waveEl = document.getElementById('wave');
+const timeEl = document.getElementById('time');
+const windVal = document.getElementById('windVal');
+const waveVal = document.getElementById('waveVal');
+const timeVal = document.getElementById('timeVal');
+
+function beaufort(v) {
+  if (v < 0.5) return 'Calm';
+  if (v < 1.6) return 'Light Air';
+  if (v < 3.4) return 'Light Breeze';
+  if (v < 5.5) return 'Gentle Breeze';
+  if (v < 8.0) return 'Moderate Breeze';
+  if (v < 10.8) return 'Fresh Breeze';
+  if (v < 13.9) return 'Strong Breeze';
+  if (v < 17.2) return 'Near Gale';
+  if (v < 20.8) return 'Gale';
+  return 'Storm';
+}
+function seaState(h) {
+  if (h < 0.12) return 'Calm';
+  if (h < 0.6) return 'Slight';
+  if (h < 1.2) return 'Moderate';
+  if (h < 2.0) return 'Rough';
+  return 'Very Rough';
+}
+function fmtTime(h) {
+  h = ((h % 24) + 24) % 24;
+  let hh = Math.floor(h);
+  let mm = Math.round((h - hh) * 60);
+  if (mm === 60) { mm = 0; hh = (hh + 1) % 24; }
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+function refreshLabels() {
+  windVal.textContent = state.wind.toFixed(1) + ' m/s · ' + beaufort(state.wind);
+  waveVal.textContent = state.waveAmp.toFixed(2) + ' m · ' + seaState(state.waveAmp);
+  const elev = Math.sin((state.hour - 6) / 12 * Math.PI);
+  timeVal.textContent = (elev > 0.05 ? '☀ ' : '☾ ') + fmtTime(state.hour);
+}
+windEl.addEventListener('input', () => { state.wind = +windEl.value; refreshLabels(); });
+waveEl.addEventListener('input', () => { state.waveAmp = +waveEl.value; refreshLabels(); });
+timeEl.addEventListener('input', () => { state.hour = +timeEl.value; hourAnim = null; refreshLabels(); });
+
+function animateHour(to) {
+  const from = state.hour;
+  let d = to - from;
+  if (d > 12) d -= 24;
+  if (d < -12) d += 24;
+  hourAnim = { from, delta: d, start: performance.now(), dur: 2000 };
+}
+document.querySelectorAll('#presets button').forEach((btn) => {
+  btn.addEventListener('click', () => animateHour(+btn.dataset.hour));
+});
+
+const sunDir = new THREE.Vector3();
+const sunColor = new THREE.Color();
+const WARM = new THREE.Color(1.0, 0.42, 0.14);
+const WHITE = new THREE.Color(1.0, 0.97, 0.90);
+
+function smoothstep(a, b, x) {
+  const t = clamp((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function updateSun() {
+  const ang = (state.hour - 6) / 12 * Math.PI;
+  sunDir.set(Math.cos(ang) * 0.85, Math.sin(ang), -0.55).normalize();
+  const y = sunDir.y;
+  U.uDayFactor.value = smoothstep(-0.08, 0.18, y);
+  U.uNightFactor.value = 1 - smoothstep(-0.30, -0.02, y);
+  U.uDuskFactor.value = Math.pow(1 - Math.min(Math.abs(y) / 0.30, 1), 1.6);
+  sunColor.copy(WARM).lerp(WHITE, smoothstep(0.0, 0.45, y));
+  U.uSunColor.value.copy(sunColor);
+  U.uSunDir.value.copy(sunDir);
+}
+
+refreshLabels();
+
+const clock = new THREE.Clock();
+let started = false;
+
+function frame() {
+  requestAnimationFrame(frame);
+  const dt = Math.min(clock.getDelta(), 0.05);
+  U.uTime.value = clock.elapsedTime;
+
+  if (hourAnim) {
+    const k = Math.min((performance.now() - hourAnim.start) / hourAnim.dur, 1);
+    const e = k * k * (3 - 2 * k);
+    state.hour = (hourAnim.from + hourAnim.delta * e + 24) % 24;
+    if (k >= 1) hourAnim = null;
+    timeEl.value = state.hour;
+    refreshLabels();
+  }
+
+  updateSun();
+  U.uWind.value = state.wind;
+  U.uWaveAmp.value = state.waveAmp;
+
+  updateCamera(dt);
+  U.uCamPos.value.copy(camera.position);
+  camera.getWorldDirection(U.uCamForward.value);
+
+  renderer.render(scene, camera);
+
+  if (!started) {
+    started = true;
+    window.__oceanStarted = true;
+    document.body.classList.add('loaded');
+  }
+}
+frame();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

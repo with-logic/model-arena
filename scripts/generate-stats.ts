@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as zlib from "zlib";
-import { models } from "../lib/models.config";
+import { publishedModels } from "../lib/models.config";
 import type {
   AppModelStats,
   AppStats,
@@ -279,11 +279,11 @@ function computeModelAggregate(
 function main() {
   console.log("Generating stats...\n");
 
-  const modelIds = models.map((m) => m.id);
+  const modelIds = publishedModels.map((m) => m.id);
   const appStatsMap: Record<string, AppStats> = {};
   const appIdSet = new Set<string>();
 
-  for (const model of models) {
+  for (const model of publishedModels) {
     const modelDir = path.join(APPS_DIR, model.id);
     if (!fs.existsSync(modelDir)) {
       console.warn(`  Skipping ${model.id}: no directory found`);

@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#06060b">
+<meta name="description" content="Build a live event countdown with animated numbers, parallax background and calendar export.">
+<title>Event Countdown</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%238b5cf6'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='50' r='42' fill='none' stroke='url(%23g)' stroke-width='10'/%3E%3Cpath d='M50 26v24l16 10' fill='none' stroke='url(%23g)' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#06060b;
+  --text:#f5f5fa;
+  --muted:rgba(245,245,250,.55);
+  --faint:rgba(245,245,250,.34);
+  --accent-1:#8b5cf6;
+  --accent-2:#22d3ee;
+  --glass:rgba(255,255,255,.045);
+  --stroke:rgba(255,255,255,.1);
+  --card:rgba(10,10,18,.55);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Space Grotesk",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;
+  overflow:hidden;
+}
+::selection{background:rgba(139,92,246,.45)}
+[hidden]{display:none !important}
+:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px;border-radius:4px}
+::-webkit-scrollbar{width:10px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:99px}
+::-webkit-scrollbar-track{background:transparent}
+
+#bg{position:fixed;inset:-70px;z-index:0;will-change:transform}
+#bgInner{position:absolute;inset:0;animation:kenburns 26s ease-in-out infinite alternate}
+#bgGradient{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(55% 70% at 18% 22%, rgba(139,92,246,.42), transparent 65%),
+    radial-gradient(45% 60% at 82% 16%, rgba(34,211,238,.34), transparent 65%),
+    radial-gradient(65% 85% at 50% 110%, rgba(236,72,153,.3), transparent 65%),
+    var(--bg);
+  animation:hueDrift 16s ease-in-out infinite alternate;
+}
+#bgImage{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity 1.2s ease}
+#bgImage.on{opacity:1}
+#vignette{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(120% 90% at 50% 42%, transparent 38%, rgba(0,0,0,.55) 100%),
+    linear-gradient(180deg, rgba(0,0,0,.4), transparent 22%, transparent 72%, rgba(0,0,0,.55));
+}
+#noise{
+  position:absolute;inset:0;opacity:.05;pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+@keyframes kenburns{from{transform:scale(1.03)}to{transform:scale(1.14)}}
+@keyframes hueDrift{to{filter:hue-rotate(38deg) saturate(1.15)}}
+
+#confetti{position:fixed;inset:0;z-index:50;pointer-events:none}
+
+.screen{
+  position:fixed;inset:0;z-index:1;
+  overflow-y:auto;overflow-x:hidden;
+  opacity:0;visibility:hidden;transform:scale(1.015);
+  transition:opacity .55s ease,transform .55s ease,visibility 0s linear .55s;
+}
+.screen.active{opacity:1;visibility:visible;transform:none;transition:opacity .55s ease,transform .55s ease}
+.screen-inner{
+  min-height:100vh;min-height:100dvh;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:clamp(1.25rem,4vw,3rem);
+}
+
+.brand{display:inline-flex;align-items:center;gap:.55rem;font-size:.78rem;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--muted)}
+.brand-dot{width:.55rem;height:.55rem;border-radius:50%;background:linear-gradient(135deg,var(--accent-1),var(--accent-2));box-shadow:0 0 12px rgba(139,92,246,.9)}
+
+.setup-inner{gap:1.6rem}
+.card{
+  width:min(600px,100%);
+  background:var(--card);
+  border:1px solid var(--stroke);
+  border-radius:1.5rem;
+  padding:clamp(1.5rem,4vw,2.75rem);
+  backdrop-filter:blur(28px) saturate(1.25);
+  -webkit-backdrop-filter:blur(28px) saturate(1.25);
+  box-shadow:0 40px 120px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06);
+}
+.screen.active .card{animation:rise .65s cubic-bezier(.22,1,.36,1) both}
+.card h1{margin:0 0 .4rem;font-size:clamp(1.5rem,3.5vw,1.95rem);font-weight:700;letter-spacing:-.02em}
+.sub{margin:0 0 1.75rem;color:var(--muted);font-size:.95rem}
+.field{margin-bottom:1.15rem}
+.field label{
+  display:flex;align-items:baseline;gap:.45rem;
+  font-size:.72rem;font-weight:600;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:.5rem;
+}
+.opt{color:var(--faint);letter-spacing:.06em;text-transform:none;font-weight:500}
+input[type=text],input[type=datetime-local],select{
+  width:100%;font:inherit;font-size:.98rem;color:var(--text);
+  background:rgba(255,255,255,.045);
+  border:1px solid var(--stroke);border-radius:.8rem;
+  padding:.8rem .95rem;
+  transition:border-color .2s,background .2s,box-shadow .2s;
+}
+::placeholder{color:var(--faint)}
+input[type=text]:focus,input[type=datetime-local]:focus,select:focus{
+  outline:none;border-color:rgba(34,211,238,.65);
+  background:rgba(255,255,255,.07);
+  box-shadow:0 0 0 3px rgba(34,211,238,.14);
+}
+select{
+  appearance:none;-webkit-appearance:none;cursor:pointer;padding-right:2.5rem;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='rgba(245,245,250,.6)' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right .95rem center;
+}
+select option{background:#12121c;color:var(--text)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1rem}
+@media (max-width:520px){.grid2{grid-template-columns:1fr;gap:0}}
+
+.dropzone{
+  position:relative;border:1.5px dashed rgba(255,255,255,.18);border-radius:1rem;
+  min-height:7.5rem;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;overflow:hidden;
+  transition:border-color .2s,background .2s;
+}
+.dropzone:hover{border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.03)}
+.dropzone.drag{border-color:var(--accent-2);background:rgba(34,211,238,.07)}
+#dzPlaceholder{display:flex;flex-direction:column;align-items:center;gap:.35rem;padding:1.25rem;color:var(--muted);transition:opacity .3s}
+#dzPlaceholder.hide{opacity:0;pointer-events:none}
+#dzPlaceholder svg{opacity:.55;margin-bottom:.15rem}
+#dzPlaceholder strong{color:var(--text);font-weight:600;font-size:.95rem}
+#dzPlaceholder .muted{font-size:.78rem;color:var(--faint)}
+#dzPreview{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.dz-remove{
+  position:absolute;top:.6rem;right:.6rem;z-index:2;
+  font:inherit;font-size:.75rem;font-weight:600;color:var(--text);
+  background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.22);
+  border-radius:999px;padding:.35rem .85rem;cursor:pointer;
+  backdrop-filter:blur(8px);transition:background .2s;
+}
+.dz-remove:hover{background:rgba(0,0,0,.85)}
+
+.form-error{color:#fda4af;font-size:.85rem;margin:0 0 1rem}
+.btn-primary{
+  display:inline-flex;align-items:center;justify-content:center;gap:.6rem;
+  font:inherit;font-size:1rem;font-weight:700;letter-spacing:.01em;
+  color:#07070d;
+  background:linear-gradient(135deg,var(--accent-1),var(--accent-2));
+  border:none;border-radius:999px;padding:.9rem 1.9rem;cursor:pointer;
+  box-shadow:0 12px 32px rgba(139,92,246,.35), inset 0 1px 0 rgba(255,255,255,.35);
+  transition:transform .18s ease,box-shadow .18s ease,filter .18s ease;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 44px rgba(139,92,246,.5);filter:brightness(1.06)}
+.btn-primary:active{transform:translateY(0) scale(.98)}
+.btn-block{width:100%;margin-top:.4rem}
+.hint{margin:.9rem 0 0;text-align:center;font-size:.75rem;color:var(--faint)}
+.link-quiet{
+  font-size:.82rem;color:var(--muted);text-decoration:underline;
+  text-underline-offset:3px;text-decoration-color:rgba(255,255,255,.25);
+  background:none;border:none;cursor:pointer;transition:color .2s;
+}
+.link-quiet:hover{color:var(--text)}
+
+.stage-inner{justify-content:space-between;gap:2rem;will-change:transform}
+.stage-top{width:100%;max-width:1100px;display:flex;align-items:center;justify-content:space-between}
+.stage-center{
+  display:flex;flex-direction:column;align-items:center;
+  gap:clamp(1.75rem,4.5vh,3.25rem);text-align:center;
+}
+.screen.active .stage-center{animation:rise .7s cubic-bezier(.22,1,.36,1) both}
+@keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+.event-name{
+  margin:0;font-size:clamp(1.9rem,5.2vw,3.6rem);font-weight:700;
+  letter-spacing:-.025em;line-height:1.08;max-width:22ch;text-wrap:balance;
+  text-shadow:0 4px 40px rgba(0,0,0,.6);
+}
+.event-meta{margin-top:.9rem;display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem 1.5rem;color:var(--muted);font-size:.95rem}
+.meta-item{display:inline-flex;align-items:center;gap:.45rem}
+.meta-item svg{opacity:.7;flex:none}
+
+.countdown{display:flex;align-items:flex-start;justify-content:center;gap:clamp(.4rem,1.6vw,1.25rem)}
+.unit{display:flex;flex-direction:column;align-items:center;gap:.85rem}
+.digits{
+  display:flex;gap:.1em;overflow:hidden;
+  padding:.22em .32em .26em;
+  font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:clamp(2.6rem,10vw,8rem);font-weight:700;line-height:1;
+  font-variant-numeric:tabular-nums;
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+  border:1px solid var(--stroke);
+  border-radius:clamp(.8rem,1.6vw,1.4rem);
+  backdrop-filter:blur(16px) saturate(1.1);
+  -webkit-backdrop-filter:blur(16px) saturate(1.1);
+  box-shadow:0 24px 70px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09);
+}
+.slot{position:relative;display:inline-block;height:1em}
+.digit{
+  display:block;height:1em;line-height:1;
+  background:linear-gradient(180deg,#ffffff 18%,#b9bdd4 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 14px rgba(139,92,246,.3));
+}
+.digit.in{animation:digitIn .55s cubic-bezier(.22,1,.36,1) both}
+.digit.out{position:absolute;left:0;right:0;top:0;animation:digitOut .55s cubic-bezier(.22,1,.36,1) both}
+@keyframes digitIn{from{transform:translateY(102%);opacity:.35}to{transform:translateY(0);opacity:1}}
+@keyframes digitOut{from{transform:translateY(0)}to{transform:translateY(-102%);opacity:0}}
+.label{
+  font-size:clamp(.62rem,1.1vw,.8rem);font-weight:600;
+  letter-spacing:.38em;text-transform:uppercase;color:var(--muted);
+  padding-left:.38em;
+}
+.sep{
+  height:calc(clamp(2.6rem,10vw,8rem) * 1.48);
+  display:flex;align-items:center;
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:clamp(1.6rem,6vw,4.5rem);font-weight:700;line-height:1;
+  color:var(--muted);opacity:.28;user-select:none;
+}
+.sep.tick{animation:sepPulse 1s ease-out}
+@keyframes sepPulse{0%{opacity:.75;transform:scale(1.08)}100%{opacity:.28;transform:scale(1)}}
+@media (max-width:820px){
+  .countdown{display:grid;grid-template-columns:repeat(2,auto);gap:1.1rem 1.4rem;justify-content:center}
+  .sep{display:none}
+}
+
+.live-box{display:flex;flex-direction:column;align-items:center;gap:1.4rem}
+.live-badge{
+  display:inline-flex;align-items:center;gap:.55em;
+  font-size:clamp(2.6rem,9vw,6rem);font-weight:700;letter-spacing:.14em;line-height:1;
+  padding:.32em .55em .32em .68em;
+  background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.03));
+  border:1px solid var(--stroke);border-radius:1.2rem;
+  backdrop-filter:blur(16px);
+  box-shadow:0 24px 70px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.09);
+}
+.live-dot{width:.3em;height:.3em;border-radius:50%;background:#f43f5e;box-shadow:0 0 22px #f43f5e;animation:livePulse 1.6s ease-in-out infinite}
+@keyframes livePulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(.78)}}
+.live-sub{margin:0;color:var(--muted);font-size:1rem}
+
+.stage-actions{display:flex;flex-direction:column;align-items:center;gap:.9rem}
+.stage-foot{width:100%;text-align:center;color:var(--faint);font-size:.7rem;letter-spacing:.18em;text-transform:uppercase}
+
+.btn-ghost{
+  display:inline-flex;align-items:center;gap:.45rem;
+  font:inherit;font-size:.82rem;font-weight:600;color:var(--muted);
+  background:rgba(255,255,255,.05);border:1px solid var(--stroke);
+  border-radius:999px;padding:.5rem 1.05rem;cursor:pointer;
+  backdrop-filter:blur(10px);
+  transition:color .2s,background .2s,border-color .2s;
+}
+.btn-ghost:hover{color:var(--text);background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}
+
+.toast{
+  position:fixed;left:50%;bottom:1.5rem;transform:translate(-50%,1rem);
+  z-index:60;max-width:calc(100vw - 2rem);text-align:center;
+  background:rgba(15,15,25,.88);border:1px solid var(--stroke);
+  color:var(--text);font-size:.88rem;padding:.7rem 1.25rem;border-radius:999px;
+  backdrop-filter:blur(12px);box-shadow:0 16px 40px rgba(0,0,0,.4);
+  opacity:0;pointer-events:none;transition:opacity .3s,transform .3s;
+}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+@media (prefers-reduced-motion: reduce){
+  #bgInner,#bgGradient,.live-dot,.digit.in,.digit.out,.sep.tick,
+  .screen.active .card,.screen.active .stage-center{animation:none !important}
+  .screen{transition:none}
+  .btn-primary,.btn-ghost{transition:none}
+}
+</style>
+</head>
+<body>
+
+<div id="bg" aria-hidden="true">
+  <div id="bgInner">
+    <div id="bgGradient"></div>
+    <img id="bgImage" alt="">
+  </div>
+  <div id="vignette"></div>
+  <div id="noise"></div>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<section id="setupScreen" class="screen">
+  <div class="screen-inner setup-inner">
+    <div class="brand"><span class="brand-dot"></span>Event Countdown</div>
+    <form id="eventForm" class="card" novalidate>
+      <h1>Create your countdown</h1>
+      <p class="sub">Set the details below — the timer starts the moment you do.</p>
+      <div class="field">
+        <label for="eventName">Event name</label>
+        <input id="eventName" type="text" placeholder="Launch night, birthday, deadline…" maxlength="80" autocomplete="off" required>
+      </div>
+      <div class="grid2">
+        <div class="field">
+          <label for="eventDate">Date &amp; time</label>
+          <input id="eventDate" type="datetime-local" required>
+        </div>
+        <div class="field">
+          <label for="eventDuration">Duration</label>
+          <select id="eventDuration">
+            <option value="30">30 minutes</option>
+            <option value="60" selected>1 hour</option>
+            <option value="120">2 hours</option>
+            <option value="240">4 hours</option>
+            <option value="1440">All day</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label for="eventLocation">Location <span class="opt">optional</span></label>
+        <input id="eventLocation" type="text" placeholder="City, venue, or address" maxlength="120" autocomplete="off">
+      </div>
+      <div class="field">
+        <label>Background image <span class="opt">optional</span></label>
+        <div id="dropzone" tabindex="0" role="button" aria-label="Upload a background image">
+          <div id="dzPlaceholder">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.9-3.9a2 2 0 0 0-2.8 0L5 20"/></svg>
+            <strong>Click to upload</strong> or drag &amp; drop
+            <span class="muted">JPG or PNG · shown behind the countdown</span>
+          </div>
+          <img id="dzPreview" alt="" hidden>
+          <button type="button" id="dzRemove" class="dz-remove" hidden>Remove</button>
+        </div>
+        <input id="eventImage" type="file" accept="image/*" hidden>
+      </div>
+      <p id="formError" class="form-error" hidden></p>
+      <button type="submit" class="btn-primary btn-block">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        Start countdown
+      </button>
+      <button type="button" id="resetBtn" class="link-quiet" hidden>Clear saved event</button>
+      <p class="hint">Everything is stored locally in your browser.</p>
+    </form>
+  </div>
+</section>
+
+<section id="stageScreen" class="screen">
+  <div class="screen-inner stage-inner" id="stageInner">
+    <header class="stage-top">
+      <div class="brand"><span class="brand-dot"></span>Event Countdown</div>
+      <button id="editBtn" class="btn-ghost">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+        Edit
+      </button>
+    </header>
+    <div class="stage-center">
+      <div class="event-head">
+        <h1 id="eventNameOut" class="event-name"></h1>
+        <div id="eventMeta" class="event-meta"></div>
+      </div>
+      <div id="countdownBox">
+        <div id="countdown" class="countdown" role="timer" aria-label="Countdown to event">
+          <div class="unit"><div class="digits" id="dDays"></div><div class="label">Days</div></div>
+          <div class="sep" aria-hidden="true">:</div>
+          <div class="unit"><div class="digits" id="dHours"></div><div class="label">Hours</div></div>
+          <div class="sep" aria-hidden="true">:</div>
+          <div class="unit"><div class="digits" id="dMins"></div><div class="label">Minutes</div></div>
+          <div class="sep" aria-hidden="true">:</div>
+          <div class="unit"><div class="digits" id="dSecs"></div><div class="label">Seconds</div></div>
+        </div>
+        <div id="liveBox" class="live-box" hidden>
+          <div class="live-badge"><span class="live-dot"></span>LIVE</div>
+          <p id="liveSub" class="live-sub"></p>
+        </div>
+      </div>
+      <div class="stage-actions">
+        <button id="saveCalBtn" class="btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></svg>
+          Save to Calendar
+        </button>
+        <a id="gcalLink" class="link-quiet" href="#" target="_blank" rel="noopener">Open in Google Calendar</a>
+      </div>
+    </div>
+    <footer class="stage-foot">Live updates · Stored locally · Nothing leaves this page</footer>
+  </div>
+</section>
+
+<div id="toast" class="toast" role="status"></div>
+
+<noscript><p style="position:fixed;inset:auto 0 0 0;text-align:center;padding:1rem;z-index:99">This app requires JavaScript.</p></noscript>
+
+<script>
+(() => {
+'use strict';
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const KEY = 'eventCountdown.v1';
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const els = {
+  setup: $('#setupScreen'),
+  stage: $('#stageScreen'),
+  stageInner: $('#stageInner'),
+  form: $('#eventForm'),
+  name: $('#eventName'),
+  date: $('#eventDate'),
+  duration: $('#eventDuration'),
+  location: $('#eventLocation'),
+  image: $('#eventImage'),
+  dropzone: $('#dropzone'),
+  dzPlaceholder: $('#dzPlaceholder'),
+  dzPreview: $('#dzPreview'),
+  dzRemove: $('#dzRemove'),
+  formError: $('#formError'),
+  resetBtn: $('#resetBtn'),
+  nameOut: $('#eventNameOut'),
+  meta: $('#eventMeta'),
+  days: $('#dDays'),
+  hours: $('#dHours'),
+  mins: $('#dMins'),
+  secs: $('#dSecs'),
+  countdown: $('#countdown'),
+  liveBox: $('#liveBox'),
+  liveSub: $('#liveSub'),
+  saveCal: $('#saveCalBtn'),
+  gcal: $('#gcalLink'),
+  edit: $('#editBtn'),
+  bg: $('#bg'),
+  bgImage: $('#bgImage'),
+  toast: $('#toast'),
+  confetti: $('#confetti'),
+};
+
+const ICONS = {
+  pin: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>',
+  calendar: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+};
+
+let event = null;
+let imagePreview = null;
+let tickId = null;
+let liveShown = false;
+
+const pad = n => String(n).padStart(2, '0');
+const escapeHtml = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function loadEvent() {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return null;
+    const d = JSON.parse(raw);
+    if (!d || typeof d.name !== 'string' || !Number.isFinite(d.start)) return null;
+    return d;
+  } catch { return null; }
+}
+
+function saveEvent() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(event));
+  } catch {
+    try {
+      event.image = null;
+      localStorage.setItem(KEY, JSON.stringify(event));
+      toast('Image too large to persist — countdown saved without it.');
+    } catch { /* storage unavailable */ }
+  }
+}
+
+function showScreen(which) {
+  els.setup.classList.toggle('active', which === 'setup');
+  els.stage.classList.toggle('active', which === 'stage');
+}
+
+function applyBackground() {
+  if (event && event.image) {
+    els.bgImage.src = event.image;
+    els.bgImage.classList.add('on');
+  } else {
+    els.bgImage.classList.remove('on');
+  }
+}
+
+let px = 0, py = 0, tx = 0, ty = 0;
+addEventListener('pointermove', e => {
+  tx = e.clientX / innerWidth - .5;
+  ty = e.clientY / innerHeight - .5;
+});
+function parallaxLoop() {
+  px += (tx - px) * .04;
+  py += (ty - py) * .04;
+  if (!reduceMotion) {
+    const active = els.stage.classList.contains('active') ? els.stage : els.setup;
+    const sc = active.scrollTop * .18;
+    els.bg.style.transform = `translate3d(${px * -28}px, ${py * -28 - sc}px, 0)`;
+    els.stageInner.style.transform = `translate3d(${px * 10}px, ${py * 10}px, 0)`;
+  }
+  requestAnimationFrame(parallaxLoop);
+}
+if (!reduceMotion) requestAnimationFrame(parallaxLoop);
+
+function buildSlots(el, n) {
+  el.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const slot = document.createElement('span');
+    slot.className = 'slot';
+    const d = document.createElement('span');
+    d.className = 'digit' + (reduceMotion ? '' : ' in');
+    if (!reduceMotion) d.style.animationDelay = (i * 45) + 'ms';
+    d.textContent = '0';
+    slot.appendChild(d);
+    slot.dataset.v = '0';
+    el.appendChild(slot);
+  }
+}
+
+function setDigits(el, str) {
+  if (el.childElementCount !== str.length) buildSlots(el, str.length);
+  for (let i = 0; i < str.length; i++) {
+    const slot = el.children[i];
+    if (slot.dataset.v === str[i]) continue;
+    slot.dataset.v = str[i];
+    const old = slot.querySelector('.digit');
+    const neu = document.createElement('span');
+    neu.className = 'digit' + (reduceMotion ? '' : ' in');
+    neu.textContent = str[i];
+    slot.appendChild(neu);
+    if (old) {
+      if (reduceMotion) old.remove();
+      else {
+        old.classList.add('out');
+        old.addEventListener('animationend', () => old.remove(), { once: true });
+      }
+    }
+  }
+}
+
+function pulseSep() {
+  $$('.sep').forEach(s => {
+    s.classList.remove('tick');
+    void s.offsetWidth;
+    s.classList.add('tick');
+  });
+}
+
+function updateTitle(d, h, m, s) {
+  document.title = `${d}d ${pad(h)}:${pad(m)}:${pad(s)} — ${event.name}`;
+}
+
+function startTicker() {
+  stopTicker();
+  const tick = () => {
+    if (!event) return;
+    const diff = event.start - Date.now();
+    if (diff <= 0) { goLive(); return; }
+    const total = Math.floor(diff / 1000);
+    const d = Math.floor(total / 86400);
+    const h = Math.floor(total / 3600) % 24;
+    const m = Math.floor(total / 60) % 60;
+    const s = total % 60;
+    setDigits(els.days, String(d).padStart(2, '0'));
+    setDigits(els.hours, pad(h));
+    setDigits(els.mins, pad(m));
+    setDigits(els.secs, pad(s));
+    if (!reduceMotion) pulseSep();
+    updateTitle(d, h, m, s);
+    tickId = setTimeout(tick, 1000 - (Date.now() % 1000) + 25);
+  };
+  tick();
+}
+
+function stopTicker() {
+  if (tickId) { clearTimeout(tickId); tickId = null; }
+}
+
+function goLive() {
+  stopTicker();
+  if (liveShown) return;
+  liveShown = true;
+  els.countdown.hidden = true;
+  els.liveBox.hidden = false;
+  const start = new Date(event.start);
+  els.liveSub.textContent = 'Started ' + start.toLocaleString(undefined, {
+    weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  document.title = `LIVE — ${event.name}`;
+  if (!reduceMotion) burstConfetti();
+}
+
+function renderMeta() {
+  const parts = [];
+  if (event.location) parts.push(`<span class="meta-item">${ICONS.pin}${escapeHtml(event.location)}</span>`);
+  const d = new Date(event.start);
+  const when = d.toLocaleString(undefined, {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+  parts.push(`<span class="meta-item">${ICONS.calendar}${escapeHtml(when)}</span>`);
+  els.meta.innerHTML = parts.join('');
+}
+
+function startCountdown() {
+  els.nameOut.textContent = event.name;
+  renderMeta();
+  applyBackground();
+  updateGcal();
+  liveShown = false;
+  els.liveBox.hidden = true;
+  els.countdown.hidden = false;
+  [els.days, els.hours, els.mins, els.secs].forEach(el => { el.innerHTML = ''; });
+  showScreen('stage');
+  els.stage.scrollTop = 0;
+  startTicker();
+}
+
+function formError(msg, focusEl) {
+  els.formError.textContent = msg;
+  els.formError.hidden = false;
+  if (focusEl) focusEl.focus();
+}
+
+els.form.addEventListener('submit', e => {
+  e.preventDefault();
+  const name = els.name.value.trim();
+  const dateVal = els.date.value;
+  if (!name) return formError('Give your event a name.', els.name);
+  if (!dateVal) return formError('Pick a date and time.', els.date);
+  const start = new Date(dateVal).getTime();
+  if (!Number.isFinite(start)) return formError('That date doesn’t look right.', els.date);
+  event = {
+    name,
+    start,
+    location: els.location.value.trim(),
+    durationMin: parseInt(els.duration.value, 10) || 60,
+    image: imagePreview,
+  };
+  els.formError.hidden = true;
+  saveEvent();
+  startCountdown();
+});
+
+[els.name, els.date, els.location].forEach(el =>
+  el.addEventListener('input', () => { els.formError.hidden = true; })
+);
+
+function toLocalInputValue(d) {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+els.edit.addEventListener('click', () => {
+  if (!event) return;
+  stopTicker();
+  els.name.value = event.name;
+  els.date.value = toLocalInputValue(new Date(event.start));
+  els.location.value = event.location || '';
+  els.duration.value = String(event.durationMin);
+  setImagePreview(event.image);
+  els.formError.hidden = true;
+  els.resetBtn.hidden = false;
+  showScreen('setup');
+  els.setup.scrollTop = 0;
+});
+
+els.resetBtn.addEventListener('click', () => {
+  try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+  event = null;
+  liveShown = false;
+  els.form.reset();
+  setImagePreview(null);
+  applyBackground();
+  els.resetBtn.hidden = true;
+  document.title = 'Event Countdown';
+  toast('Saved event cleared.');
+  els.name.focus();
+});
+
+function processImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const max = 1920;
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL('image/jpeg', .82));
+      } catch (err) { reject(err); }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('load failed')); };
+    img.src = url;
+  });
+}
+
+async function handleImage(file) {
+  if (!file || !file.type.startsWith('image/')) { toast('Please choose an image file.'); return; }
+  if (file.size > 20 * 1024 * 1024) { toast('Image is too large (max 20 MB).'); return; }
+  try {
+    imagePreview = await processImage(file);
+    setImagePreview(imagePreview);
+    toast('Background ready.');
+  } catch { toast('Couldn’t read that image.'); }
+}
+
+function setImagePreview(dataUrl) {
+  imagePreview = dataUrl;
+  if (dataUrl) {
+    els.dzPreview.src = dataUrl;
+    els.dzPreview.hidden = false;
+    els.dzPlaceholder.classList.add('hide');
+    els.dzRemove.hidden = false;
+  } else {
+    els.dzPreview.hidden = true;
+    els.dzPreview.removeAttribute('src');
+    els.dzPlaceholder.classList.remove('hide');
+    els.dzRemove.hidden = true;
+  }
+}
+
+els.dropzone.addEventListener('click', e => {
+  if (e.target === els.dzRemove) return;
+  els.image.click();
+});
+els.dropzone.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.image.click(); }
+});
+['dragenter', 'dragover'].forEach(t =>
+  els.dropzone.addEventListener(t, e => { e.preventDefault(); els.dropzone.classList.add('drag'); })
+);
+['dragleave', 'drop'].forEach(t =>
+  els.dropzone.addEventListener(t, e => { e.preventDefault(); els.dropzone.classList.remove('drag'); })
+);
+els.dropzone.addEventListener('drop', e => handleImage(e.dataTransfer.files && e.dataTransfer.files[0]));
+els.image.addEventListener('change', () => {
+  handleImage(els.image.files && els.image.files[0]);
+  els.image.value = '';
+});
+els.dzRemove.addEventListener('click', e => { e.stopPropagation(); setImagePreview(null); });
+
+function icsDate(d) {
+  return `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+}
+function icsEscape(s) {
+  return s.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+function uid() {
+  const id = (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(16).slice(2));
+  return id + '@eventcountdown';
+}
+function buildICS() {
+  const start = new Date(event.start);
+  const end = new Date(event.start + event.durationMin * 60000);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Event Countdown//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:${uid()}`,
+    `DTSTAMP:${icsDate(new Date())}`,
+    `DTSTART:${icsDate(start)}`,
+    `DTEND:${icsDate(end)}`,
+    `SUMMARY:${icsEscape(event.name)}`,
+  ];
+  if (event.location) lines.push(`LOCATION:${icsEscape(event.location)}`);
+  lines.push('DESCRIPTION:Countdown created with Event Countdown', 'END:VEVENT', 'END:VCALENDAR');
+  return lines.join('\r\n');
+}
+function slug(s) {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'event';
+}
+
+els.saveCal.addEventListener('click', () => {
+  if (!event) return;
+  const blob = new Blob([buildICS()], { type: 'text/calendar;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = slug(event.name) + '.ics';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast('Calendar file downloaded — import it into any calendar app.');
+});
+
+function updateGcal() {
+  const start = new Date(event.start);
+  const end = new Date(event.start + event.durationMin * 60000);
+  const fmt = d => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+  const q = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.name,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details: 'Countdown created with Event Countdown',
+    location: event.location || '',
+  });
+  els.gcal.href = 'https://calendar.google.com/calendar/render?' + q.toString();
+}
+
+let toastId;
+function toast(msg) {
+  els.toast.textContent = msg;
+  els.toast.classList.add('show');
+  clearTimeout(toastId);
+  toastId = setTimeout(() => els.toast.classList.remove('show'), 2800);
+}
+
+function burstConfetti() {
+  const c = els.confetti;
+  const ctx = c.getContext('2d');
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  c.width = innerWidth * dpr;
+  c.height = innerHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const colors = ['#8b5cf6', '#22d3ee', '#f472b6', '#fbbf24', '#34d399', '#f5f5fa'];
+  const parts = Array.from({ length: 190 }, () => ({
+    x: innerWidth / 2 + (Math.random() - .5) * innerWidth * .35,
+    y: innerHeight * .42,
+    vx: (Math.random() - .5) * 15,
+    vy: Math.random() * -14 - 4,
+    w: 5 + Math.random() * 6,
+    h: 8 + Math.random() * 8,
+    color: colors[(Math.random() * colors.length) | 0],
+    rot: Math.random() * Math.PI,
+    vr: (Math.random() - .5) * .32,
+    life: 110 + Math.random() * 70,
+  }));
+  (function loop() {
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    let alive = false;
+    for (const p of parts) {
+      if (p.life <= 0) continue;
+      alive = true;
+      p.life--;
+      p.vy += .34;
+      p.vx *= .992;
+      p.x += p.vx;
+      p.y += p.vy;
+      p.rot += p.vr;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life / 40));
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (alive) requestAnimationFrame(loop);
+    else ctx.clearRect(0, 0, innerWidth, innerHeight);
+  })();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && event && !liveShown) { stopTicker(); startTicker(); }
+});
+
+function init() {
+  const saved = loadEvent();
+  if (saved) {
+    event = saved;
+    startCountdown();
+  } else {
+    showScreen('setup');
+    els.name.focus();
+  }
+}
+init();
+})();
+</script>
+</body>
+</html>
