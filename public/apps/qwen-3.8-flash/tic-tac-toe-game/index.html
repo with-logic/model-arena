@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Terni Lapilli — Tic Tac Toe of the Empire</title>
+<meta name="description" content="A Roman Empire themed Tic Tac Toe game with a perfect-play AI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --gold:        #c9a227;
+    --gold-bright: #ecd27a;
+    --gold-deep:   #8f6e14;
+    --crimson:     #a12b22;
+    --radius-lg:   clamp(16px, 3vmin, 26px);
+    --radius-md:   clamp(12px, 2vmin, 18px);
+    --shadow-soft: 0 10px 30px rgba(40, 28, 8, .18), 0 2px 6px rgba(40, 28, 8, .10);
+    --shadow-inset:inset 0 1px 0 rgba(255,255,255,.55), inset 0 -2px 6px rgba(60,40,10,.10);
+    --font-display:"Cinzel", "Times New Roman", serif;
+    --font-body:   "EB Garamond", Georgia, serif;
+    --dur: .22s;
+  }
+
+  /* ---------- Themes ---------- */
+  html[data-theme="day"]{
+    --bg-base:      #ece5d8;
+    --bg-tint-a:    rgba(255,252,244,.9);
+    --bg-tint-b:    rgba(214,201,176,.55);
+    --panel:        #fbf7ee;
+    --panel-edge:   rgba(120, 92, 40, .28);
+    --grid-line:    rgba(122, 96, 46, .30);
+    --ink:          #3a2f20;
+    --ink-soft:     #7a6a4f;
+    --cell-bg:      linear-gradient(160deg, #fffdf6, #f1e9d8);
+    --cell-bg-hover:#fffef9;
+    --x-color:      #9d2b23;
+    --o-color:      #24486e;
+    --win-bg:       linear-gradient(160deg, #fdf3d2, #f3dfa4);
+    --win-glow:     0 0 0 2px var(--gold) inset, 0 0 22px rgba(201,162,39,.55);
+    --arch-color:   rgba(90, 70, 38, .10);
+    --dialog-bg:    #fbf7ee;
+  }
+  html[data-theme="night"]{
+    --bg-base:      #14161d;
+    --bg-tint-a:    rgba(38, 42, 56, .85);
+    --bg-tint-b:    rgba(10, 11, 16, .9);
+    --panel:        #1d212c;
+    --panel-edge:   rgba(201,162,39,.35);
+    --grid-line:    rgba(201,162,39,.28);
+    --ink:          #e9e4d6;
+    --ink-soft:     #9a9484;
+    --cell-bg:      linear-gradient(160deg, #262b39, #1a1e28);
+    --cell-bg-hover:#2c3242;
+    --x-color:      #ff6b5e;
+    --o-color:      #7cc0ff;
+    --win-bg:       linear-gradient(160deg, #413a22, #2a2312);
+    --win-glow:     0 0 0 2px var(--gold-bright) inset, 0 0 26px rgba(236,210,122,.4);
+    --arch-color:   rgba(201,162,39,.07);
+    --dialog-bg:    #1d212c;
+    --shadow-soft:  0 12px 34px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
+    --shadow-inset: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -2px 8px rgba(0,0,0,.35);
+  }
+
+  *, *::before, *::after{ box-sizing:border-box; margin:0; padding:0; }
+
+  html, body{ height:100%; }
+
+  body{
+    font-family: var(--font-body);
+    color: var(--ink);
+    background-color: var(--bg-base);
+    background-image:
+      radial-gradient(120% 90% at 15% -10%, var(--bg-tint-a), transparent 60%),
+      radial-gradient(140% 100% at 90% 110%, var(--bg-tint-b), transparent 55%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='560' height='560'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.009 0.035' numOctaves='4' seed='17'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.37 0 0 0 0 0.30 0 0 0 0.55 -0.14'/%3E%3C/filter%3E%3Crect width='560' height='560' filter='url(%23m)'/%3E%3C/svg%3E");
+    background-attachment: fixed, fixed, fixed;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    transition: background-color .4s ease, color .4s ease;
+  }
+
+  /* Colosseum arch silhouette along the bottom */
+  .arches{
+    position: fixed; left:0; right:0; bottom:0; width: 100%;
+    height: clamp(80px, 18vh, 170px);
+    pointer-events:none; z-index:0; opacity:.9;
+  }
+
+  .app{
+    position: relative; z-index: 1;
+    min-height: 100dvh;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(10px, 2.2vmin, 22px) clamp(12px, 3vw, 28px) clamp(8px, 1.6vmin, 16px);
+    gap: clamp(8px, 1.6vmin, 16px);
+  }
+
+  /* ---------- Top bar ---------- */
+  header.topbar{
+    display: flex; align-items: center; justify-content: space-between;
+    gap: clamp(8px, 2vmin, 20px);
+    flex-wrap: wrap;
+  }
+  .brand{ display:flex; align-items:center; gap: clamp(8px, 1.6vmin, 14px); min-width:0; }
+  .crest{ width: clamp(38px, 7vmin, 56px); height: clamp(38px, 7vmin, 56px); color: var(--gold); flex:none;
+          filter: drop-shadow(0 2px 4px rgba(60,40,10,.25)); }
+  .brand h1{
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(1.05rem, 3.2vmin, 1.7rem);
+    letter-spacing: .12em;
+    line-height: 1.15;
+    background: linear-gradient(180deg, var(--gold-deep), var(--gold) 45%, var(--gold-bright));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    white-space: normal;
+    min-width: 0;
+  }
+  .brand .sub{
+    display:block;
+    font-family: var(--font-body);
+    font-size: clamp(.62rem, 1.5vmin, .8rem);
+    letter-spacing: .2em; text-transform: uppercase;
+    -webkit-text-fill-color: var(--ink-soft); color: var(--ink-soft);
+    margin-top: 2px;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .actions{ display:flex; gap: clamp(6px, 1.4vmin, 12px); flex-wrap:wrap; }
+
+  .btn{
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(.68rem, 1.7vmin, .82rem);
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1.5px solid var(--panel-edge);
+    border-radius: 999px;
+    padding: clamp(8px, 1.8vmin, 12px) clamp(14px, 2.6vmin, 22px);
+    cursor: pointer;
+    box-shadow: var(--shadow-soft), var(--shadow-inset);
+    transition: transform var(--dur) ease, box-shadow var(--dur) ease, background var(--dur) ease, border-color var(--dur) ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  .btn:hover{ transform: translateY(-1px); border-color: var(--gold);
+             box-shadow: 0 12px 26px rgba(40,28,8,.22), var(--shadow-inset), 0 0 0 3px rgba(201,162,39,.12); }
+  .btn:active{ transform: translateY(1px) scale(.985); }
+  .btn:focus-visible{ outline: 3px solid var(--gold-bright); outline-offset: 2px; }
+  .btn.primary{
+    background: linear-gradient(180deg, var(--gold-bright), var(--gold) 55%, var(--gold-deep));
+    color: #2e2408;
+    border-color: var(--gold-deep);
+    text-shadow: 0 1px 0 rgba(255,255,255,.35);
+  }
+  html[data-theme="night"] .btn.primary{ color:#16130a; }
+  .btn.primary:hover{ box-shadow: 0 12px 28px rgba(201,162,39,.4), var(--shadow-inset); }
+
+  /* ---------- Banner slot (reserved height: never overlaps, never jumps) ---------- */
+  .banner-slot{
+    min-height: clamp(46px, 8vmin, 62px);
+    display: grid; place-items: center;
+  }
+  .banner{
+    display: flex; align-items: center; gap: clamp(8px, 1.6vmin, 14px);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(.85rem, 2.6vmin, 1.3rem);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    padding: clamp(8px, 1.6vmin, 12px) clamp(18px, 3.6vmin, 34px);
+    border-radius: 999px;
+    border: 1.5px solid var(--gold);
+    background: linear-gradient(180deg, rgba(236,210,122,.28), rgba(201,162,39,.16));
+    color: var(--ink);
+    box-shadow: 0 8px 24px rgba(201,162,39,.28), var(--shadow-inset);
+    opacity: 0; transform: translateY(-8px) scale(.96);
+    transition: opacity .35s ease, transform .35s cubic-bezier(.2,.9,.3,1.2);
+    pointer-events: none;
+    text-align: center;
+  }
+  .banner.show{ opacity: 1; transform: translateY(0) scale(1); }
+  .banner .b-glyph{ width: 1.5em; height: 1.5em; flex:none; }
+  .banner.draw{ border-color: var(--panel-edge); box-shadow: var(--shadow-soft); }
+  .banner .laurel-l, .banner .laurel-r{ width: clamp(22px, 4vmin, 34px); height: clamp(22px, 4vmin, 34px); color: var(--gold); flex:none; }
+
+  /* ---------- Main layout ---------- */
+  main{
+    display: flex; align-items: center; justify-content: center;
+    gap: clamp(18px, 4vmin, 48px);
+    flex-wrap: wrap;
+    padding-bottom: clamp(4px, 2vmin, 12px);
+  }
+
+  .field{ display:flex; flex-direction:column; align-items:center; gap: clamp(8px, 1.8vmin, 14px); }
+
+  #status{
+    font-family: var(--font-display);
+    font-size: clamp(.72rem, 1.9vmin, .92rem);
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    min-height: 1.4em;
+    text-align:center;
+  }
+  #status .turn-mark{ font-weight:800; }
+  #status .turn-mark.x{ color: var(--x-color); }
+  #status .turn-mark.o{ color: var(--o-color); }
+
+  /* ---------- Board ---------- */
+  .board-frame{
+    padding: clamp(10px, 2vmin, 18px);
+    border-radius: var(--radius-lg);
+    background: linear-gradient(160deg, rgba(201,162,39,.35), rgba(201,162,39,.12) 40%, rgba(140,110,40,.3));
+    box-shadow: var(--shadow-soft);
+  }
+  .board{
+    width: min(86vw, 62vh, 520px);
+    aspect-ratio: 1;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: clamp(7px, 1.5vmin, 13px);
+    background: var(--grid-line);
+    border-radius: var(--radius-md);
+    padding: clamp(7px, 1.5vmin, 13px);
+  }
+  .cell{
+    position: relative;
+    border: none;
+    border-radius: calc(var(--radius-md) * .72);
+    background: var(--cell-bg);
+    box-shadow: var(--shadow-inset), 0 2px 6px rgba(40,28,8,.10);
+    cursor: pointer;
+    display: grid; place-items: center;
+    transition: transform var(--dur) ease, background var(--dur) ease, box-shadow var(--dur) ease;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    font: inherit; color: inherit;
+  }
+  .cell:hover:not(:disabled):not(.filled){ transform: scale(1.025); background: var(--cell-bg-hover);
+    box-shadow: var(--shadow-inset), 0 6px 16px rgba(40,28,8,.16), 0 0 0 2px rgba(201,162,39,.35) inset; }
+  .cell:active:not(:disabled){ transform: scale(.97); }
+  .cell:focus-visible{ outline: 3px solid var(--gold-bright); outline-offset: 3px; }
+  .cell:disabled{ cursor: default; }
+  .cell.filled{ cursor: default; }
+
+  .cell .mark{
+    width: 64%; height: 64%;
+    opacity: 0; transform: scale(.3) rotate(-14deg);
+  }
+  .cell.filled .mark{ animation: stamp .34s cubic-bezier(.2,1.4,.35,1) forwards; }
+  @keyframes stamp{ to{ opacity:1; transform: scale(1) rotate(0deg); } }
+
+  .cell[data-mark="X"] .mark{ color: var(--x-color); }
+  .cell[data-mark="O"] .mark{ color: var(--o-color); }
+
+  .cell.win{
+    background: var(--win-bg);
+    box-shadow: var(--win-glow);
+    animation: winpulse 1.6s ease-in-out infinite alternate;
+  }
+  @keyframes winpulse{ from{ filter:brightness(1); } to{ filter:brightness(1.08); } }
+
+  .board.locked .cell:not(.win){ opacity: .75; }
+
+  /* ghost preview on hover (pointer devices only) */
+  @media (hover:hover){
+    .cell:not(.filled):not(:disabled)::after{
+      content:""; position:absolute; inset:18%;
+      background: var(--ink-soft);
+      opacity: 0;
+      transition: opacity var(--dur) ease;
+      -webkit-mask: var(--ghost-mask) center / contain no-repeat;
+              mask: var(--ghost-mask) center / contain no-repeat;
+    }
+    .cell:not(.filled):not(:disabled):hover::after{ opacity:.14; }
+  }
+
+  /* ---------- Scoreboard ---------- */
+  .scores{
+    display: flex; flex-direction: column; gap: clamp(8px, 1.6vmin, 14px);
+    width: min(86vw, 260px);
+  }
+  .scores h2{
+    font-family: var(--font-display);
+    font-size: clamp(.68rem, 1.7vmin, .8rem);
+    letter-spacing: .3em; text-transform: uppercase;
+    color: var(--ink-soft);
+    text-align: center;
+    padding-bottom: 2px;
+  }
+  .score-card{
+    display: flex; align-items: center; gap: 12px;
+    padding: clamp(10px, 2vmin, 16px) clamp(12px, 2.4vmin, 18px);
+    background: var(--panel);
+    border: 1.5px solid var(--panel-edge);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-soft), var(--shadow-inset);
+    transition: border-color .3s ease, box-shadow .3s ease, transform .3s ease;
+  }
+  .score-card .s-icon{ width: clamp(26px, 5vmin, 36px); height: clamp(26px, 5vmin, 36px); flex:none; }
+  .score-card.s-x .s-icon{ color: var(--x-color); }
+  .score-card.s-o .s-icon{ color: var(--o-color); }
+  .score-card.s-d .s-icon{ color: var(--gold); }
+  .score-card .s-label{
+    font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(.66rem, 1.6vmin, .78rem);
+    letter-spacing: .18em; text-transform: uppercase;
+    color: var(--ink-soft);
+    flex: 1;
+  }
+  .score-card .s-value{
+    font-family: var(--font-display); font-weight: 900;
+    font-size: clamp(1.3rem, 3.6vmin, 1.9rem);
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    min-width: 1.4ch; text-align: right;
+    transition: transform .25s cubic-bezier(.2,1.4,.35,1);
+  }
+  .score-card .s-value.bump{ transform: scale(1.35); }
+  .score-card.active{
+    border-color: var(--gold);
+    box-shadow: var(--shadow-soft), var(--shadow-inset), 0 0 0 3px rgba(201,162,39,.18);
+    transform: translateY(-2px);
+  }
+  .mode-tag{
+    text-align:center;
+    font-size: clamp(.66rem, 1.5vmin, .78rem);
+    letter-spacing: .24em; text-transform: uppercase;
+    font-family: var(--font-display);
+    color: var(--ink-soft);
+  }
+
+  /* ---------- Footer hint ---------- */
+  footer.hint{
+    text-align: center;
+    font-size: clamp(.66rem, 1.5vmin, .78rem);
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    font-family: var(--font-display);
+    color: var(--ink-soft);
+    opacity: .8;
+    padding-bottom: clamp(4px, 1vmin, 10px);
+  }
+
+  /* ---------- Dialog ---------- */
+  dialog{
+    border: 1.5px solid var(--gold);
+    border-radius: var(--radius-lg);
+    background: var(--dialog-bg);
+    color: var(--ink);
+    margin: auto;
+    max-height: calc(100dvh - 32px);
+    overflow: auto;
+    padding: clamp(20px, 4vmin, 32px);
+    width: min(92vw, 420px);
+    box-shadow: 0 24px 60px rgba(0,0,0,.35);
+    font-family: var(--font-body);
+  }
+  dialog::backdrop{ background: rgba(20, 14, 4, .55); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+  dialog[open]{ animation: dlg-in .28s cubic-bezier(.2,1,.3,1.1); }
+  @keyframes dlg-in{ from{ opacity:0; transform: translateY(14px) scale(.97); } to{ opacity:1; transform:none; } }
+  dialog h2{
+    font-family: var(--font-display); font-weight: 800;
+    font-size: clamp(1rem, 2.6vmin, 1.25rem);
+    letter-spacing: .22em; text-transform: uppercase;
+    text-align: center;
+    color: var(--gold-deep);
+    margin-bottom: clamp(14px, 3vmin, 22px);
+  }
+  html[data-theme="night"] dialog h2{ color: var(--gold-bright); }
+  dialog .rule{ height:1px; background: linear-gradient(to right, transparent, var(--gold), transparent); opacity:.5; margin: 0 0 clamp(14px,3vmin,20px); }
+  .opt{ display: grid; gap: 6px; margin-bottom: clamp(12px, 2.6vmin, 18px); }
+  .opt label{
+    font-family: var(--font-display); font-weight: 700;
+    font-size: clamp(.64rem, 1.6vmin, .74rem);
+    letter-spacing: .2em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .opt select{
+    appearance: none; -webkit-appearance: none;
+    font-family: var(--font-body); font-size: clamp(.95rem, 2.2vmin, 1.05rem);
+    color: var(--ink);
+    background: var(--panel);
+    border: 1.5px solid var(--panel-edge);
+    border-radius: 12px;
+    padding: 10px 38px 10px 14px;
+    cursor: pointer;
+    transition: border-color var(--dur) ease, box-shadow var(--dur) ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%23c9a227' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+  }
+  .opt select:hover{ border-color: var(--gold); }
+  .opt select:focus-visible{ outline: 3px solid var(--gold-bright); outline-offset: 2px; }
+  .opt.disabled{ opacity: .45; pointer-events: none; }
+  dialog .done{ width: 100%; margin-top: 4px; }
+
+  /* ---------- Confetti canvas ---------- */
+  #confetti{
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 50;
+  }
+
+  svg.defs{ position:absolute; width:0; height:0; overflow:hidden; }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 840px){
+    main{ flex-direction: column; gap: clamp(12px, 3vmin, 22px); }
+    .board{ width: min(88vw, 52vh, 460px); }
+    .scores{
+      width: 100%; max-width: 460px;
+      flex-direction: row; align-items: stretch;
+    }
+    .scores h2{ display:none; }
+    .score-card{ flex: 1; flex-direction: column; gap: 4px; text-align:center; padding: 10px 6px; }
+    .score-card .s-label{ font-size: clamp(.56rem, 1.6vmin, .66rem); letter-spacing: .1em; }
+    .score-card .s-value{ font-size: clamp(1.15rem, 4.5vmin, 1.6rem); }
+    .mode-tag{ display:none; }
+    header.topbar{ justify-content: center; }
+    .brand{ width: 100%; justify-content: center; }
+  }
+  @media (max-width: 400px){
+    .actions{ width:100%; justify-content:center; }
+    .btn{ padding: 8px 12px; }
+  }
+
+  /* ---------- Reduced motion ---------- */
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    .cell .mark{ opacity: 1; transform: none; }
+    .banner{ transform:none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- SVG symbol library -->
+<svg class="defs" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <symbol id="g-x" viewBox="0 0 100 100">
+      <g stroke="currentColor" stroke-width="13" stroke-linecap="round" fill="none">
+        <path d="M24 24 L76 76"/><path d="M76 24 L24 76"/>
+      </g>
+    </symbol>
+    <symbol id="g-o" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="27" fill="none" stroke="currentColor" stroke-width="13"/>
+    </symbol>
+    <symbol id="g-gladius" viewBox="0 0 100 100">
+      <g fill="currentColor">
+        <path d="M50 6 L58 22 L58 58 L42 58 L42 22 Z"/>
+        <rect x="27" y="58" width="46" height="9" rx="4.5"/>
+        <rect x="45" y="69" width="10" height="16" rx="3"/>
+        <circle cx="50" cy="90" r="6"/>
+      </g>
+    </symbol>
+    <symbol id="g-laurel" viewBox="0 0 100 100">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+        <path d="M50 90 C 24 82 14 60 20 34"/>
+        <path d="M50 90 C 76 82 86 60 80 34"/>
+      </g>
+      <g fill="currentColor">
+        <ellipse cx="21" cy="36" rx="10" ry="4.4" transform="rotate(-58 21 36)"/>
+        <ellipse cx="17" cy="52" rx="10" ry="4.4" transform="rotate(-30 17 52)"/>
+        <ellipse cx="22" cy="68" rx="10" ry="4.4" transform="rotate(-8 22 68)"/>
+        <ellipse cx="34" cy="81" rx="10" ry="4.4" transform="rotate(28 34 81)"/>
+        <ellipse cx="79" cy="36" rx="10" ry="4.4" transform="rotate(58 79 36)"/>
+        <ellipse cx="83" cy="52" rx="10" ry="4.4" transform="rotate(30 83 52)"/>
+        <ellipse cx="78" cy="68" rx="10" ry="4.4" transform="rotate(8 78 68)"/>
+        <ellipse cx="66" cy="81" rx="10" ry="4.4" transform="rotate(-28 66 81)"/>
+        <circle cx="50" cy="88" r="4"/>
+      </g>
+    </symbol>
+    <symbol id="g-draw" viewBox="0 0 100 100">
+      <g fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round">
+        <path d="M26 34 H74"/><path d="M26 50 H74"/><path d="M26 66 H74"/>
+      </g>
+    </symbol>
+    <!-- SPQR crest: shield + laurel branches -->
+    <symbol id="g-crest" viewBox="0 0 100 100">
+      <path d="M50 8 C 62 16 76 18 88 17 C 88 46 82 72 50 92 C 18 72 12 46 12 17 C 24 18 38 16 50 8 Z"
+            fill="none" stroke="currentColor" stroke-width="4.5" stroke-linejoin="round"/>
+      <path d="M50 15 C 60 21 71 23 81 22 C 81 45 76 66 50 83 C 24 66 19 45 19 22 C 29 23 40 21 50 15 Z"
+            fill="currentColor" opacity=".14"/>
+      <text x="50" y="56" text-anchor="middle" font-family="Cinzel, serif" font-weight="900"
+            font-size="24" letter-spacing="1.5" fill="currentColor">SPQR</text>
+      <path d="M50 66 L46 71 L50 76 L54 71 Z" fill="currentColor"/>
+    </symbol>
+    <symbol id="g-laurel-wing" viewBox="0 0 40 100">
+      <g fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round">
+        <path d="M34 92 C 12 78 6 52 12 16"/>
+      </g>
+      <g fill="currentColor">
+        <ellipse cx="13" cy="20" rx="9" ry="4" transform="rotate(-64 13 20)"/>
+        <ellipse cx="9"  cy="38" rx="9" ry="4" transform="rotate(-40 9 38)"/>
+        <ellipse cx="9"  cy="56" rx="9" ry="4" transform="rotate(-18 9 56)"/>
+        <ellipse cx="16" cy="74" rx="9" ry="4" transform="rotate(14 16 74)"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- Colosseum arches backdrop -->
+<svg class="arches" viewBox="0 0 1200 160" preserveAspectRatio="none" aria-hidden="true">
+  <g fill="var(--arch-color)">
+    <path d="M0 160 V60 h1200 V160 Z M60 160 v-70 a40 40 0 0 1 80 0 v70 Z M240 160 v-70 a40 40 0 0 1 80 0 v70 Z M420 160 v-70 a40 40 0 0 1 80 0 v70 Z M600 160 v-70 a40 40 0 0 1 80 0 v70 Z M780 160 v-70 a40 40 0 0 1 80 0 v70 Z M960 160 v-70 a40 40 0 0 1 80 0 v70 Z M1140 160 v-70 a40 40 0 0 1 80 0 v70 Z" fill-rule="evenodd"/>
+  </g>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="crest" aria-hidden="true"><use href="#g-crest"/></svg>
+      <h1>TERNI LAPILLI<span class="sub">Tic Tac Toe · SPQR</span></h1>
+    </div>
+    <nav class="actions" aria-label="Game controls">
+      <button id="btn-new"   class="btn primary" type="button">New Round</button>
+      <button id="btn-cfg"   class="btn" type="button" aria-haspopup="dialog">Customize</button>
+      <button id="btn-reset" class="btn" type="button">Reset Scores</button>
+    </nav>
+  </header>
+
+  <div class="banner-slot">
+    <div id="banner" class="banner" aria-hidden="true">
+      <svg class="laurel-l" aria-hidden="true" style="transform:scaleX(-1)"><use href="#g-laurel-wing"/></svg>
+      <svg class="b-glyph" id="banner-glyph" aria-hidden="true" style="display:none"><use id="banner-glyph-use" href="#g-x"/></svg>
+      <span id="banner-text">Victoria</span>
+      <svg class="laurel-r" aria-hidden="true"><use href="#g-laurel-wing"/></svg>
+    </div>
+  </div>
+
+  <main>
+    <section class="field" aria-label="Game board">
+      <p id="status" aria-live="polite">X begins</p>
+      <div class="board-frame">
+        <div class="board" id="board" role="grid" aria-label="Tic Tac Toe board, three by three"></div>
+      </div>
+    </section>
+
+    <aside class="scores" aria-label="Scoreboard">
+      <h2>· Scies ·</h2>
+      <div class="score-card s-x" id="card-x">
+        <svg class="s-icon" aria-hidden="true"><use id="icon-x" href="#g-x"/></svg>
+        <span class="s-label" id="label-x">Ex wins</span>
+        <span class="s-value" id="score-x" aria-label="X wins">0</span>
+      </div>
+      <div class="score-card s-d" id="card-d">
+        <svg class="s-icon" aria-hidden="true"><use href="#g-draw"/></svg>
+        <span class="s-label">Draws</span>
+        <span class="s-value" id="score-d" aria-label="Draws">0</span>
+      </div>
+      <div class="score-card s-o" id="card-o">
+        <svg class="s-icon" aria-hidden="true"><use id="icon-o" href="#g-o"/></svg>
+        <span class="s-label" id="label-o">Oc wins</span>
+        <span class="s-value" id="score-o" aria-label="O wins">0</span>
+      </div>
+      <p class="mode-tag" id="mode-tag">Two Players</p>
+    </aside>
+  </main>
+
+  <footer class="hint">Arrows to navigate · Enter to place · Nine stones decide the day</footer>
+</div>
+
+<!-- Customize dialog -->
+<dialog id="dlg" aria-labelledby="dlg-title">
+  <form method="dialog">
+    <h2 id="dlg-title">Customize</h2>
+    <div class="rule"></div>
+
+    <div class="opt">
+      <label for="set-theme">Theme</label>
+      <select id="set-theme">
+        <option value="day">Marble Day</option>
+        <option value="night">Night Legion</option>
+      </select>
+    </div>
+
+    <div class="opt">
+      <label for="set-glyphs">Glyphs</label>
+      <select id="set-glyphs">
+        <option value="classic">Standard X / O</option>
+        <option value="roman">Gladius / Laurel</option>
+      </select>
+    </div>
+
+    <div class="opt">
+      <label for="set-mode">Mode</label>
+      <select id="set-mode">
+        <option value="2p">Two Players</option>
+        <option value="ai">Vs AI Legionary</option>
+      </select>
+    </div>
+
+    <div class="opt">
+      <label for="set-first">First Move</label>
+      <select id="set-first">
+        <option value="X">X goes first</option>
+        <option value="O">O goes first</option>
+      </select>
+    </div>
+
+    <div class="opt" id="opt-discipline">
+      <label for="set-discipline">AI Discipline</label>
+      <select id="set-discipline">
+        <option value="perfect">Perfect — Senate's Strategist</option>
+        <option value="pragmatic">Pragmatic — Seasoned Centurion</option>
+        <option value="reckless">Reckless — Green Recruit</option>
+      </select>
+    </div>
+
+    <button class="btn primary done" type="submit">Done</button>
+  </form>
+</dialog>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ============ Constants ============ */
+  var LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  var AI_MARK = "O";
+  var NOISE = { perfect: 0, pragmatic: .25, reckless: .7 };
+  var STORE_CFG = "terni.settings.v1", STORE_SCORES = "terni.scores.v1";
+  var reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  /* ============ State ============ */
+  var settings = { theme:"day", glyphs:"classic", mode:"2p", first:"X", discipline:"perfect" };
+  var scores = { X:0, O:0, D:0 };
+  var board = [null,null,null,null,null,null,null,null,null];
+  var turn = "X";
+  var over = false;
+  var gen = 0;               // generation token: invalidates pending AI timers across rounds
+
+  /* ============ DOM ============ */
+  var $ = function(id){ return document.getElementById(id); };
+  var boardEl = $("board"), statusEl = $("status"), bannerEl = $("banner"),
+      bannerText = $("banner-text"), bannerGlyph = $("banner-glyph"), bannerGlyphUse = $("banner-glyph-use"),
+      modeTag = $("mode-tag"), dlg = $("dlg"), confettiCanvas = $("confetti");
+  var cells = [];
+
+  function store(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){} }
+  function load(key){ try{ var v = JSON.parse(localStorage.getItem(key)); return v && typeof v === "object" ? v : null; }catch(e){ return null; } }
+
+  /* ============ Glyphs ============ */
+  function glyphFor(mark){
+    if(settings.glyphs === "roman") return mark === "X" ? "#g-gladius" : "#g-laurel";
+    return mark === "X" ? "#g-x" : "#g-o";
+  }
+  function ghostMask(mark){
+    var inner = mark === "X"
+      ? (settings.glyphs === "roman"
+          ? "<path d='M50 6 L58 22 L58 58 L42 58 L42 22 Z' fill='black'/><rect x='27' y='58' width='46' height='9' rx='4.5' fill='black'/><rect x='45' y='69' width='10' height='16' rx='3' fill='black'/><circle cx='50' cy='90' r='6' fill='black'/>"
+          : "<g stroke='black' stroke-width='13' stroke-linecap='round' fill='none'><path d='M24 24 L76 76'/><path d='M76 24 L24 76'/></g>")
+      : (settings.glyphs === "roman"
+          ? "<g fill='black'><ellipse cx='21' cy='36' rx='10' ry='4.4' transform='rotate(-58 21 36)'/><ellipse cx='17' cy='52' rx='10' ry='4.4' transform='rotate(-30 17 52)'/><ellipse cx='22' cy='68' rx='10' ry='4.4' transform='rotate(-8 22 68)'/><ellipse cx='34' cy='81' rx='10' ry='4.4' transform='rotate(28 34 81)'/><ellipse cx='79' cy='36' rx='10' ry='4.4' transform='rotate(58 79 36)'/><ellipse cx='83' cy='52' rx='10' ry='4.4' transform='rotate(30 83 52)'/><ellipse cx='78' cy='68' rx='10' ry='4.4' transform='rotate(8 78 68)'/><ellipse cx='66' cy='81' rx='10' ry='4.4' transform='rotate(-28 66 81)'/><circle cx='50' cy='88' r='4'/></g>"
+          : "<circle cx='50' cy='50' r='27' fill='none' stroke='black' stroke-width='13'/>");
+    return "url(\"data:image/svg+xml," + encodeURIComponent(
+      "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>" + inner + "</svg>") + "\")";
+  }
+
+  /* ============ Board construction ============ */
+  function buildBoard(){
+    boardEl.innerHTML = "";
+    cells = [];
+    for(var r = 0; r < 3; r++){
+      var row = document.createElement("div");
+      row.setAttribute("role", "row");
+      for(var c = 0; c < 3; c++){
+        var i = r * 3 + c;
+        var cell = document.createElement("button");
+        cell.type = "button";
+        cell.className = "cell";
+        cell.setAttribute("role", "gridcell");
+        cell.dataset.index = i;
+        var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("class", "mark");
+        svg.setAttribute("aria-hidden", "true");
+        var use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+        svg.appendChild(use);
+        cell.appendChild(svg);
+        cell._use = use;
+        cell.addEventListener("click", onCellClick);
+        row.appendChild(cell);
+        cells.push(cell);
+      }
+      boardEl.appendChild(row);
+    }
+    boardEl.addEventListener("keydown", onGridKeydown);
+  }
+
+  function cellLabel(i){
+    var r = Math.floor(i / 3) + 1, c = i % 3 + 1;
+    var what = board[i] ? markSpoken(board[i]) + " placed" : "empty";
+    return "Row " + r + ", column " + c + ", " + what;
+  }
+  function markName(m){
+    if(settings.glyphs === "roman") return m === "X" ? "Gladius" : "Laurel";
+    return m;
+  }
+  function markSpoken(m){
+    if(settings.glyphs === "roman") return m === "X" ? "Gladius" : "Laurel";
+    return m === "X" ? "Ex" : "Oh";
+  }
+
+  /* ============ Render ============ */
+  function render(){
+    for(var i = 0; i < 9; i++){
+      var cell = cells[i], m = board[i];
+      if(m){
+        cell.dataset.mark = m;
+        cell.classList.add("filled");
+        cell._use.setAttribute("href", glyphFor(m));
+      }else{
+        delete cell.dataset.mark;
+        cell.classList.remove("filled");
+      }
+      cell.disabled = over || !!m || (settings.mode === "ai" && turn === AI_MARK);
+      cell.setAttribute("aria-label", cellLabel(i));
+      cell.setAttribute("aria-disabled", cell.disabled ? "true" : "false");
+      cell.style.setProperty("--ghost-mask", ghostMask(turn));
+    }
+    boardEl.classList.toggle("locked", over);
+
+    $("icon-x").setAttribute("href", glyphFor("X"));
+    $("icon-o").setAttribute("href", glyphFor("O"));
+    $("label-x").textContent = markName("X") + " wins";
+    $("label-o").textContent = markName("O") + " wins";
+
+    $("card-x").classList.toggle("active", !over && turn === "X");
+    $("card-o").classList.toggle("active", !over && turn === "O");
+
+    modeTag.textContent = settings.mode === "ai"
+      ? "Vs AI · " + cap(settings.discipline)
+      : "Two Players";
+  }
+  function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+
+  function setStatus(html){ statusEl.innerHTML = html; }
+  function turnStatus(){
+    setStatus("<span class='turn-mark " + turn.toLowerCase() + "'>" + markName(turn).toUpperCase() + "</span> takes the field");
+  }
+
+  /* ============ Banner ============ */
+  function showBanner(text, mark, isDraw){
+    bannerText.textContent = text;
+    bannerEl.classList.toggle("draw", !!isDraw);
+    if(mark){
+      bannerGlyph.style.display = "";
+      bannerGlyphUse.setAttribute("href", glyphFor(mark));
+      bannerGlyph.style.color = mark === "X" ? "var(--x-color)" : "var(--o-color)";
+    }else{
+      bannerGlyph.style.display = "none";
+    }
+    bannerEl.classList.add("show");
+  }
+  function hideBanner(){
+    bannerEl.classList.remove("show");
+  }
+
+  /* ============ Game logic ============ */
+  function winnerOf(b){
+    for(var k = 0; k < LINES.length; k++){
+      var L = LINES[k];
+      if(b[L[0]] && b[L[0]] === b[L[1]] && b[L[0]] === b[L[2]])
+        return { mark: b[L[0]], line: L };
+    }
+    for(var i = 0; i < 9; i++) if(!b[i]) return null;
+    return { mark: null, line: null, draw: true };
+  }
+
+  function onCellClick(e){
+    var i = +e.currentTarget.dataset.index;
+    if(over || board[i]) return;
+    if(settings.mode === "ai" && turn === AI_MARK) return; // not your move, citizen
+    playMove(i, turn);
+  }
+
+  function playMove(i, mark){
+    board[i] = mark;
+    var wasFocused = document.activeElement === cells[i];
+    var res = winnerOf(board);
+    if(res){      over = true;
+      if(res.draw){
+        scores.D++; store(STORE_SCORES, scores); updateScoreDisplay(); bump($("score-d"));
+        showBanner("Nemo Vincit · Stalemate", null, true);
+        setStatus("The battle ends in stalemate");
+      }else{
+        res.line.forEach(function(j){ cells[j].classList.add("win"); });
+        scores[mark]++; store(STORE_SCORES, scores); updateScoreDisplay();
+        bump(mark === "X" ? $("score-x") : $("score-o"));
+        var who = settings.mode === "ai"
+          ? (mark === "X" ? "Rome Triumphs" : "The Legion Prevails")
+          : markName(mark).toUpperCase() + " Triumphs";
+        showBanner("Victoria · " + who, mark, false);
+        setStatus(markName(mark) + " wins the round");
+        burstConfetti();
+      }
+      render();
+      return;
+    }
+    turn = mark === "X" ? "O" : "X";
+    render();
+    if(wasFocused) focusNextPlayable(i);
+    turnStatus();
+    maybeAI();
+  }
+
+  /* A placed cell becomes disabled; hand keyboard focus to the next playable cell */
+  function focusNextPlayable(i){
+    for(var step = 1; step <= 9; step++){
+      var j = (i + step) % 9;
+      if(!board[j] && !cells[j].disabled){ cells[j].focus(); return; }
+    }
+  }
+
+  function bump(el){
+    el.classList.add("bump");
+    setTimeout(function(){ el.classList.remove("bump"); }, 260);
+  }
+
+  function updateScoreDisplay(){
+    $("score-x").textContent = scores.X;
+    $("score-d").textContent = scores.D;
+    $("score-o").textContent = scores.O;
+  }
+
+  /* ============ AI: minimax with alpha-beta + discipline noise ============ */
+  function bestMove(b, me, mover, depth, alpha, beta){
+    var res = winnerOf(b);
+    if(res) return { score: res.draw ? 0 : (res.mark === me ? 10 - depth : depth - 10) };
+    var maximizing = mover === me;
+    var best = { score: maximizing ? -Infinity : Infinity, move: -1 };
+    var other = mover === "X" ? "O" : "X";
+    for(var i = 0; i < 9; i++){
+      if(b[i]) continue;
+      b[i] = mover;
+      var r = bestMove(b, me, other, depth + 1, alpha, beta);
+      b[i] = null;
+      if(maximizing){
+        if(r.score > best.score){ best = { score: r.score, move: i }; }
+        alpha = Math.max(alpha, r.score);
+      }else{
+        if(r.score < best.score){ best = { score: r.score, move: i }; }
+        beta = Math.min(beta, r.score);
+      }
+      if(beta <= alpha) break;
+    }
+    return best;
+  }
+
+  function aiPick(){
+    var empties = [];
+    for(var i = 0; i < 9; i++) if(!board[i]) empties.push(i);
+    var noise = NOISE[settings.discipline] || 0;
+    if(Math.random() < noise)
+      return empties[Math.floor(Math.random() * empties.length)];
+    return bestMove(board, AI_MARK, AI_MARK, 0, -Infinity, Infinity).move;
+  }
+
+  function maybeAI(){
+    if(over || settings.mode !== "ai" || turn !== AI_MARK) return;
+    var g = gen;
+    setStatus("The legionary ponders the field…");
+    setTimeout(function(){
+      if(g !== gen || over || turn !== AI_MARK) return;
+      var mv = aiPick();
+      if(mv >= 0) playMove(mv, AI_MARK);
+    }, 480 + Math.random() * 340);
+  }
+
+  /* ============ Rounds ============ */
+  function newRound(){
+    gen++;
+    board = [null,null,null,null,null,null,null,null,null];
+    turn = settings.first;
+    over = false;
+    cells.forEach(function(c){ c.classList.remove("win"); });
+    hideBanner();
+    render();
+    turnStatus();
+    maybeAI();
+  }
+
+  function resetScores(){
+    scores = { X:0, O:0, D:0 };
+    store(STORE_SCORES, scores);
+    updateScoreDisplay();
+    setStatus("Scores returned to the Senate archives");
+    if(!over) turnStatus();
+  }
+
+  /* ============ Keyboard grid navigation ============ */
+  function onGridKeydown(e){
+    var idx = -1;
+    for(var i = 0; i < 9; i++) if(cells[i] === document.activeElement){ idx = i; break; }
+    if(idx < 0) return;
+    var map = { ArrowRight: idx % 3 === 2 ? idx - 2 : idx + 1,
+                ArrowLeft:  idx % 3 === 0 ? idx + 2 : idx - 1,
+                ArrowDown:  (idx + 3) % 9,
+                ArrowUp:    (idx + 6) % 9,
+                Home: 0, End: 8 };
+    var next = map[e.key];
+    if(next === undefined) return;
+    e.preventDefault();
+    cells[next].focus();
+  }
+
+  /* ============ Confetti (canvas only, no DOM nodes) ============ */
+  var ctx = confettiCanvas.getContext("2d");
+  var particles = [], rafId = null;
+  var COLORS = ["#c9a227", "#ecd27a", "#f7e7b3", "#a12b22", "#fffdf4", "#8f6e14"];
+
+  function sizeCanvas(){
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    confettiCanvas.width  = Math.floor(innerWidth  * dpr);
+    confettiCanvas.height = Math.floor(innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", sizeCanvas);
+  sizeCanvas();
+
+  function burstConfetti(){
+    if(reducedMotion.matches) return;
+    var n = 150;
+    for(var k = 0; k < n; k++){
+      particles.push({
+        x: Math.random() * innerWidth,
+        y: -20 - Math.random() * innerHeight * 0.5,
+        vx: (Math.random() - 0.5) * 1.6,
+        vy: 1.6 + Math.random() * 3.2,
+        size: 5 + Math.random() * 7,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.24,
+        color: COLORS[(Math.random() * COLORS.length) | 0],
+        shape: Math.random() < 0.45 ? "rect" : "coin",
+        tilt: Math.random() * Math.PI * 2,
+        life: 1
+      });
+    }
+    if(rafId === null) rafId = requestAnimationFrame(tick);
+  }
+
+  function tick(){
+    rafId = null;
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    for(var k = particles.length - 1; k >= 0; k--){
+      var p = particles[k];
+      p.tilt += 0.09;
+      p.vy += 0.028;                       // gravity
+      p.vx += Math.sin(p.tilt) * 0.02;     // flutter
+      p.vx *= 0.995;
+      p.x += p.vx; p.y += p.vy; p.rot += p.vr;
+      if(p.y > innerHeight + 30){ particles.splice(k, 1); continue; }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = 0.9;
+      var squeeze = 0.55 + 0.45 * Math.abs(Math.cos(p.tilt));
+      if(p.shape === "rect"){
+        ctx.fillRect(-p.size / 2, -p.size * squeeze / 2, p.size, p.size * squeeze);
+      }else{
+        ctx.beginPath();
+        ctx.ellipse(0, 0, p.size * 0.55 * squeeze, p.size * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    if(particles.length) rafId = requestAnimationFrame(tick);
+    else ctx.clearRect(0, 0, innerWidth, innerHeight);
+  }
+
+  /* ============ Settings & dialog ============ */
+  function applyTheme(){ document.documentElement.dataset.theme = settings.theme; }
+
+  function syncDialog(){
+    $("set-theme").value = settings.theme;
+    $("set-glyphs").value = settings.glyphs;
+    $("set-mode").value = settings.mode;
+    $("set-first").value = settings.first;
+    $("set-discipline").value = settings.discipline;
+    $("opt-discipline").classList.toggle("disabled", settings.mode !== "ai");
+    $("set-discipline").disabled = settings.mode !== "ai";
+  }
+
+  function wireSettings(){
+    $("set-theme").addEventListener("change", function(){
+      settings.theme = this.value; store(STORE_CFG, settings); applyTheme();
+    });
+    $("set-glyphs").addEventListener("change", function(){
+      settings.glyphs = this.value; store(STORE_CFG, settings);
+      render();
+      refreshBannerGlyph();
+    });
+    $("set-mode").addEventListener("change", function(){
+      settings.mode = this.value; store(STORE_CFG, settings); syncDialog(); newRound();
+    });
+    $("set-first").addEventListener("change", function(){
+      settings.first = this.value; store(STORE_CFG, settings); newRound();
+    });
+    $("set-discipline").addEventListener("change", function(){
+      settings.discipline = this.value; store(STORE_CFG, settings);
+      if(settings.mode === "ai") newRound();
+    });
+  }
+
+  function refreshBannerGlyph(){
+    if(!bannerEl.classList.contains("show")) return;
+    var m = null;
+    for(var k = 0; k < LINES.length; k++){
+      var L = LINES[k];
+      if(board[L[0]] && board[L[0]] === board[L[1]] && board[L[0]] === board[L[2]]){ m = board[L[0]]; break; }
+    }
+    if(m){ bannerGlyphUse.setAttribute("href", glyphFor(m)); }
+  }
+
+  /* ============ Init ============ */
+  function init(){
+    var s = load(STORE_CFG);
+    if(s){
+      if(s.theme === "night" || s.theme === "day") settings.theme = s.theme;
+      if(s.glyphs === "roman" || s.glyphs === "classic") settings.glyphs = s.glyphs;
+      if(s.mode === "ai" || s.mode === "2p") settings.mode = s.mode;
+      if(s.first === "X" || s.first === "O") settings.first = s.first;
+      if(NOISE.hasOwnProperty(s.discipline)) settings.discipline = s.discipline;
+    }
+    var sc = load(STORE_SCORES);
+    if(sc){
+      scores.X = Math.max(0, sc.X | 0); scores.O = Math.max(0, sc.O | 0); scores.D = Math.max(0, sc.D | 0);
+    }
+    $("score-x").textContent = scores.X;
+    $("score-d").textContent = scores.D;
+    $("score-o").textContent = scores.O;
+
+    applyTheme();    buildBoard();
+    syncDialog();
+    wireSettings();
+
+    $("btn-new").addEventListener("click", newRound);
+    $("btn-reset").addEventListener("click", resetScores);
+    $("btn-cfg").addEventListener("click", function(){ syncDialog(); dlg.showModal(); });
+
+    newRound();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

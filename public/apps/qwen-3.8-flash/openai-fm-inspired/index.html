@@ -1,0 +1,857 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenAI.fm — Hear the voices</title>
+<meta name="description" content="A love letter to openai.fm. Pick a voice, type anything, and listen.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23060606'/%3E%3Cg fill='%23fff'%3E%3Crect x='22' y='42' width='6' height='16' rx='3'/%3E%3Crect x='34' y='30' width='6' height='40' rx='3'/%3E%3Crect x='46' y='20' width='6' height='60' rx='3'/%3E%3Crect x='58' y='32' width='6' height='36' rx='3'/%3E%3Crect x='70' y='44' width='6' height='12' rx='3'/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --wave-h: 200px;
+    --pad: clamp(20px, 4vw, 48px);
+    --dur: .5s;
+  }
+  [data-theme="dark"]{
+    --bg:#060607;
+    --bg-soft:#0d0d0f;
+    --fg:#f5f5f2;
+    --fg-dim:#9a9a94;
+    --fg-faint:#5c5c58;
+    --line:rgba(255,255,255,.09);
+    --line-strong:rgba(255,255,255,.18);
+    --chip:rgba(255,255,255,.045);
+    --chip-hover:rgba(255,255,255,.09);
+    --shadow: 0 40px 90px -30px rgba(0,0,0,.8);
+    --grain-o:.5;
+  }
+  [data-theme="light"]{
+    --bg:#f4f3ee;
+    --bg-soft:#ecebe4;
+    --fg:#101010;
+    --fg-dim:#6d6d66;
+    --fg-faint:#a3a39b;
+    --line:rgba(0,0,0,.1);
+    --line-strong:rgba(0,0,0,.22);
+    --chip:rgba(0,0,0,.045);
+    --chip-hover:rgba(0,0,0,.09);
+    --shadow: 0 40px 90px -40px rgba(0,0,0,.25);
+    --grain-o:.25;
+  }
+  *,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+  html{ -webkit-text-size-adjust:100%; }
+  body{
+    font-family:var(--font);
+    background:var(--bg);
+    color:var(--fg);
+    min-height:100dvh;
+    display:flex;
+    flex-direction:column;
+    overflow-x:hidden;
+    transition: background var(--dur) ease, color var(--dur) ease;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{ background:var(--accent,#fff); color:var(--bg); }
+  button{ font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  input{ font:inherit; }
+  a{ color:inherit; }
+
+  /* ---------- ambient glow + grain ---------- */
+  .glow{
+    position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(60% 46% at 50% calc(100% - var(--wave-h)*1.4), color-mix(in hsl, var(--accent,#88f) 22%, transparent), transparent 70%),
+      radial-gradient(45% 35% at 12% -8%, color-mix(in hsl, var(--accent,#88f) 9%, transparent), transparent 70%);
+    opacity:.9;
+    transition: background .8s ease;
+  }
+  [data-theme="light"] .glow{ opacity:.5; }
+  .grain{
+    position:fixed; inset:-50%; z-index:1; pointer-events:none; opacity:var(--grain-o);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    animation: grain 7s steps(8) infinite;
+  }
+  @keyframes grain{
+    0%,100%{ transform:translate(0,0);} 12%{ transform:translate(-3%,2%);} 25%{ transform:translate(2%,-3%);}
+    37%{ transform:translate(-2%,-2%);} 50%{ transform:translate(3%,1%);} 62%{ transform:translate(-1%,3%);}
+    75%{ transform:translate(1%,-1%);} 87%{ transform:translate(-3%,-1%);}
+  }
+
+  /* ---------- header ---------- */
+  header{
+    position:relative; z-index:5;
+    display:flex; align-items:center; justify-content:space-between;
+    padding: calc(var(--pad)*.66) var(--pad);
+  }
+  .wordmark{
+    display:flex; align-items:center; gap:10px;
+    font-weight:700; letter-spacing:-.02em; font-size:17px;
+    user-select:none;
+  }
+  .wordmark .mark{
+    width:26px; height:26px; border-radius:8px;
+    background:var(--fg); color:var(--bg);
+    display:grid; place-items:center;
+    transition: background var(--dur) ease, color var(--dur) ease;
+  }
+  .wordmark .mark svg{ width:15px; height:15px; }
+  .wordmark em{ font-style:normal; font-weight:400; color:var(--fg-dim); }
+  nav.top{ display:flex; align-items:center; gap:6px; }
+  .tbtn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 14px; border-radius:999px;
+    font-size:13px; font-weight:500; color:var(--fg-dim);
+    border:1px solid transparent;
+    transition: all .25s ease;
+  }
+  .tbtn:hover{ color:var(--fg); background:var(--chip); border-color:var(--line); }
+  .tbtn svg{ width:15px; height:15px; }
+  .kbd{
+    font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+    padding:2px 6px; border-radius:5px; border:1px solid var(--line);
+    color:var(--fg-faint); font-weight:600;
+  }
+
+  /* ---------- main stage ---------- */
+  main{
+    position:relative; z-index:4; flex:1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center;
+    padding: 8px var(--pad) calc(var(--wave-h) + 74px);
+    gap:0;
+  }
+  .eyebrow{
+    display:flex; align-items:center; gap:12px;
+    font-size:11px; font-weight:600; letter-spacing:.22em; text-transform:uppercase;
+    color:var(--fg-faint);
+    margin-bottom:18px;
+    transition: color var(--dur) ease;
+  }
+  .eyebrow .live{
+    display:inline-flex; align-items:center; gap:7px;
+    color:var(--accent,var(--fg-dim));
+    transition: color var(--dur) ease;
+  }
+  .eyebrow .live::before{
+    content:""; width:6px; height:6px; border-radius:50%;
+    background:currentColor; box-shadow:0 0 12px currentColor;
+    animation: blink 2.6s ease-in-out infinite;
+  }
+  @keyframes blink{ 0%,100%{opacity:1} 50%{opacity:.25} }
+
+  .name-shell{ position:relative; height: clamp(88px, 17vw, 190px); display:grid; place-items:center; width:100%; }
+  h1.voice-name{
+    font-size: clamp(56px, 13.5vw, 172px);
+    font-weight:800;
+    letter-spacing:-.045em;
+    line-height:.95;
+    white-space:nowrap;
+    display:flex;
+  }
+  h1.voice-name .ch{
+    display:inline-block;
+    opacity:0; transform:translateY(.42em) rotate(4deg);
+    animation: rise .55s cubic-bezier(.2,.7,.2,1) forwards;
+  }
+  @keyframes rise{ to{ opacity:1; transform:none; } }
+  h1.voice-name.out .ch{ animation: sink .22s ease forwards; }
+  @keyframes sink{ to{ opacity:0; transform:translateY(-.3em); } }
+
+  .traits{
+    margin-top:14px;
+    display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+    color:var(--fg-dim); font-size:13px; font-weight:500; letter-spacing:.01em;
+  }
+  .traits .dot{ width:3px; height:3px; border-radius:50%; background:var(--fg-faint); }
+
+  /* ---------- composer ---------- */
+  .composer{
+    margin-top: clamp(28px, 5vh, 52px);
+    width:min(680px, 100%);
+    display:flex; align-items:center; gap:10px;
+    background:var(--bg-soft);
+    border:1px solid var(--line);
+    border-radius:999px;
+    padding:8px 8px 8px 22px;
+    box-shadow: var(--shadow);
+    transition: border-color .3s ease, background var(--dur) ease, box-shadow .3s ease;
+  }
+  .composer:focus-within{ border-color: color-mix(in srgb, var(--accent, var(--fg)) 55%, var(--line)); }
+  .composer input{
+    flex:1; min-width:0;
+    background:transparent; border:0; outline:0;
+    color:var(--fg); font-size:15px; font-weight:400;
+    padding:10px 0;
+  }
+  .composer input::placeholder{ color:var(--fg-faint); }
+  .icon-btn{
+    width:38px; height:38px; border-radius:50%; flex:none;
+    display:grid; place-items:center;
+    color:var(--fg-dim);
+    transition: all .25s ease;
+  }
+  .icon-btn:hover{ color:var(--fg); background:var(--chip-hover); transform:rotate(0deg); }
+  .icon-btn svg{ width:16px; height:16px; }
+  .icon-btn.dice:hover{ transform:rotate(90deg) scale(1.05); }
+  .play-btn{
+    flex:none; width:46px; height:46px; border-radius:50%;
+    background:var(--fg); color:var(--bg);
+    display:grid; place-items:center;
+    transition: transform .25s cubic-bezier(.2,.7,.2,1), background .3s, box-shadow .3s;
+    position:relative;
+  }
+  .play-btn:hover{ transform:scale(1.07); }
+  .play-btn:active{ transform:scale(.96); }
+  .play-btn svg{ width:17px; height:17px; }
+  .play-btn .i-pause{ display:none; }
+  body.playing .play-btn .i-play{ display:none; }
+  body.playing .play-btn .i-pause{ display:block; }
+  body.playing .play-btn{
+    background:var(--accent); color:#fff;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+    animation: ring 1.6s ease-out infinite;
+  }
+  @keyframes ring{
+    0%{ box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); }
+    100%{ box-shadow:0 0 0 18px transparent; }
+  }
+
+  /* ---------- voice pills ---------- */
+  .pills{
+    margin-top: clamp(22px, 4vh, 40px);
+    display:flex; gap:8px; align-items:center;
+    overflow-x:auto; padding:6px 4px;
+    max-width:100%;
+    scrollbar-width:none;
+  }
+  .pills::-webkit-scrollbar{ display:none; }
+  .pill{
+    flex:none;
+    display:inline-flex; align-items:center; gap:8px;
+    padding:8px 15px; border-radius:999px;
+    border:1px solid var(--line);
+    background:transparent;
+    color:var(--fg-dim);
+    font-size:12.5px; font-weight:600; letter-spacing:.01em;
+    transition: all .3s cubic-bezier(.2,.7,.2,1);
+  }
+  .pill .num{ font-size:10px; color:var(--fg-faint); font-weight:700; font-variant-numeric:tabular-nums; }
+  .pill .led{ width:7px; height:7px; border-radius:50%; background:var(--line-strong); transition:all .3s ease; }
+  .pill:hover{ color:var(--fg); border-color:var(--line-strong); background:var(--chip); }
+  .pill[aria-current="true"]{
+    color:var(--fg); border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  .pill[aria-current="true"] .led{ background:var(--accent); box-shadow:0 0 10px var(--accent); }
+  .pill[aria-current="true"] .num{ color:var(--accent); }
+
+  .arrows{ display:flex; gap:4px; margin-left:6px; }
+  .arrows button{
+    width:32px; height:32px; border-radius:50%;
+    border:1px solid var(--line); color:var(--fg-dim);
+    display:grid; place-items:center; transition:all .25s ease;
+  }
+  .arrows button:hover{ color:var(--fg); background:var(--chip); }
+  .arrows svg{ width:13px; height:13px; }
+
+  .hint{
+    margin-top:18px; font-size:11px; color:var(--fg-faint); letter-spacing:.04em;
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center;
+  }
+  .hint .kbd{ margin-right:5px; }
+
+  /* ---------- waveform ---------- */
+  .wave-wrap{
+    position:fixed; left:0; right:0; bottom:0; z-index:3;
+    height:var(--wave-h);
+    border-top:1px solid var(--line);
+    background:linear-gradient(to top, var(--bg) 30%, transparent);
+    pointer-events:none;
+  }
+  canvas#wave{ width:100%; height:100%; display:block; }
+  .wave-meta{
+    position:absolute; left:var(--pad); top:12px;
+    display:flex; gap:16px; align-items:center;
+    font-size:10px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+    color:var(--fg-faint);
+  }
+  .wave-meta .state{ color:var(--accent,var(--fg-dim)); display:inline-flex; gap:7px; align-items:center; transition:color var(--dur) ease; }
+  .wave-meta .state::before{ content:""; width:5px; height:5px; border-radius:50%; background:currentColor; }
+  .wave-meta.right{ left:auto; right:var(--pad); font-variant-numeric:tabular-nums; letter-spacing:.12em; }
+
+  /* ---------- about modal ---------- */
+  dialog{
+    margin:auto; inset:0;
+    width:min(520px, calc(100vw - 40px));
+    border:1px solid var(--line-strong);
+    border-radius:22px;
+    background:var(--bg-soft);
+    color:var(--fg);
+    padding:30px;
+    box-shadow: var(--shadow);
+    outline:none;
+  }
+  dialog::backdrop{ background:rgba(0,0,0,.55); backdrop-filter:blur(6px); }
+  dialog h2{ font-size:19px; font-weight:700; letter-spacing:-.01em; margin-bottom:12px; }
+  dialog p{ font-size:14px; line-height:1.65; color:var(--fg-dim); margin-bottom:14px; }
+  dialog p b{ color:var(--fg); font-weight:600; }
+  dialog .close-x{
+    position:absolute; top:16px; right:16px; width:32px; height:32px; border-radius:50%;
+    display:grid; place-items:center; color:var(--fg-dim);
+  }
+  dialog .close-x:hover{ background:var(--chip-hover); color:var(--fg); }
+  dialog ul{ list-style:none; display:grid; gap:8px; margin:4px 0 8px; }
+  dialog li{ display:flex; justify-content:space-between; align-items:center; font-size:13px; color:var(--fg-dim); }
+  dialog .k{ display:flex; gap:4px; }
+  dialog .credit{ font-size:11px; color:var(--fg-faint); border-top:1px solid var(--line); padding-top:14px; margin-top:6px; }
+  dialog .credit a{ color:var(--fg-dim); text-decoration:none; border-bottom:1px solid var(--line-strong); }
+
+  /* toast */
+  .toast{
+    position:fixed; bottom: calc(var(--wave-h) + 18px); left:50%;
+    transform:translate(-50%, 14px);
+    background:var(--fg); color:var(--bg);
+    font-size:12.5px; font-weight:600;
+    padding:9px 16px; border-radius:999px;
+    opacity:0; pointer-events:none; z-index:50;
+    transition: all .35s cubic-bezier(.2,.7,.2,1);
+  }
+  .toast.show{ opacity:1; transform:translate(-50%,0); }
+
+  @media (max-width:640px){
+    :root{ --wave-h:140px; }
+    .hint{ display:none; }
+    .traits .dot:nth-of-type(n+2){ display:none; }
+    .traits span:nth-of-type(n+3){ display:none; }
+  }
+  @media (max-height:820px){
+    :root{ --wave-h:150px; }
+    h1.voice-name{ font-size:clamp(44px, 9.5vw, 104px); }
+    .name-shell{ height:clamp(64px, 13vw, 128px); }
+    .composer{ margin-top:22px; }
+    .pills{ margin-top:16px; }
+    .hint{ display:none; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{ animation-duration:.001s !important; transition-duration:.001s !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="glow" id="glow"></div>
+  <div class="grain"></div>
+
+  <header>
+    <div class="wordmark">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor"><rect x="2.5" y="10" width="2.6" height="4" rx="1.3"/><rect x="7.2" y="6" width="2.6" height="12" rx="1.3"/><rect x="11.9" y="2.5" width="2.6" height="19" rx="1.3"/><rect x="16.6" y="7" width="2.6" height="10" rx="1.3"/><rect x="21.3" y="10.5" width="2.6" height="3" rx="1.3" transform="translate(-2 0)"/></svg>
+      </span>
+      OpenAI<em>.fm</em>
+    </div>
+    <nav class="top">
+      <button class="tbtn" id="shareBtn" title="Copy a link to this voice">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+        Share
+      </button>
+      <button class="tbtn" id="aboutBtn">About</button>
+      <button class="tbtn" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">
+        <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </nav>
+  </header>
+
+  <main>
+    <div class="eyebrow">
+      <span>Voice <span id="idxLabel">01</span> / <span id="totalLabel">12</span></span>
+      <span class="live" id="liveLabel">Studio ready</span>
+    </div>
+
+    <div class="name-shell">
+      <h1 class="voice-name" id="voiceName" aria-live="polite">Alloy</h1>
+    </div>
+
+    <p class="traits" id="traits"></p>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <input id="textInput" type="text" maxlength="280" placeholder="Type anything and press play…" aria-label="Text to speak">
+      <button type="button" class="icon-btn dice" id="diceBtn" title="Surprise me" aria-label="Load a random line">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="15.5" cy="8.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="8.5" cy="15.5" r="1.3" fill="currentColor" stroke="none"/></svg>
+      </button>
+      <button type="submit" class="play-btn" id="playBtn" aria-label="Play">
+        <svg class="i-play" viewBox="0 0 24 24" fill="currentColor" style="margin-left:2px"><path d="M7 4.8c0-1.2 1.3-1.9 2.3-1.3l11 6.7c1 .6 1 2 0 2.6l-11 6.7c-1 .6-2.3-.1-2.3-1.3V4.8Z"/></svg>
+        <svg class="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.2" height="16" rx="2"/><rect x="13.8" y="4" width="4.2" height="16" rx="2"/></svg>
+      </button>
+    </form>
+
+    <div style="display:flex;align-items:center;max-width:100%;margin-top:clamp(22px,4vh,40px)">
+      <nav class="pills" id="pills" aria-label="Choose a voice"></nav>
+      <div class="arrows">
+        <button id="prevBtn" title="Previous voice (←)" aria-label="Previous voice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+        </button>
+        <button id="nextBtn" title="Next voice (→)" aria-label="Next voice">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <p class="hint">
+      <span><span class="kbd">Space</span>play</span>
+      <span><span class="kbd">←</span><span class="kbd">→</span>voices</span>
+      <span><span class="kbd">⏎</span>speak</span>
+    </p>
+  </main>
+
+  <section class="wave-wrap" aria-hidden="true">
+    <canvas id="wave"></canvas>
+    <div class="wave-meta">
+      <span class="state" id="waveState">Idle</span>
+      <span id="waveVoice">alloy</span>
+    </div>
+    <div class="wave-meta right">
+      <span id="waveTime">0:00</span>
+    </div>
+  </section>
+
+  <dialog id="aboutModal">
+    <button class="close-x" id="aboutClose" aria-label="Close">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 5l14 14M19 5L5 19"/></svg>
+    </button>
+    <h2>About this</h2>
+    <p>A single-file tribute to <b>openai.fm</b> — the place where you could hear OpenAI's text-to-speech voices before you ever needed an API key. Pick a persona, type anything, press play.</p>
+    <p>Audio here is rendered with your device's built-in <b>speech synthesis</b>, tuned per voice with its own pitch and cadence, so every browser gets a slightly different studio. The waveform reacts in real time as words are spoken.</p>
+    <ul>
+      <li>Play / pause <span class="k"><span class="kbd">Space</span></span></li>
+      <li>Previous / next voice <span class="k"><span class="kbd">←</span><span class="kbd">→</span></span></li>
+      <li>Speak what you typed <span class="k"><span class="kbd">Enter</span></span></li>
+      <li>Surprise line <span class="k"><span class="kbd">S</span></span></li>
+    </ul>
+    <p class="credit">Not affiliated with OpenAI. Made with the Web Speech API &amp; a canvas. <a href="https://openai.fm" target="_blank" rel="noopener">openai.fm ↗</a></p>
+  </dialog>
+
+  <div class="toast" id="toast">Link copied</div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ================= data ================= */
+  const PERSONAS = [
+    { id:"alloy",    name:"Alloy",    traits:["Balanced","Natural","Versatile"],        pitch:1.00, rate:0.96, hue:205 },
+    { id:"ash",      name:"Ash",      traits:["Relaxed","Grounded","Everyday"],         pitch:0.94, rate:0.92, hue:32  },
+    { id:"breeze",   name:"Breeze",   traits:["Light","Effortless","Airy"],             pitch:1.22, rate:1.06, hue:168 },
+    { id:"coral",    name:"Coral",    traits:["Even","Composed","Close"],               pitch:1.06, rate:0.98, hue:14  },
+    { id:"echo",     name:"Echo",     traits:["Easy-going","Warm","Low"],               pitch:0.72, rate:0.90, hue:262 },
+    { id:"ember",    name:"Ember",    traits:["Soulful","Rich","Patient"],              pitch:0.88, rate:0.93, hue:44  },
+    { id:"fable",    name:"Fable",    traits:["Friendly","Bright","Storytelling"],      pitch:1.28, rate:1.00, hue:96  },
+    { id:"jasper",   name:"Jasper",   traits:["Firm","Steady","Direct"],                pitch:0.80, rate:0.87, hue:224 },
+    { id:"nova",     name:"Nova",     traits:["Warm","Approachable","Clear"],           pitch:1.16, rate:1.00, hue:286 },
+    { id:"onyx",     name:"Onyx",     traits:["Deep","Confident","Measured"],           pitch:0.62, rate:0.84, hue:0   },
+    { id:"sage",     name:"Sage",     traits:["Calm","Informative","Steady"],           pitch:0.90, rate:0.91, hue:142 },
+    { id:"shimmer",  name:"Shimmer",  traits:["Energetic","Youthful","Quick"],          pitch:1.42, rate:1.12, hue:318 },
+  ];
+
+  const SAMPLES = [
+    "Hi, I'm {name}. Nice to meet you.",
+    "The best interface is the one that disappears entirely.",
+    "Type anything you like — I'll read it out loud, in my own voice.",
+    "Space is the final frontier. These are the voyages of a single HTML file.",
+    "We chose the voice the way you'd choose a face for a friend.",
+    "One small keystroke for you, one giant leap for conversation.",
+    "Hello world. Hello world. It still gives me chills.",
+    "Read me a poem, a bug report, or a grocery list — I don't judge.",
+    "The quick brown fox jumped over the lazy dog, dramatically.",
+    "You sound interesting. Say more.",
+  ];
+
+  const GREETING = (p) => `Hi, I'm ${p.name}. ${p.traits[0]}, ${p.traits[1].toLowerCase()}, ${p.traits[2].toLowerCase()}.`;
+
+  /* ================= dom ================= */
+  const $ = (s) => document.querySelector(s);
+  const els = {
+    name: $("#voiceName"), traits: $("#traits"), pills: $("#pills"),
+    input: $("#textInput"), form: $("#composer"), playBtn: $("#playBtn"),
+    idx: $("#idxLabel"), total: $("#totalLabel"), live: $("#liveLabel"),
+    waveState: $("#waveState"), waveVoice: $("#waveVoice"), waveTime: $("#waveTime"),
+    toast: $("#toast"),
+  };
+
+  /* ================= state ================= */
+  let current = 0;
+  let systemVoices = [];
+  const voiceMap = new Map();          // persona id -> SpeechSynthesisVoice
+  let speaking = false, paused = false;
+  let progress = 0;                    // 0..1 through the utterance
+  let pulse = 0;                       // visualizer envelope
+  let playStart = 0, elapsed = 0;
+  let keepAliveTimer = null;
+  let fallback = null;                 // {ctx, stop()} for synth fallback
+  let currentText = "";
+
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const persona = () => PERSONAS[current];
+  const accent = (p, l = 62, s = 90) => `hsl(${p.hue} ${s}% ${l}%)`;
+
+  /* ================= theme ================= */
+  const themeBtn = $("#themeBtn");
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  };
+  function setTheme(t) {
+    document.documentElement.dataset.theme = t;
+    store.set("ofm-theme", t);
+    themeBtn.querySelector(".i-moon").style.display = t === "dark" ? "" : "none";
+    themeBtn.querySelector(".i-sun").style.display = t === "dark" ? "none" : "";
+  }
+  setTheme(store.get("ofm-theme") || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"));
+  themeBtn.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+
+  /* ================= system voices ================= */
+  const synth = window.speechSynthesis || null;
+
+  function refreshSystemVoices() {
+    if (!synth) return;
+    const all = synth.getVoices() || [];
+    if (!all.length) return;
+    const rank = (v) =>
+      (/^en[-_]US/i.test(v.lang) ? 0 : /^en/i.test(v.lang) ? 1 : 2) +
+      (/google|natural|premium|enhanced/i.test(v.name) ? -0.5 : 0);
+    systemVoices = all.slice().sort((a, b) => rank(a) - rank(b));
+    // prefer distinct voices per persona; rotate if pool is small
+    PERSONAS.forEach((p, i) => {
+      voiceMap.set(p.id, systemVoices[i % systemVoices.length] || null);
+    });
+  }
+  if (synth) {
+    refreshSystemVoices();
+    synth.addEventListener?.("voiceschanged", refreshSystemVoices);
+  }
+
+  /* ================= rendering ================= */
+  function renderName(p) {
+    els.name.classList.add("out");
+    setTimeout(() => {
+      els.name.classList.remove("out");
+      els.name.innerHTML = "";
+      [...p.name].forEach((c, i) => {
+        const s = document.createElement("span");
+        s.className = "ch";
+        s.textContent = c;
+        s.style.animationDelay = `${i * 45}ms`;
+        els.name.appendChild(s);
+      });
+    }, 180);
+  }
+
+  function renderPills() {
+    if (els.pills.children.length) return;
+    PERSONAS.forEach((p, i) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "pill";
+      b.innerHTML = `<span class="num">${String(i + 1).padStart(2, "0")}</span><span class="led"></span>${p.name}`;
+      b.addEventListener("click", () => selectVoice(i, { speak: true }));
+      els.pills.appendChild(b);
+    });
+  }
+
+  function renderTraits(p) {
+    els.traits.innerHTML = p.traits
+      .map((t) => `<span>${t}</span>`)
+      .join('<span class="dot"></span>');
+  }
+
+  function paintAccent() {
+    document.documentElement.style.setProperty("--accent", accent(persona()));
+  }
+
+  function selectVoice(i, { speak = false } = {}) {
+    current = (i + PERSONAS.length) % PERSONAS.length;
+    const p = persona();
+    paintAccent();
+    renderName(p);
+    renderTraits(p);
+    els.idx.textContent = String(i + 1).padStart(2, "0");
+    els.waveVoice.textContent = p.id;
+    [...els.pills.children].forEach((el, j) => el.setAttribute("aria-current", j === i ? "true" : "false"));
+    els.pills.children[i]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+    updateHash();
+    if (speak) speakText(GREETING(p));
+  }
+
+  /* ================= speech ================= */
+  function setPlayingUI(on, isPaused = false) {
+    speaking = on;
+    paused = isPaused;
+    document.body.classList.toggle("playing", on && !isPaused);
+    els.playBtn.setAttribute("aria-label", on && !isPaused ? "Pause" : "Play");
+    els.waveState.textContent = !on ? "Idle" : isPaused ? "Paused" : "Speaking";
+    els.live.textContent = !on ? "Studio ready" : isPaused ? "Paused" : `On air — ${persona().name}`;
+    if (!on) { progress = 0; elapsed = 0; }
+  }
+
+  function speakText(text) {
+    stopAll(true);
+    currentText = text;
+    playStart = performance.now();
+    if (synth) speakViaSynth(text);
+    else speakViaFallback(text);
+  }
+
+  function speakViaSynth(text) {
+    const p = persona();
+    const u = new SpeechSynthesisUtterance(text);
+    const v = voiceMap.get(p.id);
+    if (v) { u.voice = v; u.lang = v.lang; } else { u.lang = "en-US"; }
+    u.pitch = clamp(p.pitch, 0.1, 2);
+    u.rate = clamp(p.rate, 0.5, 2);
+    u.onstart = () => setPlayingUI(true);
+    u.onboundary = (e) => {
+      pulse = 0.75 + Math.random() * 0.25;
+      if (text.length) progress = clamp((e.charIndex || 0) / text.length, 0, 1);
+    };
+    u.onend = () => finishSpeech();
+    u.onerror = (e) => { if (e.error !== "interrupted" && e.error !== "canceled") finishSpeech(); };
+    activeUtterance = u;
+    setPlayingUI(true);
+    try { synth.speak(u); } catch (e) { speakViaFallback(text); }
+    // Chrome stops long utterances after ~15s; nudge it alive.
+    clearInterval(keepAliveTimer);
+    keepAliveTimer = setInterval(() => {
+      if (synth.speaking && !synth.paused) { synth.pause(); synth.resume(); }
+    }, 9000);
+  }
+  let activeUtterance = null;
+
+  function finishSpeech() {
+    clearInterval(keepAliveTimer); keepAliveTimer = null;
+    setPlayingUI(false);
+  }
+
+  function stopAll(silent = false) {
+    if (synth) synth.cancel();
+    if (fallback) { fallback.stop(); fallback = null; }
+    clearInterval(keepAliveTimer); keepAliveTimer = null;
+    if (!silent) setPlayingUI(false);
+  }
+
+  function togglePlay() {
+    if (!speaking) { speakText(els.input.value.trim() || sampleFor(persona())); return; }
+    if (synth && !fallback) {
+      if (paused) { synth.resume(); setPlayingUI(true, false); }
+      else { synth.pause(); setPlayingUI(true, true); }
+    } else if (fallback) {
+      if (paused) { fallback.resume(); setPlayingUI(true, false); }
+      else { fallback.pause(); setPlayingUI(true, true); }
+    }
+  }
+
+  /* ---- stylized synth fallback (no speechSynthesis available) ---- */
+  function speakViaFallback(text) {
+    const p = persona();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) { setPlayingUI(false); return; }
+    const ctx = new AC();
+    const words = text.split(/\s+/).filter(Boolean);
+    const per = 0.24 / clamp(p.rate, 0.5, 2);
+    const base = 96 * p.pitch;
+    const master = ctx.createGain();
+    master.gain.value = 0.9;
+    master.connect(ctx.destination);
+    let t = ctx.currentTime + 0.05;
+    const timers = [];
+    words.forEach((w, wi) => {
+      const syl = clamp(Math.ceil(w.length / 3), 1, 4);
+      const dur = per * (0.6 + Math.min(w.length, 10) * 0.07);
+      for (let s = 0; s < syl; s++) {
+        const st = t + (dur * s) / syl;
+        const sd = dur / syl;
+        const f = base * (2 + Math.sin(wi * 3.7 + s * 1.9) * 0.55 + Math.random() * 0.25);
+        const o = ctx.createOscillator(); o.type = "sawtooth";
+        const o2 = ctx.createOscillator(); o2.type = "triangle";
+        o.frequency.setValueAtTime(f, st);
+        o.frequency.exponentialRampToValueAtTime(f * (0.88 + Math.random() * 0.3), st + sd);
+        o2.frequency.setValueAtTime(f * 0.5, st);
+        const bp = ctx.createBiquadFilter(); bp.type = "bandpass";
+        bp.frequency.value = 500 + (s % 2 ? 700 : 0) + Math.random() * 400; bp.Q.value = 4;
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, st);
+        g.gain.exponentialRampToValueAtTime(0.16, st + 0.03);
+        g.gain.exponentialRampToValueAtTime(0.0001, st + sd * 0.95);
+        o.connect(bp); o2.connect(bp); bp.connect(g); g.connect(master);
+        o.start(st); o.stop(st + sd); o2.start(st); o2.stop(st + sd);
+      }
+      const at = t + dur;
+      timers.push(setTimeout(() => { pulse = 0.7 + Math.random() * 0.3; progress = (wi + 1) / words.length; }, (at - ctx.currentTime) * 1000));
+      t += dur + 0.045;
+    });
+    const total = (t - ctx.currentTime) * 1000 + 400;
+    setPlayingUI(true);
+    const stopAllT = () => { timers.forEach(clearTimeout); try { ctx.close(); } catch (e) {} };
+    fallback = {
+      stop: () => { stopAllT(); fallback = null; setPlayingUI(false); },
+      pause: () => ctx.suspend(),
+      resume: () => ctx.resume(),
+    };
+    const endT = setTimeout(() => { fallback = null; setPlayingUI(false); try { ctx.close(); } catch (e) {} }, total);
+    const origStop = fallback.stop;
+    fallback.stop = () => { clearTimeout(endT); origStop(); };
+  }
+
+  /* ================= samples ================= */
+  function sampleFor(p) {
+    const s = SAMPLES[Math.abs(hash(p.id + els.input.placeholder)) % SAMPLES.length];
+    return s.replace("{name}", p.name);
+  }
+  function hash(str) { let h = 0; for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0; return h; }
+  let diceIdx = Math.floor(Math.random() * SAMPLES.length);
+  function surprise() {
+    diceIdx = (diceIdx + 1 + Math.floor(Math.random() * 3)) % SAMPLES.length;
+    const line = SAMPLES[diceIdx].replace("{name}", persona().name);
+    els.input.value = line;
+    speakText(line);
+  }
+
+  /* ================= hash / share ================= */
+  function updateHash() {
+    const text = encodeURIComponent(els.input.value.trim());
+    const hash = `#voice=${persona().id}${text ? `&text=${text}` : ""}`;
+    try { history.replaceState(null, "", hash); }
+    catch (e) { try { location.hash = hash.slice(1); } catch (e2) {} }
+  }
+  function readHash() {
+    const m = (location.hash || "").match(/voice=([a-z]+)(?:&text=([^&]*))?/);
+    if (m) {
+      const i = PERSONAS.findIndex((p) => p.id === m[1]);
+      if (i >= 0) current = i;
+      if (m[2]) els.input.value = decodeURIComponent(m[2]);
+    }
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    els.toast.textContent = msg;
+    els.toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => els.toast.classList.remove("show"), 1600);
+  }
+
+  /* ================= waveform visualizer ================= */
+  const canvas = $("#wave");
+  const ctx2 = canvas.getContext("2d");
+  const BARS = 96;
+  const weights = Array.from({ length: BARS }, (_, i) =>
+    0.35 + 0.65 * Math.abs(Math.sin(i * 12.9898) * 43758.5453 % 1));
+  let W = 0, H = 0, dpr = 1;
+
+  function resize() {
+    dpr = clamp(devicePixelRatio || 1, 1, 2);
+    W = canvas.clientWidth; H = canvas.clientHeight;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    ctx2.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  addEventListener("resize", resize);
+
+  let smooth = 0;
+  function draw(t) {
+    requestAnimationFrame(draw);
+    const p = persona();
+    const active = speaking && !paused;
+    // envelope
+    const target = active ? 1 : 0;
+    pulse = Math.max(pulse * (active ? 0.955 : 0.9), active ? 0.22 : 0);
+    smooth += ((active ? 1 : 0.06) - smooth) * 0.08;
+
+    ctx2.clearRect(0, 0, W, H);
+    const mid = H * 0.62;
+    const gap = W / BARS;
+    const bw = Math.max(2, gap * 0.42);
+    const maxH = H * 0.5;
+    const head = clamp(progress, 0, 1);
+    const acc = accent(p);
+    const faint = getComputedStyle(document.body).getPropertyValue("--fg-faint").trim() || "#666";
+
+    for (let i = 0; i < BARS; i++) {
+      const x = i * gap + gap / 2;
+      const w = weights[i];
+      const lfo = 0.55 + 0.45 * Math.sin(t * 0.006 * (0.7 + w) + i * 0.62 + w * 9);
+      const jitter = active ? (Math.sin(t * 0.02 + i * 7.13) * 0.5 + Math.sin(t * 0.013 + i * 2.7) * 0.5) : 0;
+      const a = smooth * (0.25 + 0.75 * pulse) * w * lfo * (0.8 + 0.25 * jitter);
+      const h = clamp(a, 0.02, 1) * maxH + 2;
+      const passed = active && (i / BARS) <= head;
+      ctx2.globalAlpha = active ? (passed ? 1 : 0.32) : 0.28;
+      ctx2.fillStyle = active || passed ? acc : faint;
+      const r = Math.min(bw / 2, 3);
+      roundBar(ctx2, x - bw / 2, mid - h, bw, h * 2, r);
+    }
+    ctx2.globalAlpha = 1;
+
+    // center hairline
+    ctx2.fillStyle = accent(p);
+    ctx2.globalAlpha = 0.14;
+    ctx2.fillRect(0, mid - 0.5, W, 1);
+    ctx2.globalAlpha = 1;
+
+    // time readout
+    if (active) elapsed = (performance.now() - playStart) / 1000;
+    const m = Math.floor(elapsed / 60), s = Math.floor(elapsed % 60);
+    els.waveTime.textContent = `${m}:${String(s).padStart(2, "0")}`;
+  }
+  function roundBar(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.lineTo(x + r, y + h);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+    c.fill();
+  }
+
+  /* ================= events ================= */
+  els.form.addEventListener("submit", (e) => { e.preventDefault(); stopAll(true); speakText(els.input.value.trim() || sampleFor(persona())); });
+  els.playBtn.addEventListener("click", (e) => { e.preventDefault(); togglePlay(); });
+  $("#diceBtn").addEventListener("click", surprise);
+  $("#prevBtn").addEventListener("click", () => selectVoice(current - 1, { speak: true }));
+  $("#nextBtn").addEventListener("click", () => selectVoice(current + 1, { speak: true }));
+  els.input.addEventListener("input", updateHash);
+
+  $("#shareBtn").addEventListener("click", async () => {
+    updateHash();
+    try { await navigator.clipboard.writeText(location.href); toast("Link copied"); }
+    catch (e) { toast("Copy failed — check the URL bar"); }
+  });
+
+  const modal = $("#aboutModal");
+  $("#aboutBtn").addEventListener("click", () => modal.showModal());
+  $("#aboutClose").addEventListener("click", () => modal.close());
+  modal.addEventListener("click", (e) => { if (e.target === modal) modal.close(); });
+
+  addEventListener("keydown", (e) => {
+    if (e.target === els.input || modal.open) return;
+    if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); selectVoice(current - 1, { speak: true }); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); selectVoice(current + 1, { speak: true }); }
+    else if (e.key.toLowerCase() === "s") { surprise(); }
+  });
+
+  addEventListener("beforeunload", () => synth?.cancel());
+
+  /* ================= boot ================= */
+  els.total.textContent = String(PERSONAS.length).padStart(2, "0");
+  renderPills();
+  readHash();
+  selectVoice(current);
+  resize();
+  requestAnimationFrame(draw);
+})();
+</script>
+</body>
+</html>

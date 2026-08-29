@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Tea Dunkability Simulator</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<style>
+  :root{
+    --bg0:#f4ede2; --bg1:#e8dcc8;
+    --ink:#2b2118; --ink-dim:#6f5f4d; --ink-faint:#a08b72;
+    --glass:rgba(255,255,255,.55); --glass-brd:rgba(120,90,50,.18);
+    --glass-hi:rgba(255,255,255,.9);
+    --card-shadow:0 18px 50px -18px rgba(90,60,20,.28);
+    --accent:#d97a2b; --accent2:#a8541c;
+    --track:rgba(90,60,20,.15);
+    --good:#3f9d5a; --warn:#d9a520; --bad:#d1493c;
+    --cup-line:rgba(90,60,20,.45);
+    --tea:#8a5a2b;
+    --steam:rgba(120,90,50,.35);
+    --key-bg:rgba(90,60,20,.09); --key-brd:rgba(90,60,20,.22);
+  }
+  html.dark{
+    --bg0:#0d1117; --bg1:#141a26;
+    --ink:#eef2f8; --ink-dim:#9aa7b8; --ink-faint:#5c6a7d;
+    --glass:rgba(255,255,255,.055); --glass-brd:rgba(255,255,255,.13);
+    --glass-hi:rgba(255,255,255,.16);
+    --card-shadow:0 24px 60px -20px rgba(0,0,0,.6);
+    --accent:#f59e4b; --accent2:#ffd08a;
+    --track:rgba(255,255,255,.12);
+    --good:#4ade80; --warn:#facc15; --bad:#f87171;
+    --cup-line:rgba(255,255,255,.5);
+    --tea:#a06a30;
+    --steam:rgba(255,255,255,.35);
+    --key-bg:rgba(255,255,255,.07); --key-brd:rgba(255,255,255,.18);
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:
+      radial-gradient(1100px 600px at 85% -10%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+      radial-gradient(900px 620px at -10% 110%, color-mix(in srgb, #3b82f6 12%, transparent), transparent 55%),
+      linear-gradient(160deg, var(--bg0), var(--bg1));
+    min-height:100vh;
+    transition:background .4s, color .4s;
+    overflow-x:hidden;
+  }
+  .wrap{max-width:1240px; margin:0 auto; padding:22px 20px 60px}
+  header{display:flex; align-items:center; gap:14px; padding:6px 2px 20px}
+  .logo{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:24px;
+    background:linear-gradient(145deg, var(--accent), var(--accent2)); box-shadow:0 8px 24px -8px var(--accent); }
+  h1{font-size:clamp(19px,2.6vw,27px); letter-spacing:-.02em; font-weight:800}
+  .tagline{font-size:12.5px; color:var(--ink-dim); margin-top:2px}
+  .hdr-spacer{flex:1}
+  .icon-btn{border:1px solid var(--glass-brd); background:var(--glass); backdrop-filter:blur(14px);
+    color:var(--ink); border-radius:12px; padding:9px 13px; font-size:14px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:transform .15s, background .2s; font-weight:600}
+  .icon-btn:hover{transform:translateY(-1px); background:var(--glass-hi)}
+
+  .grid{display:grid; grid-template-columns:330px minmax(0,1fr) 340px; gap:18px; align-items:start}
+  @media (max-width:1080px){ .grid{grid-template-columns:1fr 1fr} .stage-col{order:-1; grid-column:1/-1} }
+  @media (max-width:720px){ .grid{grid-template-columns:1fr} }
+
+  .card{
+    background:var(--glass); border:1px solid var(--glass-brd); border-radius:22px;
+    backdrop-filter:blur(18px) saturate(1.5); -webkit-backdrop-filter:blur(18px) saturate(1.5);
+    box-shadow:var(--card-shadow), inset 0 1px 0 var(--glass-hi);
+    padding:20px;
+  }
+  .card h2{font-size:11px; text-transform:uppercase; letter-spacing:.14em; color:var(--ink-dim); font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px}
+  .card h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--accent); box-shadow:0 0 10px var(--accent)}
+
+  /* biscuit picker */
+  .biscuits{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+  .biscuit{border:1px solid var(--glass-brd); background:transparent; border-radius:14px; padding:9px 10px;
+    cursor:pointer; text-align:left; color:var(--ink); transition:all .18s; position:relative}
+  .biscuit:hover{background:var(--glass-hi)}
+  .biscuit.sel{border-color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); box-shadow:0 0 0 1px var(--accent), 0 6px 18px -8px var(--accent)}
+  .biscuit .nm{font-size:12.5px; font-weight:700; display:block; line-height:1.2}
+  .biscuit .st{font-size:10.5px; color:var(--ink-dim); letter-spacing:1px}
+  .biscuit .kb{position:absolute; top:6px; right:8px; font-size:9px; color:var(--ink-faint)}
+  .biscuit .em{font-size:17px; margin-right:5px}
+  .note{margin-top:12px; font-size:12px; color:var(--ink-dim); font-style:italic; line-height:1.45; min-height:34px}
+
+  /* sliders */
+  .slider-row{margin-top:18px}
+  .slider-row:first-of-type{margin-top:4px}
+  .sl-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px}
+  .sl-label{font-size:12.5px; font-weight:700}
+  .sl-val{font-size:13px; font-weight:800; font-variant-numeric:tabular-nums; color:var(--accent)}
+  input[type=range]{-webkit-appearance:none; appearance:none; width:100%; height:26px; background:transparent; cursor:pointer}
+  input[type=range]::-webkit-slider-runnable-track{height:7px; border-radius:99px;
+    background:linear-gradient(to right, var(--accent) var(--p,50%), var(--track) var(--p,50%))}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:19px; height:19px; border-radius:50%; margin-top:-6px;
+    background:radial-gradient(circle at 32% 30%, #fff, var(--accent) 70%); border:2px solid var(--glass-hi);
+    box-shadow:0 2px 10px rgba(0,0,0,.35); transition:transform .12s}
+  input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+  input[type=range]::-moz-range-track{height:7px; border-radius:99px; background:var(--track)}
+  input[type=range]::-moz-range-progress{height:7px; border-radius:99px; background:var(--accent)}
+  input[type=range]::-moz-range-thumb{width:17px; height:17px; border-radius:50%; border:2px solid #fff3;
+    background:var(--accent); box-shadow:0 2px 10px rgba(0,0,0,.35)}
+  .sl-scale{display:flex; justify-content:space-between; font-size:9.5px; color:var(--ink-faint); margin-top:-2px}
+
+  /* stage */
+  .stage-col .card{padding:14px 14px 8px; position:relative; overflow:hidden}
+  .stage{position:relative; user-select:none}
+  .cup-svg{display:block; width:100%; max-width:460px; margin:0 auto; height:auto}
+  .steam-zone{position:absolute; left:50%; top:6%; transform:translateX(-50%); width:150px; height:120px; pointer-events:none}
+  .steam{position:absolute; bottom:0; width:9px; height:9px; border-radius:50%;
+    background:radial-gradient(circle, var(--steam), transparent 70%);
+    animation:steam-rise var(--dur,3s) ease-out infinite; opacity:0; filter:blur(1px)}
+  @keyframes steam-rise{
+    0%{transform:translateY(0) translateX(0) scale(.5); opacity:0}
+    12%{opacity:var(--op,.7)}
+    60%{opacity:calc(var(--op,.7)*.55)}
+    100%{transform:translateY(-115px) translateX(var(--sway,8px)) scale(2.6); opacity:0}
+  }
+  .crumb{position:absolute; border-radius:45% 55% 60% 40%; pointer-events:none; z-index:5;
+    animation:crumb-fall var(--d,1.3s) cubic-bezier(.35,.3,.75,1) forwards}
+  @keyframes crumb-fall{
+    0%{transform:translate(0,0) rotate(0deg); opacity:1}
+    82%{opacity:1}
+    100%{transform:translate(var(--dx),var(--dy)) rotate(var(--rot)); opacity:0}
+  }
+  .ripple{transform-origin:center; transform-box:fill-box; animation:ripple-out .9s ease-out forwards}
+  @keyframes ripple-out{from{transform:scale(.2); opacity:.85} to{transform:scale(2.4); opacity:0}}
+  .cup-wobble{animation:wobble .5s ease}
+  @keyframes wobble{0%,100%{transform:rotate(0)}25%{transform:rotate(.8deg)}55%{transform:rotate(-.6deg)}80%{transform:rotate(.3deg)}}
+  .phase-badge{position:absolute; top:16px; left:18px; font-size:10px; font-weight:800; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--ink-dim); background:var(--glass); border:1px solid var(--glass-brd);
+    padding:5px 10px; border-radius:99px; backdrop-filter:blur(8px)}
+  .loop-badge{position:absolute; top:16px; right:18px; font-size:10px; font-weight:700; color:var(--ink-faint)}
+  .verdict-strip{display:flex; align-items:center; justify-content:center; gap:10px; padding:10px 6px 12px}
+  .verdict{font-size:15px; font-weight:800; letter-spacing:.02em; padding:7px 18px; border-radius:99px;
+    border:1.5px solid; transition:all .3s}
+  .v-good{color:var(--good); border-color:var(--good); background:color-mix(in srgb, var(--good) 12%, transparent)}
+  .v-warn{color:var(--warn); border-color:var(--warn); background:color-mix(in srgb, var(--warn) 12%, transparent)}
+  .v-bad{color:var(--bad); border-color:var(--bad); background:color-mix(in srgb, var(--bad) 14%, transparent); animation:pulse .8s ease infinite}
+  .v-dry{color:var(--ink-dim); border-color:var(--ink-faint)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--bad) 45%, transparent)}50%{box-shadow:0 0 0 7px transparent}}
+
+  /* gauge */
+  .gauge-wrap{position:relative}
+  .gauge-num{position:absolute; left:50%; bottom:2px; transform:translateX(-50%); text-align:center}
+  .gauge-num .big{font-size:34px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1}
+  .gauge-num .lbl{font-size:9.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-dim); font-weight:700}
+
+  .chart-box{margin-top:6px}
+  .chart-box svg{width:100%; height:auto; display:block}
+  .chart-cap{font-size:10.5px; color:var(--ink-faint); margin-top:4px; display:flex; justify-content:space-between}
+
+  .stats{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px}
+  .stat{background:color-mix(in srgb, var(--ink) 5%, transparent); border:1px solid var(--glass-brd);
+    border-radius:14px; padding:10px 12px}
+  .stat .k{font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--ink-dim); font-weight:700}
+  .stat .v{font-size:17px; font-weight:800; font-variant-numeric:tabular-nums; margin-top:2px}
+  .stat .v small{font-size:10px; color:var(--ink-faint); font-weight:600}
+
+  /* footer keys */
+  .keys{margin-top:20px; display:flex; flex-wrap:wrap; gap:8px 16px; align-items:center; justify-content:center;
+    font-size:11.5px; color:var(--ink-dim)}
+  kbd{font-family:inherit; font-size:10.5px; font-weight:700; color:var(--ink); background:var(--key-bg);
+    border:1px solid var(--key-brd); border-bottom-width:2.5px; border-radius:6px; padding:2px 7px; margin-right:5px}
+
+  /* overlay */
+  .overlay{position:fixed; inset:0; background:rgba(6,8,14,.55); backdrop-filter:blur(6px); z-index:50;
+    display:grid; place-items:center; animation:fade .2s ease}
+  @keyframes fade{from{opacity:0}}
+  .modal{max-width:430px; width:calc(100% - 40px); animation:pop .25s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes pop{from{transform:scale(.92); opacity:0}}
+  .modal h3{font-size:16px; margin-bottom:14px}
+  .klist{display:grid; grid-template-columns:auto 1fr; gap:9px 14px; font-size:13px; align-items:center}
+  .klist div:nth-child(odd){text-align:right; white-space:nowrap}
+  .modal .close-hint{margin-top:16px; font-size:11px; color:var(--ink-faint); text-align:center}
+  .pause-veil{position:absolute; inset:0; display:grid; place-items:center; z-index:6; pointer-events:none}
+  .pause-veil span{font-size:11px; font-weight:800; letter-spacing:.2em; text-transform:uppercase; color:var(--ink-dim);
+    background:var(--glass); border:1px solid var(--glass-brd); padding:7px 16px; border-radius:99px; backdrop-filter:blur(6px)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+const {useState, useEffect, useRef, useMemo, useCallback} = React;
+
+/* ---------------- domain data & model ---------------- */
+
+const BISCUITS = [
+  {id:"digestive", name:"Digestive",    em:"🍪", integrity:72, porosity:.55, color:"#c99a63", hole:"#8a6236", note:"The national treasure. Stoic, faintly chalky, endlessly forgiving."},
+  {id:"hobnob",    name:"Hobnob",       em:"🥠", integrity:90, porosity:.30, color:"#d3a86e", hole:"#96693a", note:"A biscuit with load-bearing ambitions. Handle with respect."},
+  {id:"richtea",   name:"Rich Tea",     em:"🍘", integrity:42, porosity:.72, color:"#e0b98a", hole:"#b08a55", note:"Deceptively delicate. A three-second biscuit in a five-second world."},
+  {id:"bourbon",   name:"Bourbon",      em:"🍫", integrity:58, porosity:.50, color:"#b98a58", hole:"#7c5528", note:"Sandwich architecture doubles the failure surface. Chocolate side up, always."},
+  {id:"custard",   name:"Custard Cream",em:"🍦", integrity:38, porosity:.78, color:"#e8c78f", hole:"#bd9450", note:"The sprinter. Flavoured filling is a known catalyst for collapse."},
+  {id:"shortbread",name:"Shortbread",   em:"🧈", integrity:95, porosity:.22, color:"#e6cf9a", hole:"#c2a05e", note:"Nearly bulletproof. Dense enough to anchor the cup."},
+  {id:"gingernut", name:"Ginger Nut",   em:"🫚", integrity:66, porosity:.45, color:"#a9713d", hole:"#6e421b", note:"Ginger adds flavour and, allegedly, structural rebar."},
+  {id:"jammy",     name:"Jammy Dodger", em:"🍩", integrity:48, porosity:.60, color:"#d9a066", hole:"#96552f", note:"Jam core creates hydraulic pressure. Failure mode: explosive."},
+];
+
+const clamp = (v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp = (a,b,t)=>a+(b-a)*t;
+
+function tempNorm(T){ return clamp((T-60)/40, 0, 1); }
+function absorptionRate(b, T){ return 0.03 + b.porosity*(0.10 + 0.28*tempNorm(T)); }
+function absorption(t, k){ return 1 - Math.exp(-k*t); }
+function effIntegrity(b, slider){ return b.integrity * slider/100; }
+function crumbleRisk(b, T, t, slider){
+  const a = absorption(t, absorptionRate(b,T));
+  const ei = effIntegrity(b, slider);
+  const factor = clamp(1.6 - ei/125, 0.4, 1.9);
+  return clamp(a*100*factor, 0, 100);
+}
+function strengthAt(b, T, t, slider){
+  const a = absorption(t, absorptionRate(b,T));
+  return Math.max(0, effIntegrity(b,slider) * (1 - a*1.05));
+}
+function verdictFor(risk){
+  if (risk < 22)  return {t:"Bone dry — that was a biscuit, not a dunk", c:"v-dry"};
+  if (risk < 45)  return {t:"Under-dunked — courage failed you",          c:"v-warn"};
+  if (risk < 68)  return {t:"PERFECT DUNK — textbook execution",           c:"v-good"};
+  if (risk < 85)  return {t:"Danger zone — eat immediately, no photos",    c:"v-warn"};
+  return {t:"STRUCTURAL FAILURE — biscuit is now in the tea",              c:"v-bad"};
+}
+
+/* ---------------- small UI pieces ---------------- */
+
+function Slider({label, value, min, max, step, unit, onChange, scale, hint}){
+  const p = (value-min)/(max-min)*100;
+  return (
+    <div className="slider-row">
+      <div className="sl-head">
+        <span className="sl-label" title={hint}>{label}</span>
+        <span className="sl-val">{value}{unit}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        style={{"--p":p+"%"}} onChange={e=>onChange(+e.target.value)} aria-label={label}/>
+      <div className="sl-scale"><span>{scale[0]}</span><span>{scale[1]}</span></div>
+    </div>
+  );
+}
+
+/* ---------------- teacup stage ---------------- */
+
+const DIP=0.9, LIFT=0.9, REST=1.7, Y_UP=76, Y_DOWN=196, TEA_Y=158;
+
+function BiscuitArt({b, sat, crack, soaked}){
+  const wet = mix(b.color, "#5d3a17", clamp(sat,0,1)*0.75);
+  const holes = [];
+  for (let r=0;r<4;r++) for (let c=0;c<3;c++)
+    holes.push(<circle key={r+"-"+c} cx={-18+c*18} cy={-34+r*22} r="2.4" fill={b.hole} opacity=".8"/>);
+  return (
+    <g>
+      <rect x="-34" y="-52" width="68" height="104" rx="16" fill={soaked? mix(wet,"#000",.25) : wet}
+        stroke={b.hole} strokeWidth="2.5"/>
+      <rect x="-27" y="-45" width="54" height="90" rx="11" fill="none" stroke={b.hole} strokeWidth="1.4" strokeDasharray="4 4" opacity=".55"/>
+      {holes}
+      {crack>0 && <g stroke="#3a2410" strokeWidth="2" fill="none" opacity={clamp(crack,0,1)} strokeLinecap="round">
+        <path d="M-20,-52 l6,14 -8,10 7,12"/>
+        <path d="M14,-52 l-4,12 9,9 -5,13"/>
+        {crack>.55 && <path d="M-34,-6 l12,4 10,-6 12,5 10,-4 24,3"/>}
+      </g>}
+    </g>
+  );
+}
+function mix(hex1, hex2, t){
+  const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+  const a=p(hex1), b=p(hex2);
+  return "#"+a.map((v,i)=>Math.round(lerp(v,b[i],t)).toString(16).padStart(2,"0")).join("");
+}
+
+function TeaStage({b, temp, dunkTime, integrity, paused, cycleT, total, splashKey, wobbleKey, crumbs, risk}){
+  const tn = tempNorm(temp);
+  const teaCol = mix("#b98a55", "#4e2c0d", 0.25 + tn*0.6);
+  const k = absorptionRate(b, temp);
+
+  let y, phase;
+  const soakEnd = DIP + dunkTime, liftEnd = soakEnd + LIFT, restEnd = liftEnd + REST;
+  if (cycleT < DIP)          { phase="dipping";  y = lerp(Y_UP, Y_DOWN, (cycleT/DIP)**2); }
+  else if (cycleT < soakEnd) { phase="soaking";  y = Y_DOWN; }
+  else if (cycleT < liftEnd) { phase="lifting";  const p=(cycleT-soakEnd)/LIFT; y = lerp(Y_DOWN, Y_UP, 1-(1-p)*(1-p)); }
+  else                       { phase="verdict";  y = Y_UP; }
+
+  const soakElapsed = clamp(cycleT - DIP, 0, dunkTime);
+  const sat = clamp(absorption(soakElapsed, k), 0, 1);
+  const crack = cycleT < soakEnd ? clamp((risk-45)/45,0,1) * sat : clamp((risk-45)/45,0,1)*0.4;
+  const failed = risk >= 85;
+  const biscuitVisible = !(failed && cycleT >= soakEnd + 0.25);
+
+  const steamN = 8;
+  const steamOp = 0.15 + tn*0.8;
+
+  return (
+    <div className="stage">
+      <div className="phase-badge">{paused ? "paused" : phase} · {dunkTime.toFixed(1)}s dunk</div>
+      <div className="loop-badge">loop #{cycleMeta.loop}</div>
+      <div className="steam-zone" style={{opacity: paused?0.4:1, transition:"opacity .5s"}}>
+        {Array.from({length:steamN}).map((_,i)=>(
+          <span key={i} className="steam" style={{
+            left: (8 + i*(134/steamN)) + "px",
+            "--op": steamOp, "--dur": (3.4 - tn*1.4) + "s",
+            "--sway": ((i%2? 1:-1) * (6 + (i%3)*7)) + "px",
+            animationDelay: (i*0.42)+"s",
+          }}/>
+        ))}
+      </div>
+
+      <svg viewBox="0 0 360 300" className={"cup-svg" + (wobbleKey ? " cup-wobble" : "")} key={wobbleKey||0}>
+        <defs>
+          <clipPath id="aboveTea"><rect x="0" y="0" width="360" height={TEA_Y}/></clipPath>
+          <clipPath id="belowTea"><rect x="0" y={TEA_Y} width="360" height="142"/></clipPath>
+          <clipPath id="cupInner"><path d="M92,152 C95,225 122,250 180,250 C238,250 265,225 268,152 Z"/></clipPath>
+          <filter id="soakedF"><feColorMatrix type="matrix" values="
+            0.55 0.12 0.05 0 0.10
+            0.10 0.45 0.05 0 0.05
+            0.08 0.08 0.40 0 0.02
+            0 0 0 1 0"/></filter>
+          <linearGradient id="glassG" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stopColor="#fff" stopOpacity=".22"/>
+            <stop offset=".5" stopColor="#fff" stopOpacity=".05"/>
+            <stop offset="1" stopColor="#fff" stopOpacity=".14"/>
+          </linearGradient>
+        </defs>
+
+        {/* saucer */}
+        <ellipse cx="180" cy="272" rx="132" ry="17" fill="url(#glassG)" stroke="var(--cup-line)" strokeWidth="2"/>
+        <ellipse cx="180" cy="269" rx="92" ry="10" fill="none" stroke="var(--cup-line)" strokeWidth="1.4" opacity=".6"/>
+
+        {/* cup back rim */}
+        <ellipse cx="180" cy="150" rx="90" ry="19" fill="none" stroke="var(--cup-line)" strokeWidth="2.5" opacity=".55"/>
+
+        {/* tea liquid */}
+        <g clipPath="url(#cupInner)">
+          <rect x="80" y={TEA_Y} width="200" height="100" fill={teaCol} opacity=".88"/>
+          <rect x="80" y={TEA_Y} width="200" height="7" fill="#fff" opacity=".12"/>
+        </g>
+
+        {/* biscuit: dry (above tea line) */}
+        {biscuitVisible && <g clipPath="url(#aboveTea)">
+          <g transform={`translate(180,${y}) rotate(${phase==="lifting"&&failed?4:0})`}>
+            <BiscuitArt b={b} sat={0} crack={0} soaked={false}/>
+          </g>
+        </g>}
+        {/* biscuit: soaked (below tea line) */}
+        {biscuitVisible && <g clipPath="url(#belowTea)">
+          <g transform={`translate(180,${y})`} filter="url(#soakedF)">
+            <BiscuitArt b={b} sat={sat} crack={crack} soaked={true}/>
+          </g>
+        </g>}
+
+        {/* tea surface line + ripples */}
+        <ellipse cx="180" cy={TEA_Y} rx="83" ry="14" fill="none" stroke={mix(teaCol,"#fff",.45)} strokeWidth="2" opacity=".8"/>
+        {splashKey > 0 && <ellipse key={splashKey} className="ripple" cx="180" cy={TEA_Y} rx="30" ry="6" fill="none" stroke={mix(teaCol,"#fff",.6)} strokeWidth="2.5"/>}
+
+        {/* cup front body */}
+        <path d="M90,150 C93,228 121,254 180,254 C239,254 267,228 270,150" fill="url(#glassG)" stroke="var(--cup-line)" strokeWidth="3" strokeLinecap="round"/>
+        <path d="M104,168 C108,215 128,238 156,244" fill="none" stroke="#fff" strokeWidth="5" opacity=".18" strokeLinecap="round"/>
+        <ellipse cx="180" cy="150" rx="90" ry="19" fill="none" stroke="var(--cup-line)" strokeWidth="3"/>
+        {/* handle */}
+        <path d="M269,168 C312,162 316,216 264,220" fill="none" stroke="var(--cup-line)" strokeWidth="9" strokeLinecap="round"/>
+        <path d="M269,168 C312,162 316,216 264,220" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity=".25"/>
+      </svg>
+
+      {/* crumbs */}
+      {crumbs.map(c=>(
+        <span key={c.id} className="crumb" style={{
+          left:c.x+"%", top:c.y+"%", width:c.s, height:c.s*.82, background:c.col,
+          "--dx":c.dx+"px","--dy":c.dy+"px","--rot":c.rot+"deg","--d":c.d+"s"
+        }}/>
+      ))}
+
+      {paused && <div className="pause-veil"><span>space to resume</span></div>}
+    </div>
+  );
+}
+const cycleMeta = {loop: 1};
+
+/* ---------------- crumble-o-meter gauge ---------------- */
+
+function Gauge({risk}){
+  const ang = -90 + risk/100*180;
+  const col = risk<45 ? "var(--good)" : risk<85 ? "var(--warn)" : "var(--bad)";
+  const ticks = [];
+  for (let i=0;i<=10;i++){
+    const a=(-180 + i*18)*Math.PI/180, r1=70, r2=i%5===0?58:63;
+    ticks.push(<line key={i} x1={100+r1*Math.cos(a)} y1={95+r1*Math.sin(a)}
+      x2={100+r2*Math.cos(a)} y2={95+r2*Math.sin(a)}
+      stroke="var(--ink-faint)" strokeWidth={i%5===0?2:1} strokeLinecap="round"/>);
+  }
+  return (
+    <div className="gauge-wrap">
+      <svg viewBox="0 0 200 112" style={{width:"100%",display:"block"}}>
+        <path d="M20,95 A80,80 0 0 1 180,95" fill="none" stroke="var(--track)" strokeWidth="13" strokeLinecap="round"/>
+        <path d="M20,95 A80,80 0 0 1 180,95" fill="none" stroke="url(#gGrad)" strokeWidth="13" strokeLinecap="round"
+          pathLength="100" strokeDasharray={`${risk} 100`} style={{transition:"stroke-dasharray .25s"}}/>
+        <defs><linearGradient id="gGrad" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="var(--good)"/><stop offset=".55" stopColor="var(--warn)"/><stop offset="1" stopColor="var(--bad)"/>
+        </linearGradient></defs>
+        {ticks}
+        <g style={{transform:`rotate(${ang}deg)`, transformOrigin:"100px 95px", transition:"transform .25s cubic-bezier(.3,1.3,.5,1)"}}>
+          <line x1="100" y1="95" x2="100" y2="32" stroke={col} strokeWidth="3.5" strokeLinecap="round"/>
+          <polygon points="100,24 96,36 104,36" fill={col}/>
+        </g>
+        <circle cx="100" cy="95" r="7" fill="var(--ink)" opacity=".85"/>
+        <circle cx="100" cy="95" r="3" fill="var(--bg0)"/>
+      </svg>
+      <div className="gauge-num">
+        <div className="big" style={{color:col}}>{Math.round(risk)}</div>
+        <div className="lbl">crumble index</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- structural integrity chart ---------------- */
+
+function StrengthChart({b, temp, dunkTime, integrity, soakElapsed}){
+  const W=300,H=118, PAD=10;
+  const Tmax = Math.max(10, dunkTime*1.35);
+  const pts=[];
+  const N=64;
+  for(let i=0;i<=N;i++){
+    const t=i/N*Tmax;
+    const s=strengthAt(b,temp,t,integrity);
+    pts.push([PAD + t/Tmax*(W-2*PAD), H-PAD - clamp(s/100,0,1)*(H-2*PAD)]);
+  }
+  const line = pts.map((p,i)=>(i?"L":"M")+p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  const area = line + ` L${(W-PAD).toFixed(1)},${H-PAD} L${PAD},${H-PAD} Z`;
+  const failX = PAD + dunkTime/Tmax*(W-2*PAD);
+  const curX = PAD + clamp(soakElapsed,0,Tmax)/Tmax*(W-2*PAD);
+  const curS = strengthAt(b,temp,soakElapsed,integrity);
+  const curY = H-PAD - clamp(curS/100,0,1)*(H-2*PAD);
+  return (
+    <div className="chart-box">
+      <svg viewBox={`0 0 ${W} ${H}`}>
+        <defs>
+          <linearGradient id="areaG" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--accent)" stopOpacity=".45"/>
+            <stop offset="1" stopColor="var(--accent)" stopOpacity=".03"/>
+          </linearGradient>
+        </defs>
+        {[0,.25,.5,.75,1].map(f=>(
+          <line key={f} x1={PAD} x2={W-PAD} y1={H-PAD-f*(H-2*PAD)} y2={H-PAD-f*(H-2*PAD)}
+            stroke="var(--track)" strokeWidth="1"/>
+        ))}
+        <rect x={PAD} y={H-PAD-0.15*(H-2*PAD)} width={W-2*PAD} height={0.15*(H-2*PAD)} fill="var(--bad)" opacity=".1"/>
+        <line x1={PAD} x2={W-PAD} y1={H-PAD-0.15*(H-2*PAD)} y2={H-PAD-0.15*(H-2*PAD)}
+          stroke="var(--bad)" strokeWidth="1" strokeDasharray="4 4" opacity=".6"/>
+        <path d={area} fill="url(#areaG)"/>
+        <path d={line} fill="none" stroke="var(--accent)" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1={failX} x2={failX} y1={PAD} y2={H-PAD} stroke="var(--ink-faint)" strokeWidth="1.2" strokeDasharray="3 3"/>
+        <text x={failX+4} y={15} fontSize="8.5" fill="var(--ink-dim)" fontWeight="700">dunk ends</text>
+        <circle cx={curX} cy={curY} r="4.5" fill="var(--ink)" stroke="var(--accent2)" strokeWidth="2"/>
+      </svg>
+      <div className="chart-cap"><span>integrity % vs soak time</span><span>0–{Tmax.toFixed(0)}s</span></div>
+    </div>
+  );
+}
+
+/* ---------------- help overlay ---------------- */
+
+const SHORTCUTS = [
+  ["Space","Pause / resume the dunk loop"],
+  ["1 – 8","Select biscuit type"],
+  ["↑ / ↓","Tea temperature ±2°C"],
+  ["← / →","Dunk time ±0.5s"],
+  ["Shift + ↑ / ↓","Structural integrity ±5%"],
+  ["T","Toggle dark mode"],
+  ["R","Reset all controls"],
+  ["?","This panel · Esc closes"],
+];
+function HelpOverlay({onClose}){
+  return (
+    <div className="overlay" onClick={onClose}>
+      <div className="card modal" onClick={e=>e.stopPropagation()}>
+        <h3>⌨️ Keyboard shortcuts</h3>
+        <div className="klist">
+          {SHORTCUTS.map(([k,d])=><React.Fragment key={k}><div><kbd>{k}</kbd></div><div>{d}</div></React.Fragment>)}
+        </div>
+        <div className="close-hint">Esc or click outside to close</div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- app ---------------- */
+
+let crumbId = 0;
+
+function App(){
+  const [biscuitId, setBiscuitId] = useState("digestive");
+  const [temp, setTemp] = useState(82);
+  const [dunkTime, setDunkTime] = useState(4.0);
+  const [integrity, setIntegrity] = useState(100);
+  const [paused, setPaused] = useState(false);
+  const [dark, setDark] = useState(true);
+  const [help, setHelp] = useState(false);
+  const [cycleT, setCycleT] = useState(0);
+  const [crumbs, setCrumbs] = useState([]);
+  const [splashKey, setSplashKey] = useState(0);
+  const [wobbleKey, setWobbleKey] = useState(0);
+
+  const b = BISCUITS.find(x=>x.id===biscuitId);
+  const total = DIP + dunkTime + LIFT + REST;
+  const risk = crumbleRisk(b, temp, dunkTime, integrity);
+  const absorb = absorption(dunkTime, absorptionRate(b,temp));
+  const failed = risk >= 85;
+  const verdict = verdictFor(risk);
+
+  useEffect(()=>{ document.documentElement.classList.toggle("dark", dark); },[dark]);
+
+  /* animation loop */
+  const stateRef = useRef({});
+  stateRef.current = {b, temp, dunkTime, integrity, failed, risk};
+  const edgeRef = useRef({splash:false, crumbs:false});
+
+  useEffect(()=>{
+    let raf, last = performance.now();
+    const tick = now=>{
+      const dt = Math.min(0.05,(now-last)/1000); last = now;
+      if (!paused){
+        setCycleT(t=>{
+          const s = stateRef.current;
+          const tot = DIP + s.dunkTime + LIFT + REST;
+          let nt = t + dt;
+          const soakEnd = DIP + s.dunkTime;
+          if (t < DIP && nt >= DIP && !edgeRef.current.splash){
+            edgeRef.current.splash = true;
+            setSplashKey(k=>k+1); setWobbleKey(k=>k+1);
+          }
+          if (t < soakEnd && nt >= soakEnd && !edgeRef.current.crumbs){
+            edgeRef.current.crumbs = true;
+            spawnCrumbs(s.failed, s.risk);
+          }
+          if (nt >= tot){ nt = 0; cycleMeta.loop++; edgeRef.current={splash:false,crumbs:false}; }
+          return nt;
+        });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return ()=>cancelAnimationFrame(raf);
+  },[paused]);
+
+  const spawnCrumbs = useCallback((fail, risk)=>{
+    const n = fail ? 26 : risk>=68 ? 11 : risk>=45 ? 5 : risk>=22 ? 2 : 0;
+    if (!n) return;
+    const cols = [stateRef.current.b.color, stateRef.current.b.hole, mix(stateRef.current.b.color,"#5d3a17",.5)];
+    const batch = Array.from({length:n}).map(()=>({
+      id: ++crumbId,
+      x: 42 + Math.random()*16, y: 40 + Math.random()*8,
+      dx: (Math.random()-0.5)*260,
+      dy: 120 + Math.random()*160,
+      rot: (Math.random()-0.5)*540,
+      s: 3 + Math.random()*6,
+      d: 0.9 + Math.random()*0.8,
+      col: cols[Math.floor(Math.random()*cols.length)],
+    }));
+    setCrumbs(c=>[...c,...batch]);
+    setTimeout(()=>setCrumbs(c=>c.filter(x=>!batch.includes(x))), 1900);
+  },[]);
+
+  /* keyboard */
+  useEffect(()=>{
+    const onKey = e=>{
+      if (e.key === "Escape"){ setHelp(false); return; }
+      if (e.target && ["INPUT","TEXTAREA"].includes(e.target.tagName)) return;
+      if (e.code === "Space"){ e.preventDefault(); setPaused(p=>!p); return; }
+      if (e.key >= "1" && e.key <= "8"){ const x = BISCUITS[+e.key-1]; if (x) setBiscuitId(x.id); return; }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown"){
+        e.preventDefault();
+        const d = e.key==="ArrowUp" ? 1 : -1;
+        if (e.shiftKey) setIntegrity(v=>clamp(v+d*5, 20, 150));
+        else setTemp(v=>clamp(v+d*2, 60, 100));
+        return;
+      }
+      if (e.key === "ArrowLeft")  { e.preventDefault(); setDunkTime(v=>clamp(v-0.5, 0.5, 12)); return; }
+      if (e.key === "ArrowRight") { e.preventDefault(); setDunkTime(v=>clamp(v+0.5, 0.5, 12)); return; }
+      if (e.key === "t" || e.key === "T") setDark(d=>!d);
+      if (e.key === "?" || (e.key === "/" && e.shiftKey)) setHelp(h=>!h);
+      if (e.key === "r" || e.key === "R"){
+        setTemp(82); setDunkTime(4); setIntegrity(100); setBiscuitId("digestive"); setPaused(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return ()=>window.removeEventListener("keydown", onKey);
+  },[]);
+
+  const soakElapsed = clamp(cycleT - DIP, 0, dunkTime);
+
+  return (
+    <div className="wrap">
+      <header>
+        <div className="logo">🫖</div>
+        <div>
+          <h1>Tea Dunkability Simulator</h1>
+          <div className="tagline">Biscuit structural engineering · powered by science(ish)</div>
+        </div>
+        <div className="hdr-spacer"/>
+        <button className="icon-btn" onClick={()=>setPaused(p=>!p)}>{paused ? "▶ Resume" : "⏸ Pause"}</button>
+        <button className="icon-btn" onClick={()=>setDark(d=>!d)}>{dark ? "☀️ Light" : "🌙 Dark"}</button>
+        <button className="icon-btn" onClick={()=>setHelp(true)}>⌨️ ?</button>
+      </header>
+
+      <div className="grid">
+        {/* left: controls */}
+        <div>
+          <div className="card">
+            <h2><span className="dot"/>Biscuit selection</h2>
+            <div className="biscuits">
+              {BISCUITS.map((x,i)=>(
+                <button key={x.id} className={"biscuit"+(x.id===biscuitId?" sel":"")} onClick={()=>setBiscuitId(x.id)}>
+                  <span className="kb">{i+1}</span>
+                  <span className="em">{x.em}</span><span className="nm">{x.name}</span>
+                  <div className="st">{"▮".repeat(Math.round(x.integrity/20))}{"▯".repeat(5-Math.round(x.integrity/20))} · {"🟤".repeat(Math.round((1-x.porosity)*4+1))}</div>
+                </button>
+              ))}
+            </div>
+            <div className="note">“{b.note}”</div>
+          </div>
+
+          <div className="card" style={{marginTop:18}}>
+            <h2><span className="dot"/>Dunk parameters</h2>
+            <Slider label="🌡️ Tea temperature" hint="Hotter tea = faster saturation"
+              value={temp} min={60} max={100} step={1} unit="°C" onChange={setTemp}
+              scale={["60 · lukewarm office tea","100 · kettle just boiled"]} />
+            <Slider label="⏱️ Dunk time" hint="Total soak duration"
+              value={dunkTime} min={0.5} max={12} step={0.5} unit="s" onChange={setDunkTime}
+              scale={["0.5s · coward","12s · chaos"]} />
+            <Slider label="🏗️ Structural integrity" hint="Biscuit quality multiplier"
+              value={integrity} min={20} max={150} step={5} unit="%" onChange={setIntegrity}
+              scale={["20 · bottom-of-the-bag","150 · aerospace-grade"]} />
+          </div>
+        </div>
+
+        {/* center: stage */}
+        <div className="stage-col">
+          <div className="card">
+            <TeaStage b={b} temp={temp} dunkTime={dunkTime} integrity={integrity}
+              paused={paused} cycleT={cycleT} total={total} splashKey={splashKey} wobbleKey={wobbleKey}
+              crumbs={crumbs} risk={risk}/>
+            <div className="verdict-strip">
+              <span className={"verdict "+verdict.c}>{verdict.t}</span>
+            </div>
+          </div>
+          <div className="keys">
+            <span><kbd>Space</kbd>pause</span>
+            <span><kbd>1–8</kbd>biscuit</span>
+            <span><kbd>↑↓</kbd>temp</span>
+            <span><kbd>←→</kbd>time</span>
+            <span><kbd>⇧↑↓</kbd>integrity</span>
+            <span><kbd>T</kbd>theme</span>
+            <span><kbd>R</kbd>reset</span>
+            <span><kbd>?</kbd>help</span>
+          </div>
+        </div>
+
+        {/* right: instruments */}
+        <div>
+          <div className="card">
+            <h2><span className="dot"/>Crumble-o-meter</h2>
+            <Gauge risk={risk}/>
+            <StrengthChart b={b} temp={temp} dunkTime={dunkTime} integrity={integrity} soakElapsed={soakElapsed}/>
+          </div>
+          <div className="card" style={{marginTop:18}}>
+            <h2><span className="dot"/>Telemetry</h2>
+            <div className="stats">
+              <div className="stat"><div className="k">Saturation</div><div className="v">{Math.round(absorb*100)}<small>%</small></div></div>
+              <div className="stat"><div className="k">Residual strength</div><div className="v">{Math.round(strengthAt(b,temp,dunkTime,integrity))}<small>/100</small></div></div>
+              <div className="stat"><div className="k">Crumbs shed</div><div className="v">{failed?Math.round(20+risk/4):Math.max(0,Math.round((risk-30)/8))}<small>±2</small></div></div>
+              <div className="stat"><div className="k">Tea absorbed</div><div className="v">{(absorb*(4+b.porosity*10)).toFixed(1)}<small>ml</small></div></div>
+            </div>
+            <div className="note" style={{marginTop:14}}>
+              {failed
+                ? "⚠️ Predicted collapse. Tea will contain biscuit. This is a beverage now."
+                : risk >= 68
+                  ? "⚠️ The biscuit is contemplating mutiny. Vertical consumption only."
+                  : risk < 22
+                    ? "ℹ️ Dry enough to snap. Why did we even boil the kettle?"
+                    : "✅ Optimal moisture gradient. Crunch intact, core properly tea-laced."}
+            </div>
+          </div>
+        </div>
+      </div>
+      {help && <HelpOverlay onClose={()=>setHelp(false)}/>}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>

@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>regex-lab — pattern-match ~/playground</title>
+<meta name="description" content="Regex Lab — an interactive regular expression playground with live highlighting, capture-group tables, and pattern explanations.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext x='1' y='13' font-size='13' font-family='monospace' fill='%233dd68c'%3E.*%3C/text%3E%3C/svg%3E">
+<style>
+  :root[data-theme="dark"]{
+    --bg:#070b11; --term:#0d131c; --pane:#0a1017; --pane2:#0e151f; --border:#1d2735; --border-hi:#2b3a4f;
+    --text:#c9d4e0; --muted:#66788e; --dim:#3d4c60;
+    --accent:#3dd68c; --amber:#e3b341; --red:#ff6b6b; --cyan:#56d4dd; --purple:#bc8cff;
+    --sel:rgba(61,214,140,.22);
+    --g0:#7ee787; --g1:#79c0ff; --g2:#ffa657; --g3:#ff7b72; --g4:#d2a8ff; --g5:#56d4dd; --g6:#e3b341; --g7:#f778ba;
+    --shadow:0 30px 80px rgba(0,0,0,.6),0 4px 16px rgba(0,0,0,.5);
+    --scan:rgba(255,255,255,.018);
+  }
+  :root[data-theme="light"]{
+    --bg:#dfe5ec; --term:#ffffff; --pane:#f4f7fa; --pane2:#eaeff5; --border:#cfd8e3; --border-hi:#aebccb;
+    --text:#1f2937; --muted:#5f6f81; --dim:#93a3b5;
+    --accent:#116f42; --amber:#9a6700; --red:#c0392b; --cyan:#0b7285; --purple:#6f42c1;
+    --sel:rgba(17,111,66,.18);
+    --g0:#116329; --g1:#0550ae; --g2:#953800; --g3:#cf222e; --g4:#8250df; --g5:#0b7285; --g6:#8a6700; --g7:#bf3989;
+    --shadow:0 24px 60px rgba(30,45,65,.25),0 3px 10px rgba(30,45,65,.12);
+    --scan:rgba(0,0,0,.012);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; padding:18px; background:var(--bg);
+    background-image:radial-gradient(1200px 700px at 70% -10%, color-mix(in srgb,var(--accent) 7%, transparent), transparent 60%),
+                     radial-gradient(900px 600px at 10% 110%, color-mix(in srgb,var(--purple) 6%, transparent), transparent 60%);
+    color:var(--text);
+    font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Cascadia Code,Consolas,"Liberation Mono",monospace;
+    font-size:13px; display:flex; align-items:stretch; justify-content:center;
+  }
+  .grow{flex:1}
+  /* ---------- terminal window ---------- */
+  .frame{
+    width:100%; max-width:1360px; display:flex; flex-direction:column; min-height:0;
+    background:var(--term); border:1px solid var(--border); border-radius:12px;
+    box-shadow:var(--shadow); overflow:hidden; position:relative;
+  }
+  .frame::after{
+    content:""; position:absolute; inset:0; pointer-events:none; z-index:50; border-radius:12px;
+    background:repeating-linear-gradient(0deg, var(--scan) 0 1px, transparent 1px 3px);
+  }
+  .titlebar{
+    display:flex; align-items:center; gap:12px; padding:10px 14px;
+    background:linear-gradient(var(--pane2),var(--pane)); border-bottom:1px solid var(--border);
+    user-select:none; flex:none;
+  }
+  .lights{display:flex; gap:7px}
+  .lights i{width:12px;height:12px;border-radius:50%;display:block}
+  .lights i:nth-child(1){background:#ff5f57} .lights i:nth-child(2){background:#febc2e} .lights i:nth-child(3){background:#28c840}
+  .ttl{color:var(--muted); font-size:12px; letter-spacing:.02em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .ttl b{color:var(--accent);font-weight:600}
+  .tb{
+    font:inherit; font-size:12px; color:var(--muted); background:transparent;
+    border:1px solid var(--border); border-radius:6px; padding:4px 10px; cursor:pointer;
+    transition:all .15s ease; white-space:nowrap;
+  }
+  .tb:hover{color:var(--text); border-color:var(--border-hi); background:var(--pane2)}
+  .tb.ok{color:var(--accent); border-color:color-mix(in srgb,var(--accent) 45%, transparent)}
+  .tb.mini{padding:2px 8px;font-size:11px}
+  /* ---------- layout ---------- */
+  main{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:14px; padding:14px; flex:1; min-height:0}
+  @media (max-width:960px){ main{grid-template-columns:1fr; overflow:auto} body{align-items:flex-start} }
+  .col{display:flex; flex-direction:column; gap:14px; min-height:0; min-width:0}
+  .pane{background:var(--pane); border:1px solid var(--border); border-radius:10px; display:flex; flex-direction:column; min-height:0; overflow:hidden}
+  .pane-h{
+    flex:none; display:flex; align-items:center; gap:8px; padding:7px 12px;
+    border-bottom:1px solid var(--border); color:var(--muted); font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    background:linear-gradient(var(--pane2),transparent);
+  }
+  .pane-h .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+  .pane-h .hint{margin-left:auto; text-transform:none; letter-spacing:0; font-size:11px; color:var(--dim)}
+  /* ---------- pattern row ---------- */
+  .pat-body{padding:12px; display:flex; flex-direction:column; gap:10px}
+  .pat-row{display:flex; align-items:center; gap:2px; flex-wrap:wrap}
+  .delim{color:var(--muted); font-size:19px; line-height:1; user-select:none}
+  .pat-wrap{flex:1; min-width:120px; position:relative}
+  #pattern{
+    width:100%; font:inherit; font-size:15px; color:var(--text); background:transparent;
+    border:0; border-bottom:1px dashed var(--dim); outline:none; padding:2px 2px 5px;
+    caret-color:var(--accent); letter-spacing:.01em;
+  }
+  #pattern::placeholder{color:var(--dim)}
+  #pattern:focus{border-bottom-color:var(--accent)}
+  .flags{display:flex; gap:3px; margin-left:4px}
+  .fchip{
+    font:inherit; font-size:13px; width:26px; height:26px; border-radius:6px; cursor:pointer;
+    border:1px solid var(--border); background:transparent; color:var(--muted); transition:all .12s ease;
+  }
+  .fchip:hover{border-color:var(--border-hi); color:var(--text)}
+  .fchip.on{background:color-mix(in srgb,var(--accent) 16%, transparent); border-color:color-mix(in srgb,var(--accent) 55%, transparent); color:var(--accent); font-weight:700}
+  /* ---------- error box ---------- */
+  .errbox{border:1px solid color-mix(in srgb,var(--red) 45%, transparent); background:color-mix(in srgb,var(--red) 8%, transparent); border-radius:8px; padding:8px 10px; font-size:12px; animation:shake .3s ease}
+  @keyframes shake{25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
+  .errbox .em{color:var(--red); font-weight:600}
+  .errbox pre{margin:6px 0 0; font:inherit; font-size:12.5px; color:var(--text); white-space:pre-wrap; word-break:break-all; line-height:1.5}
+  .errbox pre .car{color:var(--red); font-weight:700}
+  .hidden{display:none !important}
+  /* ---------- chips ---------- */
+  .sub-h{font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--dim); margin:2px 0 -4px}
+  .chips{display:flex; flex-wrap:wrap; gap:5px}
+  .chip{
+    font:inherit; font-size:12px; padding:3px 8px; border-radius:6px; cursor:pointer;
+    background:var(--pane2); border:1px solid var(--border); color:var(--text); transition:all .12s ease;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--accent); background:color-mix(in srgb,var(--accent) 10%, var(--pane2)); transform:translateY(-1px)}
+  .chip:active{transform:translateY(0)}
+  .legend{display:flex; flex-wrap:wrap; gap:6px; margin-top:2px}
+  .lg{display:inline-flex; align-items:center; gap:5px; font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:20px; padding:1px 8px 1px 5px}
+  .lg .sw{width:9px;height:9px;border-radius:3px;background:var(--c);box-shadow:0 0 6px color-mix(in srgb,var(--c) 60%, transparent)}
+  .lg .nm{color:var(--text)}
+  /* ---------- editor ---------- */
+  .editor{position:relative; flex:1; min-height:200px}
+  #backdrop,#text{
+    position:absolute; inset:0; margin:0; padding:12px 14px; border:0;
+    font:inherit; font-size:13.5px; line-height:1.7; letter-spacing:.01em; tab-size:4;
+    white-space:pre-wrap; overflow-wrap:break-word; word-break:normal; background:transparent;
+  }
+  #backdrop{overflow:hidden; color:var(--text); pointer-events:none; z-index:1}
+  #text{
+    overflow-y:auto; resize:none; outline:none; z-index:2;
+    color:transparent; caret-color:var(--accent);
+  }
+  #text::selection{background:var(--sel)}
+  #text::-moz-selection{background:var(--sel)}
+  #text::placeholder{color:var(--dim)}
+  /* match highlighting */
+  .mt{background:color-mix(in srgb,var(--g7) 14%, transparent); box-shadow:inset 0 -2px 0 color-mix(in srgb,var(--g7) 65%, transparent); border-radius:3px}
+  .gr{border-radius:3px; font-weight:600}
+  .g0{color:var(--g0); background:color-mix(in srgb,var(--g0) 15%, transparent)}
+  .g1{color:var(--g1); background:color-mix(in srgb,var(--g1) 15%, transparent)}
+  .g2{color:var(--g2); background:color-mix(in srgb,var(--g2) 15%, transparent)}
+  .g3{color:var(--g3); background:color-mix(in srgb,var(--g3) 15%, transparent)}
+  .g4{color:var(--g4); background:color-mix(in srgb,var(--g4) 15%, transparent)}
+  .g5{color:var(--g5); background:color-mix(in srgb,var(--g5) 15%, transparent)}
+  .g6{color:var(--g6); background:color-mix(in srgb,var(--g6) 15%, transparent)}
+  .g7{color:var(--g7); background:color-mix(in srgb,var(--g7) 15%, transparent)}
+  .hl{outline:1.5px solid var(--accent); outline-offset:-1px; background:color-mix(in srgb,var(--accent) 14%, transparent) !important}
+  .zw{position:relative}
+  .zw::after{content:"▏"; position:absolute; left:-2.5px; color:var(--g7); font-weight:700}
+  /* ---------- tabs ---------- */
+  .tabs{gap:4px}
+  .tab{
+    font:inherit; font-size:11px; letter-spacing:.08em; text-transform:uppercase; cursor:pointer;
+    background:transparent; border:1px solid transparent; border-radius:6px; color:var(--muted); padding:3px 10px;
+  }
+  .tab:hover{color:var(--text)}
+  .tab.active{color:var(--accent); background:color-mix(in srgb,var(--accent) 12%, transparent); border-color:color-mix(in srgb,var(--accent) 35%, transparent)}
+  .tabpane{display:none; flex:1; min-height:0; overflow:auto}
+  .tabpane.active{display:block}
+  /* ---------- table ---------- */
+  table{border-collapse:collapse; width:100%; min-width:620px; font-size:12.5px}
+  thead th{
+    position:sticky; top:0; z-index:2; text-align:left; font-weight:600; color:var(--muted);
+    background:var(--pane2); border-bottom:1px solid var(--border); padding:7px 10px; white-space:nowrap;
+    font-size:11px; letter-spacing:.04em;
+  }
+  thead th .gn{color:var(--accent); font-weight:400; margin-left:4px}
+  tbody td{border-bottom:1px solid color-mix(in srgb,var(--border) 55%, transparent); padding:6px 10px; vertical-align:top}
+  tbody tr{transition:background .1s ease; cursor:default}
+  tbody tr:hover{background:color-mix(in srgb,var(--accent) 7%, transparent)}
+  td.idx{color:var(--muted); white-space:nowrap}
+  td.num{color:var(--accent); font-weight:700}
+  .val{word-break:normal; overflow-wrap:anywhere; max-width:240px}
+  .val.empty{color:var(--dim); font-style:italic}
+  .tdot{display:inline-block; width:8px; height:8px; border-radius:2.5px; margin-right:5px; vertical-align:baseline}
+  .gv0{color:var(--g0)} .gv1{color:var(--g1)} .gv2{color:var(--g2)} .gv3{color:var(--g3)}
+  .gv4{color:var(--g4)} .gv5{color:var(--g5)} .gv6{color:var(--g6)} .gv7{color:var(--g7)}
+  .empty-note{padding:22px 16px; color:var(--muted); text-align:center; line-height:1.8}
+  .empty-note b{color:var(--accent)}
+  /* ---------- explain ---------- */
+  #explain{padding:12px}
+  .fl-line{display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; padding-bottom:12px; border-bottom:1px dashed var(--border)}
+  .fl-pat{font-size:14px; color:var(--text); word-break:break-all}
+  .fl-pat .sl{color:var(--muted)}
+  .fl-pat .fl{color:var(--accent)}
+  .fl-tag{font-size:11px; color:var(--muted); border:1px solid var(--border); border-radius:20px; padding:1px 8px}
+  .xtree{display:flex; flex-direction:column; gap:2px}
+  .xnode{display:flex; flex-direction:column; gap:2px}
+  .xhead{display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; padding:3px 6px; border-radius:6px}
+  .xhead:hover{background:var(--pane2)}
+  .xcode{
+    font:inherit; font-size:12.5px; color:var(--text); background:var(--pane2);
+    border:1px solid var(--border); border-radius:5px; padding:1px 6px; white-space:pre-wrap; word-break:break-all;
+  }
+  .xkind{font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; font-weight:700; padding:1px 6px; border-radius:4px; white-space:nowrap}
+  .k-seq{color:var(--muted); background:color-mix(in srgb,var(--muted) 12%, transparent)}
+  .k-alt{color:var(--purple); background:color-mix(in srgb,var(--purple) 13%, transparent)}
+  .k-lit{color:var(--text); background:color-mix(in srgb,var(--text) 9%, transparent)}
+  .k-cls{color:var(--cyan); background:color-mix(in srgb,var(--cyan) 12%, transparent)}
+  .k-anc{color:var(--amber); background:color-mix(in srgb,var(--amber) 12%, transparent)}
+  .k-esc{color:var(--muted); background:color-mix(in srgb,var(--muted) 12%, transparent)}
+  .k-ref{color:var(--red); background:color-mix(in srgb,var(--red) 11%, transparent)}
+  .k-q{color:var(--g2); background:color-mix(in srgb,var(--g2) 13%, transparent)}
+  .k-grp{color:var(--accent); background:color-mix(in srgb,var(--accent) 12%, transparent)}
+  .xdesc{color:var(--muted); font-size:12px; min-width:0}
+  .xdesc code{color:var(--text); background:var(--pane2); border-radius:4px; padding:0 4px; font-size:11.5px}
+  .xkids{margin-left:13px; padding-left:13px; border-left:1px solid var(--border); display:flex; flex-direction:column; gap:2px}
+  .xor{color:var(--purple); font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; padding:2px 6px; opacity:.85}
+  .xnote{color:var(--amber); font-size:12px; padding:6px}
+  /* ---------- status bar ---------- */
+  .statusbar{
+    flex:none; display:flex; align-items:center; gap:14px; padding:6px 14px; font-size:11.5px;
+    border-top:1px solid var(--border); background:linear-gradient(var(--pane),var(--pane2)); color:var(--muted); user-select:none;
+  }
+  .st-ok{color:var(--accent)} .st-err{color:var(--red)} .st-idle{color:var(--dim)}
+  .statusbar .pulse{display:inline-block; width:7px; height:7px; border-radius:50%; background:currentColor; margin-right:6px; box-shadow:0 0 8px currentColor}
+  .statusbar b{color:var(--text); font-weight:600}
+  .kbd{border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:10px; color:var(--muted)}
+  ::-webkit-scrollbar{width:10px;height:10px}
+  ::-webkit-scrollbar-thumb{background:var(--border); border-radius:6px; border:2px solid transparent; background-clip:content-box}
+  ::-webkit-scrollbar-thumb:hover{background:var(--border-hi); background-clip:content-box; border:2px solid transparent}
+  ::-webkit-scrollbar-track{background:transparent}
+  *{scrollbar-width:thin; scrollbar-color:var(--border) transparent}
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <header class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="ttl"><b>regex-lab</b> — pattern-match&nbsp;~/playground</div>
+    <div class="grow"></div>
+    <button class="tb" id="btn-share" title="Copy a permalink with pattern + flags encoded in the URL hash">⎘ permalink</button>
+    <button class="tb" id="btn-clear" title="Clear pattern and test string">✕ clear</button>
+    <button class="tb" id="btn-theme" title="Toggle light / dark theme">◐ theme</button>
+  </header>
+
+  <main>
+    <section class="col">
+      <div class="pane">
+        <div class="pane-h"><span class="dot"></span>pattern<span class="hint" id="pat-hint">/ … /flags</span></div>
+        <div class="pat-body">
+          <div class="pat-row">
+            <span class="delim">/</span>
+            <div class="pat-wrap"><input id="pattern" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="type a regular expression…"></div>
+            <span class="delim">/</span>
+            <div class="flags" id="flags"></div>
+          </div>
+          <div class="errbox hidden" id="errbox"></div>
+          <div class="sub-h">quick insert</div>
+          <div class="chips" id="chips"></div>
+          <div class="legend" id="legend"></div>
+        </div>
+      </div>
+      <div class="pane" style="flex:1">
+        <div class="pane-h"><span class="dot"></span>test string<span class="hint">live highlighting — hover table rows to locate matches</span></div>
+        <div class="editor">
+          <pre id="backdrop" aria-hidden="true"></pre>
+          <textarea id="text" spellcheck="false" placeholder="paste text to test against…"></textarea>
+        </div>
+      </div>
+    </section>
+
+    <section class="col">
+      <div class="pane" style="flex:1">
+        <div class="pane-h tabs">
+          <button class="tab active" data-tab="matches">matches</button>
+          <button class="tab" data-tab="explain">explain</button>
+          <span class="grow"></span>
+          <button class="tb mini" id="btn-copytable" title="Copy the match table">⎘ copy table</button>
+        </div>
+        <div class="tabpane active" id="tab-matches" style="overflow-x:auto"><div style="padding:0 0 8px"><table id="tbl"></table></div></div>
+        <div class="tabpane" id="tab-explain"><div id="explain"></div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="statusbar">
+    <span id="st-main"><span class="pulse"></span>ready</span>
+    <span class="grow"></span>
+    <span><span class="kbd">⌘/Ctrl</span>+<span class="kbd">↵</span> permalink &nbsp;·&nbsp; <span class="kbd">⌘/Ctrl</span>+<span class="kbd">⌫</span> clear</span>
+    <span id="st-right">regex-lab · v1.0</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+"use strict";
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const disp = v => esc(v).replace(/\n/g,"⏎").replace(/\r/g,"␍").replace(/\t/g,"⇥");
+
+const patternEl = $("#pattern"), textEl = $("#text"), backdrop = $("#backdrop");
+const errbox = $("#errbox"), legendEl = $("#legend"), tbl = $("#tbl"), explainEl = $("#explain");
+const stMain = $("#st-main"), patHint = $("#pat-hint");
+
+const DEMO = {
+  p: String.raw`(?<ip>\d{1,3}(?:\.\d{1,3}){3}) - (?<method>GET|POST|PUT|DELETE) "(?<path>[^"]+)" (?<status>\d{3})`,
+  f: "g",
+  t: [
+    '10.42.7.14 - GET "/api/v1/users?page=2" 200 41ms',
+    '192.168.0.105 - POST "/auth/login" 401 12ms',
+    '10.42.7.14 - GET "/healthz" 204 3ms',
+    '203.0.113.77 - DELETE "/api/v1/sessions/9f2c" 403 9ms',
+    '10.0.0.2 - PUT "/api/v1/orders/1188" 502 812ms',
+    '8.8.8.8 - OPTIONS "/api/v1/users" 204 1ms'
+  ].join("\n")
+};
+const ALL_FLAGS = ["g","i","m","s","u","y"];
+const FLAG_DESC = {
+  g:"global — find every match, not just the first",
+  i:"ignoreCase — case-insensitive matching",
+  m:"multiline — ^ and $ match at line edges",
+  s:"dotAll — . also matches newlines",
+  u:"unicode — treat pattern as UTF-16 code points",
+  y:"sticky — match must start at lastIndex"
+};
+const CHIPS = [
+  [String.raw`\d`,"digit 0-9"], [String.raw`\w`,"word char"], [String.raw`\s`,"whitespace"], [".","any char"],
+  [String.raw`[A-Z]`,"A-Z"], [String.raw`[a-z]`,"a-z"], [String.raw`[0-9]`,"0-9"], [String.raw`[^\s]`,"not whitespace"],
+  ["*","zero or more"], ["+","one or more"], ["?","optional"], ["{2,4}","2 to 4"], ["+?","lazy one+"],
+  ["(?:…)","non-capturing group"], ["(?<name>…)","named group"], ["(?=…)","lookahead"], ["(?!…)","negative lookahead"], ["(?<=…)","lookbehind"], ["(?<!…)","negative lookbehind"],
+  ["^","start of string"], ["$","end of string"], [String.raw`\b`,"word boundary"], ["a|b","alternation"],
+  [String.raw`\.`,"literal dot"], [String.raw`\1`,"backreference"]
+];
+
+/* ============================ regex parser (for explain + error carets) ============================ */
+class RP {
+  constructor(s, u){ this.s = s; this.i = 0; this.u = u; this.groups = 0; this.names = []; }
+  fail(msg, pos = this.i){ const e = new Error(msg); e.rxPos = pos; throw e; }
+  parse(){
+    const r = this.dis();
+    if (this.i < this.s.length) this.fail(this.s[this.i] === ")" ? "Unmatched ')'" : "Unexpected token");
+    return { root: r, groups: this.groups, names: this.names };
+  }
+  dis(){
+    const b = [this.seq()];
+    while (this.s[this.i] === "|"){ this.i++; b.push(this.seq()); }
+    return b.length > 1 ? { type:"alt", branches: b } : b[0];
+  }
+  seq(){
+    const a = [];
+    while (this.i < this.s.length && this.s[this.i] !== "|" && this.s[this.i] !== ")"){
+      const at = this.atom();
+      a.push(this.quant(at) || at);
+    }
+    return a.length === 1 ? a[0] : { type:"seq", atoms: a };
+  }
+  quantifiable(n){ return n.type !== "anchor" && n.type !== "boundary"; }
+  quant(at){
+    const c = this.s[this.i];
+    let min, max, text;
+    if (c === "*"){ min = 0; max = Infinity; text = "*"; this.i++; }
+    else if (c === "+"){ min = 1; max = Infinity; text = "+"; this.i++; }
+    else if (c === "?"){ min = 0; max = 1; text = "?"; this.i++; }
+    else if (c === "{"){
+      const m = /^\{(\d+)(?:,(\d*))?\}/.exec(this.s.slice(this.i));
+      if (!m) return null;
+      min = +m[1];
+      max = m[2] === undefined ? min : (m[2] === "" ? Infinity : +m[2]);
+      if (max < min) this.fail("Range out of order in quantifier", this.i);
+      text = m[0]; this.i += m[0].length;
+    }
+    else return null;
+    if (!this.quantifiable(at)) this.fail("Nothing to repeat", this.i - text.length);
+    let lazy = false;
+    if (this.s[this.i] === "?"){ lazy = true; text += "?"; this.i++; }
+    const nx = this.s[this.i];
+    if (nx === "*" || nx === "+" || nx === "?") this.fail("Nothing to repeat", this.i);
+    return { type:"quant", at, min, max, text, lazy };
+  }
+  atom(){
+    const c = this.s[this.i];
+    if (c === "(") return this.group();
+    if (c === "[") return this.cls();
+    if (c === "."){ this.i++; return { type:"dot" }; }
+    if (c === "^" || c === "$"){ this.i++; return { type:"anchor", kind:c }; }
+    if (c === "\\") return this.esc();
+    if (c === "*" || c === "+" || c === "?") this.fail("Nothing to repeat");
+    if (c === ")") this.fail("Unmatched ')'");
+    this.i++;
+    return { type:"literal", ch:c };
+  }
+  esc(){
+    const st = this.i, c = this.s[this.i + 1];
+    if (c === undefined) this.fail("\\ at end of pattern", st);
+    if ("dDwWsS".includes(c)){ this.i += 2; return { type:"class", kind:c }; }
+    if (c === "b"){ this.i += 2; return { type:"boundary", neg:false }; }
+    if (c === "B"){ this.i += 2; return { type:"boundary", neg:true }; }
+    const ctrl = { n:"\n", r:"\r", t:"\t", v:"\v", f:"\f", "0":"\0" };
+    if (c in ctrl){ this.i += 2; return { type:"ctrl", ch:ctrl[c], raw:"\\" + c }; }
+    if (c === "x"){
+      const m = /^x[0-9a-fA-F]{2}/.exec(this.s.slice(this.i + 1));
+      if (m){ this.i += 1 + m[0].length; return { type:"hex", raw:"\\" + m[0] }; }
+      if (this.u) this.fail("Invalid hexadecimal escape", st);
+      this.i += 2; return { type:"literal", ch:"x", escaped:true };
+    }
+    if (c === "u"){
+      const m = /^u(?:\{[0-9a-fA-F]{1,6}\}|[0-9a-fA-F]{4})/.exec(this.s.slice(this.i + 1));
+      if (m){ this.i += 1 + m[0].length; return { type:"uni", raw:"\\" + m[0] }; }
+      if (this.u) this.fail("Invalid Unicode escape", st);
+      this.i += 2; return { type:"literal", ch:"u", escaped:true };
+    }
+    if (c === "k"){
+      const m = /^k<[^<>]+>/.exec(this.s.slice(this.i + 1));
+      if (m){ this.i += 1 + m[0].length; return { type:"backref", name:m[0].slice(2, -1), raw:"\\" + m[0] }; }
+      if (this.u) this.fail("Invalid named backreference", st);
+      this.i += 2; return { type:"literal", ch:"k", escaped:true };
+    }
+    if (c === "p" || c === "P"){
+      if (!this.u){ this.i += 2; return { type:"literal", ch:c, escaped:true }; }
+      if (this.s[this.i + 2] !== "{") this.fail("Invalid property name", st);
+      const end = this.s.indexOf("}", this.i + 3);
+      if (end < 0) this.fail("Invalid property name", st);
+      const name = this.s.slice(this.i + 3, end);
+      this.i = end + 1; return { type:"prop", neg:c === "P", name, raw:this.s.slice(st, this.i) };
+    }
+    if (/[1-9]/.test(c)){
+      let j = this.i + 1, num = "";
+      while (j < this.s.length && /\d/.test(this.s[j])){ num += this.s[j]; j++; }
+      const n = +num;
+      if (n > this.groups){
+        if (this.u) this.fail("Invalid group reference \\" + num, st);
+        this.i = this.i + 2;
+        if (c <= "7") return { type:"ctrl", ch:String.fromCharCode(+c), raw:"\\" + c };
+        return { type:"literal", ch:c, escaped:true };
+      }
+      this.i = j; return { type:"backref", num:n, raw:"\\" + num };
+    }
+    if (/[a-zA-Z]/.test(c) && this.u) this.fail("Unrecognized escape \\" + c, st);
+    this.i += 2; return { type:"literal", ch:c, escaped:true };
+  }
+  group(){
+    const st = this.i; this.i++;
+    let kind = "capture", name = null, num = null;
+    if (this.s[this.i] === "?"){
+      const c2 = this.s[this.i + 1];
+      if (c2 === ":"){ this.i += 2; kind = "noncapture"; }
+      else if (c2 === "="){ this.i += 2; kind = "lookahead"; }
+      else if (c2 === "!"){ this.i += 2; kind = "neglookahead"; }
+      else if (c2 === "<"){
+        const c3 = this.s[this.i + 2];
+        if (c3 === "="){ this.i += 3; kind = "lookbehind"; }
+        else if (c3 === "!"){ this.i += 3; kind = "neglookbehind"; }
+        else {
+          const end = this.s.indexOf(">", this.i + 2);
+          if (end < 0) this.fail("Unterminated group", st);
+          name = this.s.slice(this.i + 2, end);
+          if (!/^(?!\d)[\w$\u00a0-\uffff]+$/.test(name)) this.fail("Invalid group name", st);
+          if (this.names.includes(name)) this.fail("Duplicate group name \"" + name + "\"", st);
+          this.i = end + 1; this.groups++; num = this.groups; this.names.push(name); kind = "named";
+        }
+      }
+      else this.fail("Invalid group", st);
+    } else { this.groups++; num = this.groups; }
+    const headEnd = this.i;
+    const body = this.dis();
+    if (this.s[this.i] !== ")") this.fail("Unterminated group", st);
+    this.i++;
+    return { type:"group", kind, name, num, body, head:this.s.slice(st, headEnd), raw:this.s.slice(st, this.i) };
+  }
+  cls(){
+    const st = this.i; this.i++;
+    let neg = false;
+    if (this.s[this.i] === "^"){ neg = true; this.i++; }
+    const items = [];
+    for (;;){
+      if (this.i >= this.s.length) this.fail("Unterminated character class", st);
+      const c = this.s[this.i];
+      if (c === "]"){ this.i++; break; }
+      if (c === "\\"){ items.push(this.clsEsc()); continue; }
+      const lo = { type:"literal", ch:c }; this.i++;
+      if (this.s[this.i] === "-" && this.s[this.i + 1] !== "]" && this.s[this.i + 1] !== undefined){
+        if (this.s[this.i + 1] === "\\"){ items.push(lo); this.i++; items.push({ type:"literal", ch:"-" }); continue; }
+        this.i++;
+        const hi = { type:"literal", ch:this.s[this.i] }; this.i++;
+        if (lo.ch > hi.ch){
+          if (this.u) this.fail("Range out of order in character class", st);
+          items.push(lo, { type:"literal", ch:"-" }, hi); continue;
+        }
+        items.push({ type:"range", from:lo.ch, to:hi.ch });
+      } else items.push(lo);
+    }
+    return { type:"charset", neg, items, raw:this.s.slice(st, this.i) };
+  }
+  clsEsc(){
+    const st = this.i, c = this.s[this.i + 1];
+    if (c === undefined) this.fail("Unterminated character class", st);
+    if ("dDwWsS".includes(c)){ this.i += 2; return { type:"class", kind:c }; }
+    const ctrl = { n:"\n", r:"\r", t:"\t", v:"\v", f:"\f", "0":"\0", b:"\b" };
+    if (c in ctrl){ this.i += 2; return { type:"ctrl", ch:ctrl[c], raw:"\\" + c }; }
+    if (c === "x" && /^x[0-9a-fA-F]{2}/.test(this.s.slice(this.i + 1))){ this.i += 4; return { type:"hex", raw:this.s.slice(st, this.i) }; }
+    if (c === "u"){
+      const m = /^u(?:\{[0-9a-fA-F]{1,6}\}|[0-9a-fA-F]{4})/.exec(this.s.slice(this.i + 1));
+      if (m){ this.i += 1 + m[0].length; return { type:"uni", raw:this.s.slice(st, this.i) }; }
+    }
+    if (/[a-zA-Z]/.test(c) && this.u) this.fail("Invalid escape in character class", st);
+    this.i += 2; return { type:"literal", ch:c, escaped:true };
+  }
+}
+
+function naiveGroupCount(p){
+  let n = 0, inCls = false;
+  for (let i = 0; i < p.length; i++){
+    const c = p[i];
+    if (inCls){ if (c === "\\") i++; else if (c === "]") inCls = false; continue; }
+    if (c === "\\"){ i++; continue; }
+    if (c === "["){ inCls = true; continue; }
+    if (c === "("){
+      if (p[i + 1] === "?"){
+        const c2 = p[i + 2];
+        if (c2 === ":" || c2 === "=" || c2 === "!") continue;
+        if (c2 === "<" && (p[i + 3] === "=" || p[i + 3] === "!")) continue;
+      }
+      n++;
+    }
+  }
+  return n;
+}
+
+/* ============================ matching engine ============================ */
+function runAll(pattern, flags, text){
+  const set = new Set((flags + "dg").split(""));
+  const re = new RegExp(pattern, [...set].join(""));
+  const out = []; let m;
+  re.lastIndex = 0;
+  while ((m = re.exec(text)) !== null){
+    const id = out.length;
+    const idx = m.indices;
+    const groups = m.slice(1).map((v, gi) => {
+      const r = idx && idx[gi + 1];
+      return { value:v, start:r ? r[0] : -1, end:r ? r[1] : -1 };
+    });
+    out.push({ id, start:m.index, end:m.index + m[0].length, value:m[0], groups });
+    if (m[0] === "") re.lastIndex++;
+    if (out.length >= 2000){ out.capped = true; break; }
+  }
+  return out;
+}
+
+/* ============================ backdrop highlighting ============================ */
+function buildBackdrop(text, matches){
+  const bounds = new Set([0, text.length]);
+  const zmap = new Map();
+  for (const mt of matches){
+    bounds.add(mt.start); bounds.add(mt.end);
+    if (mt.start === mt.end){ if (!zmap.has(mt.start)) zmap.set(mt.start, []); zmap.get(mt.start).push(mt.id); }
+    mt.groups.forEach(g => { if (g.start >= 0 && g.end > g.start){ bounds.add(g.start); bounds.add(g.end); } });
+  }
+  const pts = [...bounds].sort((a, b) => a - b);
+  const classify = (a, b) => {
+    for (const mt of matches){
+      if (mt.start <= a && mt.end >= b && mt.end > mt.start){
+        let gi = 0;
+        mt.groups.forEach((g, i) => { if (g.start >= 0 && g.end > g.start && g.start <= a && g.end >= b) gi = i + 1; });
+        return { cls: gi ? "gr g" + ((gi - 1) % 8) : "mt", id: mt.id };
+      }
+    }
+    return null;
+  };
+  let html = "", prev = 0;
+  for (const p of pts){
+    if (p > prev){
+      const seg = classify(prev, p);
+      const inner = esc(text.slice(prev, p));
+      html += seg ? `<span class="${seg.cls}" data-m="${seg.id}">${inner}</span>` : inner;
+      prev = p;
+    }
+    const z = zmap.get(p);
+    if (z) for (const id of z) html += `<span class="zw" data-m="${id}"></span>`;
+  }
+  html += "\n";
+  backdrop.innerHTML = html;
+}
+
+/* ============================ explanation renderer ============================ */
+function charName(ch){
+  if (ch === " ") return "a space";
+  if (ch === "\n") return "a newline";
+  if (ch === "\t") return "a tab";
+  if (ch === "\r") return "a carriage return";
+  return `“${esc(ch)}”`;
+}
+function cpName(raw){
+  let hex = raw.startsWith("\\u{") ? raw.slice(3, -1) : (raw[1] === "x" ? raw.slice(2) : raw.slice(2));
+  const cp = parseInt(hex, 16);
+  let ch = "";
+  try { ch = String.fromCodePoint(cp); } catch(e){}
+  return `U+${cp.toString(16).toUpperCase().padStart(4, "0")}${ch && !/\s/.test(ch) ? ` (“${esc(ch)}”)` : ""}`;
+}
+function quantPhrase(n){
+  const { min, max } = n;
+  if (min === 0 && max === 1) return "between zero and one time (optional)";
+  if (min === 0 && max === Infinity) return "zero or more times";
+  if (min === 1 && max === Infinity) return "one or more times";
+  if (min === max) return `exactly ${min} time${min === 1 ? "" : "s"}`;
+  if (max === Infinity) return `${min} or more times`;
+  return `between ${min} and ${max} times`;
+}
+function partText(p){
+  switch (p.type){
+    case "range": return `<code>${esc(p.from)}–${esc(p.to)}</code>`;
+    case "class": return `<code>${esc("\\" + p.kind)}</code>`;
+    case "ctrl": return `<code>${esc(p.raw)}</code>`;
+    case "hex": case "uni": return `<code>${esc(p.raw)}</code>`;
+    default: return `<code>${esc(p.ch)}</code>`;
+  }
+}
+const CLASS_DESC = {
+  d:"any digit (0-9)", D:"any non-digit", w:"any word character (letters, digits, _)",
+  W:"any non-word character", s:"any whitespace (space, tab, newline…)", S:"any non-whitespace"
+};
+function nodeInfo(n, flags){
+  switch (n.type){
+    case "seq": return { kind:"sequence", cls:"k-seq", code:null, desc:"match all of these, in order", children:n.atoms };
+    case "alt": return { kind:"alternation", cls:"k-alt", code:null, desc:"match exactly one of the branches below", branches:n.branches };
+    case "literal": return { kind:"literal", cls:"k-lit", code:n.ch === " " ? "␣" : n.ch, desc:`matches the character ${charName(n.ch)}` };
+    case "dot": return { kind:"class", cls:"k-cls", code:".", desc:"matches any character" + (flags.includes("s") ? ", including line breaks (s flag)" : " except line breaks") };
+    case "class": return { kind:"class", cls:"k-cls", code:"\\" + n.kind, desc:"matches " + CLASS_DESC[n.kind] };
+    case "anchor": return { kind:"anchor", cls:"k-anc", code:n.kind, desc:n.kind === "^"
+      ? "asserts position at start of the string" + (flags.includes("m") ? " or after any line break (m flag)" : "")
+      : "asserts position at end of the string" + (flags.includes("m") ? " or before any line break (m flag)" : "") };
+    case "boundary": return { kind:"anchor", cls:"k-anc", code:n.neg ? "\\B" : "\\b", desc:n.neg ? "asserts a position that is NOT a word boundary" : "asserts a word boundary (edge between word and non-word)" };
+    case "ctrl": return { kind:"escape", cls:"k-esc", code:n.raw, desc:"matches " + charName(n.ch) };
+    case "hex": case "uni": return { kind:"escape", cls:"k-esc", code:n.raw, desc:"matches the character " + cpName(n.raw) };
+    case "prop": return { kind:"class", cls:"k-cls", code:n.raw, desc:(n.neg ? "matches characters WITHOUT Unicode property " : "matches characters with Unicode property ") + `<code>${esc(n.name)}</code>` };
+    case "backref": return { kind:"backref", cls:"k-ref", code:n.raw, desc:"matches the same text captured by " + (n.name ? `named group <code>${esc(n.name)}</code>` : `group <code>#${n.num}</code>`) };
+    case "quant": return { kind:"quantifier", cls:"k-q", code:n.text, desc:`repeats the element before it ${quantPhrase(n)} — ${n.lazy ? "lazily, as few as possible" : "greedily, as many as possible"}`, children:[n.at] };
+    case "group": {
+      const map = {
+        capture:["capturing group", `remembers its match as <code>\\${n.num}</code>`],
+        named:["named group", `<code>${esc(n.name)}</code> — remembered as <code>\\${n.num}</code>`],
+        noncapture:["non-capturing", "groups tokens without capturing"],
+        lookahead:["lookahead", "asserts what follows matches here, without consuming it"],
+        neglookahead:["neg lookahead", "asserts what follows does NOT match here"],
+        lookbehind:["lookbehind", "asserts what precedes here matches, without consuming it"],
+        neglookbehind:["neg lookbehind", "asserts what precedes here does NOT match"]
+      }[n.kind];
+      return { kind:map[0], cls:"k-grp", code:n.head, desc:map[1], children:[n.body] };
+    }
+    case "charset": return { kind:"character class", cls:"k-cls", code:n.raw, desc:`matches one character ${n.neg ? "NOT in" : "from"} the set: ${n.items.map(partText).join(" · ")}` };
+  }
+  return { kind:"token", cls:"k-lit", code:n.raw || "", desc:"" };
+}
+function xnode(n, flags){
+  const info = nodeInfo(n, flags);
+  let h = '<div class="xnode"><div class="xhead">';
+  if (info.code != null && info.code !== "") h += `<code class="xcode">${esc(info.code)}</code>`;
+  h += `<span class="xkind ${info.cls}">${esc(info.kind)}</span>`;
+  if (info.desc) h += `<span class="xdesc">${info.desc}</span>`;
+  h += "</div>";
+  if (info.branches) h += '<div class="xkids">' + info.branches.map((b, i) => (i ? '<div class="xor">or</div>' : "") + xnode(b, flags)).join("") + "</div>";
+  else if (info.children) h += '<div class="xkids">' + info.children.map(c => xnode(c, flags)).join("") + "</div>";
+  return h + "</div>";
+}
+function renderExplain(root, pattern, flags){
+  let h = '<div class="fl-line"><span class="fl-pat"><span class="sl">/</span>' + esc(pattern) + '<span class="sl">/</span><span class="fl">' + esc(flags) + "</span></span>";
+  for (const f of flags) h += `<span class="fl-tag" title="${esc(FLAG_DESC[f])}"><b>${f}</b> ${esc(FLAG_DESC[f].split("—")[0].trim())}</span>`;
+  h += "</div>";
+  if (!root){
+    h += '<div class="xnote">⚠ this pattern compiles, but its structure could not be broken down automatically.</div>';
+  } else {
+    h += '<div class="xtree">' + (root.type === "seq" ? root.atoms.map(n => xnode(n, flags)).join("") : xnode(root, flags)) + "</div>";
+  }
+  explainEl.innerHTML = h;
+}
+
+/* ============================ table ============================ */
+let currentMatches = [], currentMeta = { groups:0, names:[] };
+function renderTable(matches, meta){
+  currentMatches = matches; currentMeta = meta;
+  if (!patternEl.value){ tbl.innerHTML = ""; return; }
+  if (!matches.length){
+    tbl.innerHTML = `<tbody><tr><td><div class="empty-note">no matches — tweak the <b>pattern</b>, the <b>flags</b>, or the test string</div></td></tr></tbody>`;
+    return;
+  }
+  let head = "<thead><tr><th>#</th><th>range</th><th>match</th>";
+  for (let g = 1; g <= meta.groups; g++){
+    head += `<th><span class="tdot" style="background:var(--g${(g - 1) % 8})"></span>g${g}${meta.names[g - 1] ? `<span class="gn">${esc(meta.names[g - 1])}</span>` : ""}</th>`;
+  }
+  head += "</tr></thead>";
+  let body = "<tbody>";
+  for (const mt of matches){
+    body += `<tr data-m="${mt.id}"><td class="num">${mt.id + 1}</td><td class="idx">${mt.start}–${mt.end}${mt.start === mt.end ? " <span class='val empty'>(empty)</span>" : ""}</td><td class="val"><span class="gv7">"${disp(mt.value)}"</span></td>`;
+    for (let g = 0; g < meta.groups; g++){
+      const gr = mt.groups[g];
+      body += gr === undefined ? "<td class='val empty'>—</td>"
+        : (gr.value === undefined ? "<td class='val empty'>∅ unset</td>"
+        : `<td class="val"><span class="gv${g % 8}">${gr.start >= 0 ? disp(gr.value) : "<i>" + disp(gr.value) + "</i>"}</span></td>`);
+    }
+    body += "</tr>";
+  }
+  body += "</tbody>";
+  tbl.innerHTML = head + body;
+}
+
+/* ============================ flags & chips UI ============================ */
+function currentFlags(){ return [...document.querySelectorAll(".fchip.on")].map(b => b.dataset.f).join(""); }
+function buildFlags(){
+  $("#flags").innerHTML = ALL_FLAGS.map(f =>
+    `<button class="fchip" data-f="${f}" title="${esc(FLAG_DESC[f])}">${f}</button>`).join("");
+  $("#flags").addEventListener("click", e => {
+    const b = e.target.closest(".fchip"); if (!b) return;
+    b.classList.toggle("on"); update();
+  });
+}
+function buildChips(){
+  $("#chips").innerHTML = CHIPS.map(([t, d]) =>
+    `<button class="chip" data-t="${esc(t)}" title="${esc(d)}">${esc(t)}</button>`).join("");
+  $("#chips").addEventListener("click", e => {
+    const b = e.target.closest(".chip"); if (!b) return;
+    insertToken(b.dataset.t);
+  });
+}
+function insertToken(tok){
+  const s = patternEl.selectionStart, en = patternEl.selectionEnd;
+  patternEl.value = patternEl.value.slice(0, s) + tok + patternEl.value.slice(en);
+  const ph = tok.indexOf("…");
+  if (ph >= 0) patternEl.setSelectionRange(s + ph, s + tok.length);
+  else { const p = s + tok.length; patternEl.setSelectionRange(p, p); }
+  patternEl.focus(); update();
+}
+
+/* ============================ error display ============================ */
+function showError(msg, pos){
+  errbox.classList.remove("hidden");
+  let h = `<span class="em">✕ SyntaxError</span> · ${esc(msg)}`;
+  if (pos != null && pos >= 0){
+    const line = "/" + patternEl.value + "/" + currentFlags();
+    const caret = " ".repeat(Math.min(pos + 1, line.length - 1)) + "^";
+    h += `<pre>${esc(line)}\n<span class="car">${esc(caret)}</span></pre>`;
+  }
+  errbox.innerHTML = h;
+}
+function hideError(){ errbox.classList.add("hidden"); }
+
+/* ============================ status ============================ */
+function setStatus(html, cls){ stMain.className = ""; stMain.innerHTML = `<span class="pulse"></span>${html}`; }
+
+/* ============================ main update ============================ */
+let raf = 0;
+function scheduleUpdate(){ cancelAnimationFrame(raf); raf = requestAnimationFrame(update); }
+
+function update(){
+  const p = patternEl.value, flags = currentFlags();
+  patHint.textContent = p ? "/" + (p.length > 28 ? p.slice(0, 28) + "…" : p) + "/" + flags : "/ … /flags";
+  syncBackdropSize();
+
+  if (!p){
+    hideError();
+    backdrop.innerHTML = esc(textEl.value) + "\n";
+    tbl.innerHTML = ""; legendEl.innerHTML = "";
+    explainEl.innerHTML = '<div class="empty-note">type a pattern to see a <b>token-by-token breakdown</b></div>';
+    setStatus('<span class="st-idle">waiting for pattern…</span>');
+    return;
+  }
+
+  let re = null, nativeErr = null;
+  try { re = new RegExp(p, flags); } catch (e){ nativeErr = e; }
+
+  let parsed = null, parseErr = null;
+  try { parsed = new RP(p, flags.includes("u")).parse(); } catch (e){ parseErr = e; }
+
+  if (!re){
+    const pos = parseErr && parseErr.rxPos != null ? parseErr.rxPos : null;
+    const msg = (nativeErr.message || "Invalid regular expression").replace(/^Invalid regular expression:\s*/, "").split(": ").pop();
+    showError(msg, pos);
+    backdrop.innerHTML = esc(textEl.value) + "\n";
+    tbl.innerHTML = `<tbody><tr><td><div class="empty-note">fix the <b>pattern</b> to see matches</div></td></tr></tbody>`; legendEl.innerHTML = "";
+    renderExplain(parsed ? parsed.root : null, p, flags);
+    setStatus(`<span class="st-err">invalid pattern</span> · ${esc(msg)}`);
+    return;
+  }
+  hideError();
+
+  const meta = parsed ? { groups:parsed.groups, names:parsed.names } : { groups:naiveGroupCount(p), names:[] };
+  const t0 = performance.now();
+  let matches = [];
+  try { matches = runAll(p, flags, textEl.value); } catch (e){ /* catastrophic cases */ }
+  const ms = (performance.now() - t0).toFixed(2);
+
+  buildBackdrop(textEl.value, matches);
+  renderTable(matches, meta);
+  renderExplain(parsed ? parsed.root : null, p, flags);
+
+  legendEl.innerHTML = Array.from({ length:meta.groups }, (_, i) =>
+    `<span class="lg" style="--c:var(--g${i % 8})"><span class="sw"></span>g${i + 1}${meta.names[i] ? ` <span class="nm">${esc(meta.names[i])}</span>` : ""}</span>`).join("");
+
+  const n = matches.length;
+  setStatus(`<span class="st-ok">${n}${matches.capped ? "+" : ""} match${n === 1 ? "" : "es"}</span> · ${meta.groups} capture group${meta.groups === 1 ? "" : "s"} · <b>${ms} ms</b> · flags <b>/${esc(flags)}/</b>`);
+}
+
+function syncBackdropSize(){
+  backdrop.style.right = (textEl.offsetWidth - textEl.clientWidth) + "px";
+}
+
+/* ============================ permalink ============================ */
+function permalink(){
+  return location.href.split("#")[0] + "#p=" + encodeURIComponent(patternEl.value) + "&f=" + currentFlags();
+}
+async function copyText(t){
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch(e){
+    const ta = document.createElement("textarea");
+    ta.value = t; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch(_){}
+    ta.remove(); return ok;
+  }
+}
+function flash(btn, label){
+  const old = btn.textContent; btn.textContent = label; btn.classList.add("ok");
+  setTimeout(() => { btn.textContent = old; btn.classList.remove("ok"); }, 1400);
+}
+
+/* ============================ table ↔ editor hover sync ============================ */
+tbl.addEventListener("mouseover", e => {
+  const tr = e.target.closest("tr[data-m]"); if (!tr || tr.dataset.hl) return;
+  backdrop.querySelectorAll(`[data-m="${tr.dataset.m}"]`).forEach(s => s.classList.add("hl"));
+});
+tbl.addEventListener("mouseout", e => {
+  const tr = e.target.closest("tr[data-m]"); if (!tr) return;
+  backdrop.querySelectorAll(".hl").forEach(s => s.classList.remove("hl"));
+});
+
+/* ============================ init ============================ */
+function setFlags(f){
+  document.querySelectorAll(".fchip").forEach(b => b.classList.toggle("on", f.includes(b.dataset.f)));
+}
+
+buildFlags(); buildChips();
+
+(function loadState(){
+  let p = DEMO.p, f = DEMO.f, t = DEMO.t;
+  const h = location.hash.slice(1);
+  if (h){
+    const q = new URLSearchParams(h);
+    if (q.has("p")){ p = q.get("p"); t = ""; }
+    if (q.has("f")) f = [...new Set(q.get("f").split("").filter(c => ALL_FLAGS.includes(c)))].join("");
+  }
+  patternEl.value = p; setFlags(f || "g"); textEl.value = t;
+})();
+
+textEl.addEventListener("input", scheduleUpdate);
+textEl.addEventListener("scroll", () => { backdrop.scrollTop = textEl.scrollTop; backdrop.scrollLeft = textEl.scrollLeft; });
+patternEl.addEventListener("input", scheduleUpdate);
+new ResizeObserver(syncBackdropSize).observe(textEl);
+
+$("#btn-share").addEventListener("click", async e => {
+  const url = permalink();
+  history.replaceState(null, "", url);
+  if (await copyText(url)) flash(e.currentTarget, "✓ copied");
+  else flash(e.currentTarget, "⚠ failed");
+});
+$("#btn-clear").addEventListener("click", () => {
+  patternEl.value = ""; textEl.value = ""; patternEl.focus(); update();
+});
+$("#btn-copytable").addEventListener("click", async e => {
+  const meta = currentMeta;
+  let tsv = ["#\trange\tmatch" + Array.from({ length:meta.groups }, (_, i) => ("\tg" + (i + 1) + (meta.names[i] ? ":" + meta.names[i] : ""))).join("")];
+  for (const mt of currentMatches)
+    tsv.push([mt.id + 1, mt.start + "-" + mt.end, JSON.stringify(mt.value)].concat(mt.groups.map(g => g.value === undefined ? "" : JSON.stringify(g.value))).join("\t"));
+  if (await copyText(tsv.join("\n"))) flash(e.currentTarget, "✓ copied");
+});
+
+function selectTab(name){
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".tabpane").forEach(x => x.classList.toggle("active", x.id === "tab-" + name));
+}
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+
+/* theme */
+const themeBtn = $("#btn-theme");
+function applyTheme(t){ document.documentElement.dataset.theme = t; localStorage.setItem("regexlab-theme", t); }
+const qTheme = new URLSearchParams(location.search).get("theme");
+applyTheme(qTheme === "light" || qTheme === "dark" ? qTheme : (localStorage.getItem("regexlab-theme") || "dark"));
+themeBtn.addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+
+/* shortcuts */
+addEventListener("keydown", e => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod) return;
+  if (e.key === "Enter"){ e.preventDefault(); $("#btn-share").click(); }
+  if (e.key === "Backspace" && !patternEl.value && !textEl.value){ /* noop */ }
+});
+
+update();
+const qTab = new URLSearchParams(location.search).get("tab");
+if (qTab === "explain" || qTab === "matches") selectTab(qTab);
+patternEl.setSelectionRange(0, 0); patternEl.scrollLeft = 0;
+patternEl.focus();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Typing Rain — outlast the storm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cyan:#4dd8ff;
+    --magenta:#ff3cac;
+    --amber:#ffb84d;
+    --ink:#05070f;
+    --panel:rgba(10,16,32,.62);
+    --line:rgba(77,216,255,.22);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:var(--ink)}
+  body{
+    font-family:'Rajdhani',system-ui,sans-serif;
+    color:#dbe9ff;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #game{position:fixed;inset:0;display:block}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed;top:0;left:0;right:0;
+    display:flex;align-items:stretch;justify-content:center;gap:10px;
+    padding:12px 14px;pointer-events:none;z-index:5;
+    flex-wrap:wrap;
+  }
+  .panel{
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:7px 16px 8px;
+    min-width:96px;
+    text-align:center;
+    backdrop-filter:blur(8px);
+    -webkit-backdrop-filter:blur(8px);
+    box-shadow:0 4px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .panel .label{
+    font-size:11px;letter-spacing:.22em;text-transform:uppercase;
+    color:rgba(160,196,255,.65);font-weight:600;
+  }
+  .panel .value{
+    font-family:'Share Tech Mono',ui-monospace,monospace;
+    font-size:24px;line-height:1.15;color:#eaf6ff;
+    text-shadow:0 0 12px rgba(77,216,255,.5);
+  }
+  #hud-score .value{color:var(--cyan)}
+  #hud-combo .value{color:var(--magenta);text-shadow:0 0 12px rgba(255,60,172,.55)}
+  #hud-level .value{color:var(--amber);text-shadow:0 0 12px rgba(255,184,77,.5)}
+  .pop{animation:pop .28s ease}
+  @keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.28)}100%{transform:scale(1)}}
+
+  #lives{display:flex;gap:7px;align-items:center;justify-content:center;height:28px}
+  .drop{
+    width:14px;height:14px;
+    background:linear-gradient(180deg,#8be4ff,#2b9fd8);
+    border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);
+    box-shadow:0 0 10px rgba(77,216,255,.7);
+    transition:opacity .3s, transform .3s, filter .3s;
+  }
+  .drop.lost{opacity:.14;filter:grayscale(1);transform:rotate(-45deg) scale(.7)}
+
+  /* ---------- footer hint ---------- */
+  #hint{
+    position:fixed;bottom:10px;left:0;right:0;
+    text-align:center;font-size:13px;letter-spacing:.14em;
+    color:rgba(150,180,220,.5);z-index:5;pointer-events:none;
+    text-transform:uppercase;font-weight:600;
+  }
+  #hint b{color:rgba(77,216,255,.8);font-weight:700}
+
+  /* ---------- overlays ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:10;
+    display:flex;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 40%, rgba(8,14,30,.55), rgba(3,5,12,.88));
+    backdrop-filter:blur(4px);
+    -webkit-backdrop-filter:blur(4px);
+    opacity:1;transition:opacity .35s ease;
+  }
+  .overlay.hidden{opacity:0;pointer-events:none}
+  .card{
+    text-align:center;max-width:640px;width:calc(100% - 40px);
+    padding:44px 40px 38px;
+    background:linear-gradient(180deg, rgba(13,21,42,.92), rgba(7,11,24,.94));
+    border:1px solid var(--line);
+    border-radius:18px;
+    box-shadow:0 0 60px rgba(77,216,255,.12), 0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06);
+  }
+  .title{
+    font-family:'Share Tech Mono',ui-monospace,monospace;
+    font-size:clamp(42px,8vw,68px);
+    letter-spacing:.1em;
+    line-height:1;
+    background:linear-gradient(180deg,#e8fbff 0%, var(--cyan) 55%, #1f6fa8 100%);
+    -webkit-background-clip:text;background-clip:text;
+    -webkit-text-fill-color:transparent;color:transparent;
+    filter:drop-shadow(0 0 22px rgba(77,216,255,.45));
+    margin-bottom:6px;
+  }
+  .tagline{
+    font-size:17px;letter-spacing:.32em;text-transform:uppercase;
+    color:rgba(170,200,240,.75);font-weight:600;margin-bottom:26px;
+  }
+  .rules{
+    display:flex;gap:12px;justify-content:center;flex-wrap:wrap;
+    margin-bottom:30px;
+  }
+  .rule{
+    flex:1 1 150px;max-width:190px;
+    background:rgba(20,32,58,.55);
+    border:1px solid rgba(77,216,255,.14);
+    border-radius:12px;padding:14px 12px;
+  }
+  .rule .ico{font-size:26px;margin-bottom:6px;display:block}
+  .rule p{font-size:14.5px;line-height:1.45;color:rgba(196,216,244,.85);font-weight:500}
+  .rule p b{color:var(--cyan)}
+
+  .btn{
+    pointer-events:auto;cursor:pointer;
+    font-family:'Rajdhani',sans-serif;font-weight:700;
+    font-size:19px;letter-spacing:.28em;text-transform:uppercase;
+    color:#031018;
+    background:linear-gradient(180deg,#8be9ff, var(--cyan) 55%, #27a5dd);
+    border:none;border-radius:12px;
+    padding:15px 46px;
+    box-shadow:0 0 30px rgba(77,216,255,.5), 0 6px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.6);
+    transition:transform .12s ease, box-shadow .2s ease, filter .2s;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.03);filter:brightness(1.1);box-shadow:0 0 46px rgba(77,216,255,.75),0 10px 24px rgba(0,0,0,.55)}
+  .btn:active{transform:translateY(0) scale(.98)}
+  .press{margin-top:16px;font-size:13px;letter-spacing:.2em;color:rgba(150,180,220,.55);text-transform:uppercase}
+  .press kbd{
+    font-family:'Share Tech Mono',monospace;
+    background:rgba(77,216,255,.12);border:1px solid rgba(77,216,255,.35);
+    border-radius:5px;padding:1px 8px;color:#bfeaff;
+  }
+
+  /* game over stats */
+  .stats{
+    display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:12px;
+    margin:26px 0 30px;
+  }
+  .stat{
+    background:rgba(20,32,58,.55);border:1px solid rgba(77,216,255,.14);
+    border-radius:12px;padding:14px 8px;
+  }
+  .stat .v{
+    font-family:'Share Tech Mono',monospace;font-size:28px;color:var(--cyan);
+    text-shadow:0 0 14px rgba(77,216,255,.5);
+  }
+  .stat .k{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:rgba(160,196,255,.6);margin-top:3px;font-weight:600}
+  #over-title{
+    background:linear-gradient(180deg,#ffe8f4 0%, var(--magenta) 55%, #8c1d5d 100%);
+    filter:drop-shadow(0 0 22px rgba(255,60,172,.45));
+  }
+  #over-final{font-size:16px;letter-spacing:.18em;text-transform:uppercase;color:rgba(190,215,245,.8);font-weight:600}
+  #over-final b{font-family:'Share Tech Mono',monospace;font-size:30px;color:var(--cyan);letter-spacing:0}
+  .newbest{color:var(--amber);font-weight:700;letter-spacing:.2em;margin-top:4px;text-transform:uppercase;font-size:14px;animation:pop .4s ease}
+
+  /* pause */
+  #overlay-pause .card{padding:36px 60px}
+  #overlay-pause .title{font-size:clamp(30px,6vw,46px)}
+
+  @media (max-width:560px){
+    .panel{min-width:70px;padding:5px 10px 6px}
+    .panel .value{font-size:18px}
+    .stats{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="panel" id="hud-score"><div class="label">Score</div><div class="value" id="v-score">0</div></div>
+  <div class="panel" id="hud-combo"><div class="label">Combo</div><div class="value" id="v-combo">×0</div></div>
+  <div class="panel" id="hud-acc"><div class="label">Accuracy</div><div class="value" id="v-acc">100%</div></div>
+  <div class="panel" id="hud-level"><div class="label">Storm Lvl</div><div class="value" id="v-level">1</div></div>
+  <div class="panel" id="hud-lives-panel"><div class="label">Lives</div><div id="lives"></div></div>
+</div>
+
+  <div id="hint">type the falling words &nbsp;•&nbsp; <b>Enter</b> start &nbsp;•&nbsp; <b>Esc</b> unselect &nbsp;•&nbsp; <b>Space</b> pause</div>
+
+<!-- START -->
+<div class="overlay" id="overlay-start">
+  <div class="card">
+    <h1 class="title">TYPING&nbsp;RAIN</h1>
+    <div class="tagline">the city never stops falling</div>
+    <div class="rules">
+      <div class="rule"><span class="ico">🌧️</span><p>Words fall like rain. <b>Type them</b> before they hit the street.</p></div>
+      <div class="rule"><span class="ico">⚡</span><p>Every word you clear makes the <b>storm heavier</b> — faster, longer, more.</p></div>
+      <div class="rule"><span class="ico">💧</span><p>Three drops hit the ground and the night <b>wins</b>. Keep your accuracy high.</p></div>
+    </div>
+    <button class="btn" id="btn-start">Begin</button>
+    <div class="press">or press <kbd>Enter</kbd></div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div class="overlay hidden" id="overlay-over">
+  <div class="card">
+    <h1 class="title" id="over-title">STORM&nbsp;OVER</h1>
+    <div id="over-final">final score&nbsp; <b id="v-final">0</b></div>
+    <div class="newbest hidden" id="newbest">★ new personal best ★</div>
+    <div class="stats">
+      <div class="stat"><div class="v" id="s-acc">100%</div><div class="k">Accuracy</div></div>
+      <div class="stat"><div class="v" id="s-words">0</div><div class="k">Words typed</div></div>
+      <div class="stat"><div class="v" id="s-combo">0</div><div class="k">Best combo</div></div>
+      <div class="stat"><div class="v" id="s-level">1</div><div class="k">Storm level</div></div>
+      <div class="stat"><div class="v" id="s-time">0:00</div><div class="k">Survived</div></div>
+      <div class="stat"><div class="v" id="s-best">0</div><div class="k">All-time best</div></div>
+    </div>
+    <button class="btn" id="btn-retry">Again</button>
+    <div class="press">or press <kbd>Enter</kbd></div>
+  </div>
+</div>
+
+<!-- PAUSE -->
+<div class="overlay hidden" id="overlay-pause">
+  <div class="card">
+    <h1 class="title">PAUSED</h1>
+    <div class="press" style="margin-top:8px">press <kbd>Space</kbd> to face the rain again</div>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================== setup ============================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+let W = 0, H = 0, DPR = 1, streetY = 0, S = 1; // S = vertical scale factor
+
+function rand(a, b){ return a + Math.random() * (b - a); }
+function pick(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+
+const FONT = "'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace";
+const WORD_FONT = '22px ' + FONT;
+
+const WORDS = [
+  'rain','city','night','storm','cloud','drop','glass','neon','street','roof',
+  'thunder','light','shadow','window','signal','river','harbor','alley','tower','mist',
+  'puddle','gutter','umbrella','drizzle','monsoon','cyclone','breeze','fog','dusk','dawn',
+  'echo','pulse','wire','cable','antenna','beacon','lantern','siren','engine','transit',
+  'bridge','avenue','plaza','corner','fire','escape','midnight','horizon','silhouette','reflection',
+  'shimmer','glitter','static','voltage','circuit','pixel','vector','matrix','cipher','orbit',
+  'comet','meteor','gravity','cosmic','stellar','lunar','solar','eclipse','aurora','zenith',
+  'tide','wave','current','depth','anchor','sailor','voyage','harvest','willow','ember',
+  'frost','winter','autumn','meadow','thicket','canyon','prairie','summit','valley','cliff',
+  'raven','falcon','panther','coyote','badger','heron','crane','moth','wren','lynx',
+  'amber','ivory','cobalt','crimson','azure','velvet','marble','copper','quartz','onyx',
+  'rhythm','melody','tempo','chorus','refrain','ballad','anthem','sonata','prelude','cadence',
+  'quiet','loud','swift','slow','sharp','hollow','subtle','brave','calm','wild',
+  'wander','drift','soar','plunge','gather','vanish','emerge','linger','fade','glow',
+  'lantern','ticket','market','station','platform','junction','signal','anchor','beacon','compass',
+  'maple','cedar','birch','aspen','juniper','spruce','willow','clover','sage','laurel',
+  'fable','riddle','oracle','omen','quest','rumor','chronicle','edict','decree','charter',
+  'anvil','forge','temper','alloy','solder','rivet','gear','piston','turbine','engine',
+  'kiosk','arcade','diner','cinema','theater','studio','gallery','atlas','index','codex'
+];
+
+/* ============================== state ============================== */
+const ST = { MENU:'menu', PLAY:'play', OVER:'over', PAUSE:'pause' };
+let mode = ST.MENU;
+
+const game = {};
+function resetGame(){
+  game.score = 0; game.level = 1; game.lives = 3;
+  game.combo = 0; game.maxCombo = 0;
+  game.correct = 0; game.wrong = 0; game.cleared = 0;
+  game.spawnIn = 0.4; game.time = 0;
+  words.length = 0; particles.length = 0; floats.length = 0;
+  activeWord = null;
+  shake = 0; redFlash = 0;
+}
+
+let words = [], particles = [], floats = [];
+let dropsFar = [], dropsNear = [];
+let stars = [], beacons = [];
+let activeWord = null;
+let shake = 0, redFlash = 0, flash = 0, bolt = null;
+let lightningIn = 6 + Math.random()*8;
+let lastT = performance.now();
+let bestScore = 0;
+try { bestScore = +localStorage.getItem('typingrain.best') || 0; } catch(e){}
+
+/* ============================== audio ============================== */
+let AC = null;
+function audio(){
+  if (!AC){
+    try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ AC = null; }
+  }
+  if (AC && AC.state === 'suspended') AC.resume();
+  return AC;
+}
+function tone(freq, dur, type, vol, when, slide){
+  const ac = audio(); if (!ac) return;
+  const t0 = ac.currentTime + (when || 0);
+  const o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'sine';
+  o.frequency.setValueAtTime(freq, t0);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, slide), t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.exponentialRampToValueAtTime(vol || 0.12, t0 + 0.012);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(ac.destination);
+  o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(dur, vol, freq){
+  const ac = audio(); if (!ac) return;
+  const n = Math.floor(ac.sampleRate * dur);
+  const buf = ac.createBuffer(1, n, ac.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i=0;i<n;i++) d[i] = (Math.random()*2-1) * (1 - i/n);
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type='lowpass'; f.frequency.value = freq || 900;
+  const g = ac.createGain(); g.gain.value = vol || 0.15;
+  src.connect(f).connect(g).connect(ac.destination);
+  src.start();
+}
+const sfx = {
+  key(){ tone(1400 + Math.random()*300, 0.045, 'square', 0.02); },
+  err(){ tone(180, 0.09, 'sawtooth', 0.05, 0, 90); },
+  done(len){
+    const base = 520 + Math.min(6, game.combo) * 42;
+    tone(base, 0.09, 'triangle', 0.10);
+    tone(base*1.5, 0.14, 'triangle', 0.09, 0.06);
+    if (len >= 7) tone(base*2, 0.18, 'sine', 0.07, 0.12);
+  },
+  miss(){ noise(0.35, 0.22, 500); tone(90, 0.3, 'sine', 0.16, 0, 45); },
+  level(){ [523,659,784,1046].forEach((f,i)=>tone(f,0.16,'triangle',0.10,i*0.09)); },
+  over(){ [392,330,262,196].forEach((f,i)=>tone(f,0.4,'sawtooth',0.07,i*0.22)); },
+  thunder(){ noise(1.2, 0.25, 240); }
+};
+
+/* ============================== world build ============================== */
+function resize(){
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth; H = window.innerHeight;
+  canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  S = Math.max(0.55, Math.min(1.5, H / 720));
+  streetY = H - Math.round(64 * S);
+  buildCity(); buildRain(); buildStars();
+}
+
+/* pre-rendered skyline layers */
+let cityCanvases = [];
+function buildCity(){
+  cityCanvases = [];
+  const layers = [
+    { ground: streetY - 88*S, hMin: 70,  hMax: 190, wMin: 34, wMax: 78,  color:'#131e38', win:'#274a7e', winP: 0.10, winA:0.5,  neon:0 },
+    { ground: streetY - 44*S, hMin: 110, hMax: 260, wMin: 44, wMax: 96,  color:'#0d1730', win:'#3a63a5', winP: 0.16, winA:0.75, neon:0 },
+    { ground: streetY,        hMin: 150, hMax: 380, wMin: 58, wMax: 128, color:'#070d20', win:'#ffd27a', winP: 0.20, winA:1,    neon:5 }
+  ];
+  const palette = ['#ff3cac','#4dd8ff','#ffb84d','#3cff8e','#b06bff'];
+  beacons = [];
+
+  layers.forEach((L, li) => {
+    const c = document.createElement('canvas');
+    c.width = Math.round(W*DPR); c.height = Math.round(H*DPR);
+    const g = c.getContext('2d');
+    g.setTransform(DPR,0,0,DPR,0,0);
+
+    let x = -30;
+    while (x < W + 30){
+      const bw = rand(L.wMin, L.wMax) * Math.max(0.7, S);
+      const bh = rand(L.hMin, L.hMax) * S * (0.75 + 0.5*Math.random());
+      const by = L.ground - bh;
+
+      g.fillStyle = L.color;
+      g.fillRect(x, by, bw, bh + 10);
+
+      // rooftop box / antenna
+      if (Math.random() < 0.5){
+        g.fillRect(x + bw*0.3, by - 8*S, bw*0.4, 8*S);
+      }
+      if (Math.random() < 0.35){
+        const ax = x + bw*rand(0.2,0.8);
+        g.strokeStyle = L.color; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(ax, by); g.lineTo(ax, by - rand(14,34)*S); g.stroke();
+        if (li === 2 && Math.random() < 0.7){
+          beacons.push({ x: ax, y: by - rand(14,34)*S - 2, ph: Math.random()*6.28 });
+        }
+      }
+
+      // windows
+      const ww = li === 2 ? 5 : 3, wh = li === 2 ? 7 : 4;
+      const gapX = li === 2 ? 12 : 9, gapY = li === 2 ? 15 : 11;
+      for (let wy = by + 12; wy < L.ground - 14; wy += gapY){
+        for (let wx = x + 7; wx < x + bw - 7 - ww; wx += gapX){
+          if (Math.random() < L.winP){
+            g.globalAlpha = L.winA * rand(0.5, 1);
+            g.fillStyle = (li === 2 && Math.random() < 0.25) ? '#7ad2ff' : L.win;
+            g.fillRect(wx, wy, ww, wh);
+          }
+        }
+      }
+      g.globalAlpha = 1;
+
+      // neon signs on near layer
+      if (li === 2 && Math.random() < 0.30){
+        const col = pick(palette);
+        const nw = rand(4,7), nh = rand(26, 64) * S;
+        const nx = x + bw * (Math.random()<0.5 ? 0.12 : 0.82);
+        const ny = by + rand(30, Math.max(40, bh*0.5));
+        g.save();
+        g.shadowColor = col; g.shadowBlur = 14;
+        g.fillStyle = col; g.globalAlpha = 0.9;
+        g.fillRect(nx, ny, nw, nh);
+        if (Math.random() < 0.5){
+          const hw = rand(18, 40)*S;
+          g.fillRect(nx, ny + nh*0.4, hw, nw*0.8);
+        }
+        g.restore();
+      }
+      x += bw + rand(2, 14);
+    }
+    cityCanvases.push(c);
+  });
+}
+
+function buildRain(){
+  const mk = (n, near) => Array.from({length:n}, () => newDrop(near, true));
+  dropsFar = mk(Math.round(W*0.22), false);
+  dropsNear = mk(Math.round(W*0.09), true);
+}
+function newDrop(near, anywhere){
+  return {
+    x: Math.random() * (W + 200) - 100,
+    y: anywhere ? Math.random() * H : -rand(10, 120),
+    v: (near ? rand(760, 1150) : rand(430, 680)) * S,
+    len: (near ? rand(14, 26) : rand(7, 13)) * S,
+    a: near ? rand(0.20, 0.42) : rand(0.07, 0.18)
+  };
+}
+function buildStars(){
+  stars = Array.from({length: 90}, () => ({
+    x: Math.random()*W, y: Math.random()*streetY*0.5,
+    r: Math.random()*1.2 + 0.3, ph: Math.random()*6.28
+  }));
+}
+
+/* ============================== words ============================== */
+function levelSpeed(){ return (30 + game.level * 7.5) * S; }
+function spawnInterval(){ return Math.max(0.52, 2.15 - game.level * 0.16); }
+function maxWords(){ return Math.min(9, 3 + Math.floor(game.level / 1.6)); }
+function lenRange(){
+  if (game.level <= 2) return [3,5];
+  if (game.level <= 5) return [4,7];
+  if (game.level <= 8) return [5,9];
+  return [5,11];
+}
+
+function spawnWord(){
+  const [lo, hi] = lenRange();
+  const pool = WORDS.filter(w => w.length >= lo && w.length <= hi);
+  ctx.font = WORD_FONT;
+  for (let attempt = 0; attempt < 26; attempt++){
+    const text = pick(pool);
+    const tw = ctx.measureText(text).width;
+    const x = rand(24, W - tw - 24);
+    // avoid crowding near the top
+    let ok = true;
+    for (const w of words){
+      if (w.y < 130 * S && x < w.x + w.tw + 26 && x + tw + 26 > w.x){ ok = false; break; }
+    }
+    if (!ok) continue;
+    words.push({
+      text, x, y: -26 * S, tw,
+      typed: 0,
+      v: levelSpeed() * rand(0.85, 1.25),
+      hue: rand(185, 215),
+      wob: Math.random()*6.28
+    });
+    return;
+  }
+}
+
+function updateWords(dt){
+  for (let i = words.length - 1; i >= 0; i--){
+    const w = words[i];
+    w.y += w.v * dt;
+    w.wob += dt * 3;
+    if (w.y + 11 * S >= streetY){
+      words.splice(i, 1);
+      if (activeWord === w) activeWord = null;
+      onMiss(w);
+    }
+  }
+}
+
+function onMiss(w){
+  game.lives--;
+  game.combo = 0;
+  redFlash = 1; shake = 1;
+  sfx.miss();
+  splash(w.x + w.tw/2, streetY, '#ff4d6d', 16);
+  floats.push({ x: w.x + w.tw/2, y: streetY - 26*S, text: 'MISSED ' + w.text.toUpperCase(), color: '#ff6b85', life: 1.1, size: 15 });
+  if (game.lives <= 0) endGame();
+  syncHUD();
+}
+
+function onCorrect(w){
+  const pts = w.text.length * 10 + game.combo * 5 + game.level * 2;
+  game.score += pts;
+  game.combo++;
+  game.maxCombo = Math.max(game.maxCombo, game.combo);
+  game.cleared++;
+  sfx.done(w.text.length);
+  splash(w.x + w.tw/2, w.y, 'hsl(' + w.hue + ',95%,72%)', 14);
+  floats.push({ x: w.x + w.tw/2, y: w.y, text: '+' + pts, color: '#8be9ff', life: 1, size: 20 });
+  if (game.combo > 1 && game.combo % 5 === 0){
+    floats.push({ x: w.x + w.tw/2, y: w.y - 24*S, text: 'COMBO ×' + game.combo, color: '#ff7cc9', life: 1.2, size: 16 });
+  }
+  const newLevel = 1 + Math.floor(game.cleared / 8);
+  if (newLevel > game.level){
+    game.level = newLevel;
+    sfx.level();
+    flash = Math.max(flash, 0.35);
+    floats.push({ x: W/2, y: H*0.32, text: '⚡ STORM LEVEL ' + game.level + ' ⚡', color: '#ffd98a', life: 1.8, size: 30 });
+  }
+  syncHUD();
+}
+
+function splash(x, y, color, n){
+  for (let k = 0; k < n; k++){
+    const a = rand(-Math.PI, 0), sp = rand(60, 300) * S;
+    particles.push({
+      x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp - rand(20,120)*S,
+      r: rand(1, 3.2), color, life: rand(0.5, 0.95), max: 1
+    });
+  }
+}
+
+/* ============================== typing ============================== */
+function handleLetter(ch){
+  if (mode !== ST.PLAY) return;
+  // candidates whose next letter matches
+  let best = null;
+  for (const w of words){
+    if (w.typed < w.text.length && w.text[w.typed] === ch){
+      if (!best || w.y > best.y) best = w;
+    }
+  }
+  if (best){
+    activeWord = best;
+    best.typed++;
+    game.correct++;
+    sfx.key();
+    if (best.typed === best.text.length){
+      const idx = words.indexOf(best);
+      if (idx >= 0) words.splice(idx, 1);
+      activeWord = null;
+      onCorrect(best);
+    }
+  } else {
+    game.wrong++;
+    sfx.err();
+    if (activeWord){
+      floats.push({ x: activeWord.x + activeWord.tw/2, y: activeWord.y - 20*S, text: '✕', color: '#ff6b85', life: 0.4, size: 22 });
+    }
+    syncHUD();
+  }
+}
+function handleBack(){
+  if (activeWord && activeWord.typed > 0 && activeWord.typed < activeWord.text.length){
+    activeWord.typed--;
+  }
+}
+
+/* ============================== render ============================== */
+function render(t){
+  const sx = shake > 0 ? rand(-1,1) * 9 * shake * S : 0;
+  const sy = shake > 0 ? rand(-1,1) * 9 * shake * S : 0;
+  ctx.save();
+  ctx.translate(sx, sy);
+
+  // sky
+  const sky = ctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, '#020309');
+  sky.addColorStop(0.45, '#071026');
+  sky.addColorStop(0.8, '#0b1a38');
+  sky.addColorStop(1, '#101d3d');
+  ctx.fillStyle = sky;
+  ctx.fillRect(-20, -20, W+40, H+40);
+
+  // stars
+  for (const s of stars){
+    const a = 0.25 + 0.5 * Math.abs(Math.sin(t*0.7 + s.ph));
+    ctx.globalAlpha = a;
+    ctx.fillStyle = '#cfe4ff';
+    ctx.fillRect(s.x, s.y, s.r, s.r);
+  }
+  ctx.globalAlpha = 1;
+
+  // moon
+  const mx = W * 0.78, my = H * 0.15, mr = 26 * S;
+  const halo = ctx.createRadialGradient(mx, my, mr*0.4, mx, my, mr*5);
+  halo.addColorStop(0, 'rgba(200,225,255,0.28)');
+  halo.addColorStop(0.3, 'rgba(140,180,255,0.10)');
+  halo.addColorStop(1, 'rgba(140,180,255,0)');
+  ctx.fillStyle = halo;
+  ctx.beginPath(); ctx.arc(mx, my, mr*5, 0, 7); ctx.fill();
+  ctx.fillStyle = '#dceaff';
+  ctx.beginPath(); ctx.arc(mx, my, mr, 0, 7); ctx.fill();
+  ctx.fillStyle = 'rgba(120,150,200,0.35)';
+  ctx.beginPath(); ctx.arc(mx - mr*0.3, my - mr*0.15, mr*0.22, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(mx + mr*0.25, my + mr*0.3, mr*0.14, 0, 7); ctx.fill();
+
+  // city layers
+  for (const c of cityCanvases) ctx.drawImage(c, 0, 0, W, H);
+
+  // rooftop beacons
+  for (const b of beacons){
+    const a = 0.35 + 0.65 * Math.max(0, Math.sin(t*2.4 + b.ph));
+    ctx.save();
+    ctx.shadowColor = '#ff3b3b'; ctx.shadowBlur = 9;
+    ctx.fillStyle = 'rgba(255,70,70,' + a.toFixed(3) + ')';
+    ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, 7); ctx.fill();
+    ctx.restore();
+  }
+
+  // street + wet reflection
+  const st = ctx.createLinearGradient(0, streetY, 0, H);
+  st.addColorStop(0, '#0a1226');
+  st.addColorStop(0.25, '#060b1a');
+  st.addColorStop(1, '#03060e');
+  ctx.fillStyle = st;
+  ctx.fillRect(-20, streetY, W+40, H - streetY + 20);
+
+  // target line
+  ctx.save();
+  ctx.shadowColor = '#4dd8ff'; ctx.shadowBlur = 12;
+  const lg = ctx.createLinearGradient(0, 0, W, 0);
+  lg.addColorStop(0, 'rgba(77,216,255,0.05)');
+  lg.addColorStop(0.5, 'rgba(77,216,255,0.75)');
+  lg.addColorStop(1, 'rgba(77,216,255,0.05)');
+  ctx.strokeStyle = lg; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, streetY); ctx.lineTo(W, streetY); ctx.stroke();
+  ctx.restore();
+
+  // word reflections on wet street
+  ctx.save();
+  ctx.font = WORD_FONT;
+  ctx.textBaseline = 'middle';
+  for (const w of words){
+    const d = streetY - w.y;
+    if (d < 0 || d > 260*S) continue;
+    const a = 0.16 * (1 - d/(260*S));
+    ctx.save();
+    ctx.translate(0, streetY * 2);
+    ctx.scale(1, -0.55);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'hsl(' + w.hue + ',90%,70%)';
+    ctx.fillText(w.text, w.x, w.y);
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // rain behind words (far)
+  drawRain(dropsFar);
+
+  // words
+  for (const w of words) drawWord(w, t);
+
+  // rain in front (near)
+  drawRain(dropsNear);
+
+  // particles
+  for (const p of particles){
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // floating text
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const f of floats){
+    ctx.globalAlpha = Math.min(1, f.life * 1.6);
+    ctx.font = f.size + 'px ' + FONT;
+    ctx.save();
+    ctx.shadowColor = f.color; ctx.shadowBlur = 14;
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.text, f.x, f.y);
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'left';
+
+  // lightning flash
+  if (flash > 0.01){
+    ctx.fillStyle = 'rgba(215,230,255,' + (flash * 0.32).toFixed(3) + ')';
+    ctx.fillRect(-20, -20, W+40, H+40);
+  }
+  if (bolt){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(230,240,255,0.95)';
+    ctx.lineWidth = 2.4;
+    ctx.shadowColor = '#bcd8ff'; ctx.shadowBlur = 22;
+    ctx.beginPath();
+    ctx.moveTo(bolt[0].x, bolt[0].y);
+    for (const p of bolt) ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    ctx.lineWidth = 6; ctx.globalAlpha = 0.35; ctx.stroke();
+    ctx.restore();
+  }
+
+  // red damage flash
+  if (redFlash > 0.01){
+    const v = ctx.createRadialGradient(W/2, H/2, Math.min(W,H)*0.32, W/2, H/2, Math.max(W,H)*0.72);
+    v.addColorStop(0, 'rgba(255,30,60,0)');
+    v.addColorStop(1, 'rgba(255,20,50,' + (redFlash*0.5).toFixed(3) + ')');
+    ctx.fillStyle = v;
+    ctx.fillRect(-20, -20, W+40, H+40);
+  }
+
+  ctx.restore();
+}
+
+function drawRain(list){
+  ctx.lineCap = 'round';
+  const wind = -0.14;
+  for (const d of list){
+    ctx.strokeStyle = 'rgba(150,200,255,' + d.a + ')';
+    ctx.lineWidth = d.a > 0.2 ? 1.6 : 1;
+    ctx.beginPath();
+    ctx.moveTo(d.x, d.y);
+    ctx.lineTo(d.x + d.len * wind, d.y + d.len);
+    ctx.stroke();
+  }
+}
+
+function drawWord(w, t){
+  const done = w.typed >= w.text.length;
+  const active = w === activeWord;
+  const urgent = (w.y + 11*S) / streetY;
+  ctx.font = WORD_FONT;
+  ctx.textBaseline = 'middle';
+
+  const cx = w.x + w.tw/2;
+  const bob = Math.sin(w.wob) * 1.6 * S;
+  const y = w.y + bob;
+
+  // raindrop tail above the word
+  const tl = ctx.createLinearGradient(0, y - 74*S, 0, y - 10*S);
+  tl.addColorStop(0, 'hsla(' + w.hue + ',95%,70%,0)');
+  tl.addColorStop(1, 'hsla(' + w.hue + ',95%,72%,' + (0.28 + urgent*0.3).toFixed(3) + ')');
+  ctx.strokeStyle = tl; ctx.lineWidth = 1.6;
+  ctx.beginPath(); ctx.moveTo(cx, y - 74*S); ctx.lineTo(cx, y - 12*S); ctx.stroke();
+
+  // droplet at the head
+  ctx.save();
+  ctx.translate(cx, y - 15*S);
+  ctx.rotate(-Math.PI/4);
+  ctx.fillStyle = 'hsla(' + w.hue + ',95%,72%,0.9)';
+  ctx.shadowColor = 'hsl(' + w.hue + ',95%,65%)';
+  ctx.shadowBlur = active ? 16 : 8;
+  const rr = (active ? 3.6 : 2.6) * S;
+  ctx.beginPath(); ctx.arc(0, 0, rr, 0, 7); ctx.fill();
+  ctx.restore();
+
+  // active word cage
+  if (active){
+    ctx.save();
+    ctx.strokeStyle = 'rgba(139,233,255,' + (0.5 + 0.3*Math.sin(t*7)).toFixed(3) + ')';
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = '#4dd8ff'; ctx.shadowBlur = 10;
+    roundRect(ctx, w.x - 9, y - 16*S, w.tw + 18, 32*S, 7);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  ctx.save();
+  const glow = 10 + urgent * 16;
+  ctx.shadowColor = 'hsl(' + w.hue + ',95%,62%)';
+  ctx.shadowBlur = done ? 26 : glow;
+
+  // untyped part
+  const head = w.text.slice(0, w.typed);
+  const tailTxt = w.text.slice(w.typed);
+  const headW = ctx.measureText(head).width;
+
+  if (head){
+    ctx.fillStyle = '#aef1ff';
+    ctx.fillText(head, w.x, y);
+  }
+  if (tailTxt){
+    ctx.fillStyle = urgent > 0.78
+      ? 'hsl(348,95%,' + (62 + 12*Math.sin(t*10)).toFixed(1) + '%)'
+      : 'rgba(226,240,255,0.88)';
+    ctx.fillText(tailTxt, w.x + headW, y);
+  }
+  ctx.restore();
+}
+
+function roundRect(c, x, y, w, h, r){
+  c.beginPath();
+  c.moveTo(x+r, y);
+  c.arcTo(x+w, y, x+w, y+h, r);
+  c.arcTo(x+w, y+h, x, y+h, r);
+  c.arcTo(x, y+h, x, y, r);
+  c.arcTo(x, y, x+w, y, r);
+  c.closePath();
+}
+
+/* ============================== update ============================== */
+function update(dt, t){
+  // rain always
+  const wind = -0.14;
+  for (const list of [dropsFar, dropsNear]){
+    for (let i = 0; i < list.length; i++){
+      const d = list[i];
+      d.y += d.v * dt; d.x += d.v * wind * dt;
+      if (d.y > H + 30) list[i] = newDrop(d.a > 0.2, false);
+    }
+  }
+
+  // lightning ambience
+  lightningIn -= dt;
+  if (lightningIn <= 0){
+    lightningIn = 7 + Math.random()*14;
+    flash = 0.85;
+    bolt = makeBolt();
+    sfx.thunder();
+  }
+  flash = Math.max(0, flash - dt * 2.6);
+  if (bolt && flash <= 0.05) bolt = null;
+
+  if (mode !== ST.PLAY) return;
+
+  game.time += dt;
+  game.spawnIn -= dt;
+  if (game.spawnIn <= 0 && words.length < maxWords()){
+    spawnWord();
+    game.spawnIn = spawnInterval() * rand(0.75, 1.25);
+  }
+
+  updateWords(dt);
+
+  for (let i = particles.length - 1; i >= 0; i--){
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0){ particles.splice(i,1); continue; }
+    p.vy += 900 * S * dt;
+    p.x += p.vx * dt; p.y += p.vy * dt;
+  }
+  for (let i = floats.length - 1; i >= 0; i--){
+    const f = floats[i];
+    f.life -= dt; f.y -= 34 * S * dt;
+    if (f.life <= 0) floats.splice(i,1);
+  }
+
+  shake = Math.max(0, shake - dt * 2.4);
+  redFlash = Math.max(0, redFlash - dt * 1.8);
+}
+
+function makeBolt(){
+  const pts = [];
+  let x = rand(W*0.15, W*0.85), y = -10;
+  const end = streetY * rand(0.35, 0.7);
+  while (y < end){
+    pts.push({x, y});
+    x += rand(-46, 46);
+    y += rand(26, 60) * S;
+  }
+  pts.push({x, y});
+  return pts;
+}
+
+/* ============================== HUD ============================== */
+const $ = id => document.getElementById(id);
+const vScore = $('v-score'), vCombo = $('v-combo'), vAcc = $('v-acc'),
+      vLevel = $('v-level'), livesEl = $('lives');
+
+function setVal(el, txt, pulse){
+  if (el.textContent !== txt){
+    el.textContent = txt;
+    if (pulse){
+      el.parentElement.classList.remove('pop');
+      void el.offsetWidth;
+      el.parentElement.classList.add('pop');
+    }
+  }
+}
+function acc(){
+  const tot = game.correct + game.wrong;
+  return tot === 0 ? 100 : Math.round(game.correct / tot * 100);
+}
+function syncHUD(){
+  setVal(vScore, String(game.score), true);
+  setVal(vCombo, '×' + game.combo, true);
+  setVal(vAcc, acc() + '%', false);
+  setVal(vLevel, String(game.level), true);
+  const want = 3;
+  while (livesEl.children.length < want){
+    const d = document.createElement('span'); d.className = 'drop'; livesEl.appendChild(d);
+  }
+  for (let i = 0; i < want; i++){
+    livesEl.children[i].classList.toggle('lost', i >= game.lives);
+  }
+}
+
+/* ============================== flow ============================== */
+function showOverlay(id){
+  for (const o of ['overlay-start','overlay-over','overlay-pause']){
+    $(o).classList.toggle('hidden', o !== id);
+  }
+}
+function hideOverlays(){ showOverlay(null); }
+
+function startGame(){
+  audio();
+  resetGame();
+  syncHUD();
+  mode = ST.PLAY;
+  hideOverlays();
+  lastT = performance.now();
+}
+function endGame(){
+  mode = ST.OVER;
+  sfx.over();
+  const isBest = game.score > bestScore;
+  if (isBest){
+    bestScore = game.score;
+    try { localStorage.setItem('typingrain.best', String(bestScore)); } catch(e){}
+  }
+  $('v-final').textContent = game.score;
+  $('s-acc').textContent = acc() + '%';
+  $('s-words').textContent = game.cleared;
+  $('s-combo').textContent = '×' + game.maxCombo;
+  $('s-level').textContent = game.level;
+  const m = Math.floor(game.time/60), s = Math.floor(game.time%60);
+  $('s-time').textContent = m + ':' + String(s).padStart(2,'0');
+  $('s-best').textContent = bestScore;
+  $('newbest').classList.toggle('hidden', !isBest || game.score === 0);
+  showOverlay('overlay-over');
+}
+function togglePause(){
+  if (mode === ST.PLAY){ mode = ST.PAUSE; showOverlay('overlay-pause'); }
+  else if (mode === ST.PAUSE){ mode = ST.PLAY; hideOverlays(); lastT = performance.now(); }
+}
+
+/* ============================== input ============================== */
+window.addEventListener('keydown', (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  const k = e.key;
+  if (k === 'Enter'){
+    if (mode === ST.MENU || mode === ST.OVER){ e.preventDefault(); startGame(); }
+    return;
+  }
+  if (k === 'Escape'){
+    if (mode === ST.PLAY){ activeWord = null; }
+    return;
+  }
+  if (k === ' ' || k === 'Spacebar'){
+    if (mode === ST.PLAY || mode === ST.PAUSE){ e.preventDefault(); togglePause(); }
+    return;
+  }
+  if (mode === ST.PLAY){
+    if (/^[a-zA-Z]$/.test(k) && !e.repeat){
+      e.preventDefault();
+      handleLetter(k.toLowerCase());
+    } else if (k === 'Backspace' && !e.repeat){
+      e.preventDefault();
+      handleBack();
+    }
+  }
+});
+$('btn-start').addEventListener('click', startGame);
+$('btn-retry').addEventListener('click', startGame);
+window.addEventListener('blur', () => { if (mode === ST.PLAY) togglePause(); });
+window.addEventListener('resize', resize);
+
+/* ============================== loop ============================== */
+function frame(now){
+  let dt = (now - lastT) / 1000;
+  lastT = now;
+  if (dt > 0.05) dt = 0.05;
+  const t = now / 1000;
+  update(dt, t);
+  render(t);
+  requestAnimationFrame(frame);
+}
+
+resize();
+resetGame();
+syncHUD();
+requestAnimationFrame(frame);
+window.__tr = { game, words, get mode(){ return mode; } };
+
+// load webfont then re-measure existing words (cosmetic)
+if (document.fonts && document.fonts.load){
+  document.fonts.load('22px "Share Tech Mono"').then(() => {
+    ctx.font = WORD_FONT;
+    for (const w of words) w.tw = ctx.measureText(w.text).width;
+  });
+}
+})();
+</script>
+</body>
+</html>

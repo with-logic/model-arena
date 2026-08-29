@@ -1,0 +1,826 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Journey Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4f6fb;
+    --panel:#ffffff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --line:#e2e8f0;
+    --accent:#4f46e5;
+    --edge:#94a3b8;
+    --shadow:0 1px 2px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.08);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:'Inter',system-ui,-apple-system,sans-serif;
+    background:var(--bg);color:var(--ink);
+    display:flex;flex-direction:column;overflow:hidden;
+    -webkit-user-select:none;user-select:none;
+  }
+  [contenteditable]{-webkit-user-select:text;user-select:text;outline:none}
+
+  /* ---------- Header ---------- */
+  header{
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    padding:12px 20px;background:var(--panel);
+    border-bottom:1px solid var(--line);z-index:10;
+    box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  .brand{display:flex;align-items:center;gap:10px;margin-right:auto}
+  .brand .logo{
+    width:34px;height:34px;border-radius:10px;flex:none;
+    background:linear-gradient(135deg,#6366f1,#0ea5e9 55%,#10b981);
+    display:grid;place-items:center;color:#fff;
+    box-shadow:0 4px 12px rgba(79,70,229,.35);
+  }
+  .brand h1{font-size:16px;font-weight:800;letter-spacing:-.02em}
+  .brand p{font-size:11.5px;color:var(--muted);font-weight:500;margin-top:1px}
+  .toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .btn{
+    display:inline-flex;align-items:center;gap:6px;
+    font:600 12.5px 'Inter';color:#334155;
+    background:#fff;border:1px solid var(--line);border-radius:9px;
+    padding:7px 12px;cursor:pointer;transition:all .15s;
+    box-shadow:0 1px 1px rgba(15,23,42,.04);
+  }
+  .btn:hover{border-color:#c7d2fe;color:var(--accent);background:#f8faff;transform:translateY(-1px)}
+  .btn:active{transform:translateY(0)}
+  .btn.primary{
+    background:linear-gradient(135deg,#4f46e5,#6366f1);color:#fff;border-color:transparent;
+    box-shadow:0 4px 12px rgba(79,70,229,.35);
+  }
+  .btn.primary:hover{filter:brightness(1.08);color:#fff}
+  .btn svg{width:14px;height:14px}
+  .zoom-group{
+    display:flex;align-items:center;border:1px solid var(--line);border-radius:9px;
+    background:#fff;overflow:hidden;box-shadow:0 1px 1px rgba(15,23,42,.04);
+  }
+  .zoom-group button{
+    border:none;background:transparent;cursor:pointer;color:#475569;
+    font:600 14px 'Inter';padding:7px 10px;transition:background .12s;
+  }
+  .zoom-group button:hover{background:#f1f5f9;color:var(--accent)}
+  .zoom-group .zlabel{font:600 11.5px 'Inter';color:var(--muted);min-width:44px;text-align:center;border-left:1px solid var(--line);border-right:1px solid var(--line);padding:7px 0}
+  .stats{font:600 11.5px 'Inter';color:var(--muted);white-space:nowrap}
+  .stats b{color:var(--ink)}
+
+  /* ---------- Canvas ---------- */
+  #viewport{
+    position:relative;flex:1;overflow:hidden;cursor:default;
+    background-color:var(--bg);
+    background-image:radial-gradient(circle,#cbd5e1 1px,transparent 1px);
+    touch-action:none;
+  }
+  #viewport.panning{cursor:grabbing}
+  #world{position:absolute;inset:0;transform-origin:0 0}
+  #edgeSvg{position:absolute;left:0;top:0;width:10px;height:10px;overflow:visible}
+  .edge-hit{stroke:transparent;stroke-width:16;fill:none;cursor:pointer}
+  .edge-line{stroke:var(--edge);stroke-width:2;fill:none;transition:stroke .12s;pointer-events:none}
+  .edge-line.hot{stroke:#6366f1;stroke-width:2.5}
+  .edge-line.sel{stroke:#ef4444;stroke-width:2.5}
+  .edge-label{
+    font:700 11px 'Inter';fill:#475569;paint-order:stroke;
+    stroke:#f4f6fb;stroke-width:4px;stroke-linejoin:round;
+    pointer-events:none;text-anchor:middle;
+  }
+  #tempEdge{stroke:#6366f1;stroke-width:2.5;stroke-dasharray:6 5;fill:none;pointer-events:none}
+
+  /* ---------- Node ---------- */
+  .node{
+    position:absolute;width:232px;background:var(--panel);
+    border:1px solid var(--line);border-radius:14px;
+    box-shadow:var(--shadow);cursor:grab;
+    border-top:3px solid var(--c,#6366f1);
+    transition:box-shadow .15s, transform .12s;
+  }
+  .node:hover{box-shadow:0 2px 4px rgba(15,23,42,.07),0 14px 34px rgba(15,23,42,.13)}
+  .node.dragging{cursor:grabbing;box-shadow:0 10px 20px rgba(15,23,42,.16),0 24px 48px rgba(15,23,42,.16);z-index:5}
+  .node.link-target{outline:2.5px dashed var(--accent);outline-offset:3px}
+  .node-body{padding:12px 14px 12px}
+  .node-head{display:flex;align-items:center;gap:8px}
+  .dot{
+    width:13px;height:13px;border-radius:50%;flex:none;cursor:pointer;
+    background:var(--c,#6366f1);border:2px solid rgba(255,255,255,.85);
+    box-shadow:0 0 0 1.5px var(--c,#6366f1);transition:transform .12s;
+  }
+  .dot:hover{transform:scale(1.25)}
+  .node-title{
+    font:700 14px 'Inter';letter-spacing:-.01em;color:var(--ink);
+    flex:1;min-width:0;padding:2px 4px;border-radius:6px;
+  }
+  .node-del{
+    border:none;background:transparent;color:#cbd5e1;cursor:pointer;
+    width:20px;height:20px;border-radius:6px;display:grid;place-items:center;
+    font:700 15px/1 'Inter';flex:none;opacity:0;transition:all .12s;
+  }
+  .node:hover .node-del{opacity:1}
+  .node-del:hover{background:#fee2e2;color:#ef4444}
+  .node-desc{
+    font:500 11.5px/1.5 'Inter';color:var(--muted);margin-top:6px;
+    padding:2px 4px;border-radius:6px;min-height:17px;
+  }
+  .node-title:focus,.node-desc:focus{background:#eef2ff;box-shadow:inset 0 0 0 1px #c7d2fe}
+  .node-meta{
+    display:flex;align-items:center;gap:6px;margin-top:9px;
+  }
+  .step-chip{
+    font:700 9.5px 'Inter';letter-spacing:.06em;text-transform:uppercase;
+    color:var(--c,#6366f1);background:color-mix(in srgb,var(--c,#6366f1) 10%,white);
+    border:1px solid color-mix(in srgb,var(--c,#6366f1) 30%,white);
+    border-radius:999px;padding:2.5px 8px;
+  }
+  .funnel-track{flex:1;height:4px;border-radius:99px;background:#eef2f7;overflow:hidden}
+  .funnel-fill{height:100%;border-radius:99px;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 55%,white))}
+  .funnel-pct{
+    font:700 10.5px 'Inter';color:#475569;background:#f1f5f9;border-radius:6px;
+    padding:2px 5px;border:1px solid var(--line);width:46px;text-align:center;
+  }
+  .port{
+    position:absolute;top:50%;width:15px;height:15px;border-radius:50%;
+    transform:translateY(-50%);background:#fff;border:2.5px solid var(--c,#6366f1);
+    opacity:0;transition:opacity .15s, transform .15s;cursor:crosshair;z-index:2;
+  }
+  .node:hover .port,.connecting .port{opacity:1}
+  .port.out{right:-9px}
+  .port.in{left:-9px;border-color:#94a3b8;cursor:default}
+  .port.out:hover{transform:translateY(-50%) scale(1.35);box-shadow:0 0 0 5px rgba(99,102,241,.18)}
+
+  /* ---------- Overlay (screen-space) ---------- */
+  #overlay{position:absolute;inset:0;pointer-events:none;z-index:20}
+  .edge-chip{
+    position:absolute;transform:translate(-50%,-50%);pointer-events:auto;
+    display:flex;gap:4px;background:#fff;border:1px solid var(--line);
+    border-radius:9px;padding:3px;box-shadow:var(--shadow);
+  }
+  .edge-chip button{
+    border:none;background:transparent;cursor:pointer;border-radius:6px;
+    font:600 11.5px 'Inter';color:#475569;padding:4px 8px;display:flex;align-items:center;gap:4px;
+  }
+  .edge-chip button:hover{background:#f1f5f9}
+  .edge-chip button.danger:hover{background:#fee2e2;color:#ef4444}
+  .edge-input{
+    position:absolute;transform:translate(-50%,-50%);pointer-events:auto;
+    font:700 12px 'Inter';text-align:center;color:var(--ink);
+    border:1.5px solid var(--accent);border-radius:8px;padding:5px 8px;width:110px;
+    box-shadow:var(--shadow);outline:none;background:#fff;
+  }
+
+  /* ---------- Footer ---------- */
+  footer{
+    display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+    padding:8px 20px;background:var(--panel);border-top:1px solid var(--line);
+    font:500 11.5px 'Inter';color:var(--muted);z-index:10;
+  }
+  footer .k{
+    display:inline-block;background:#f1f5f9;border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:5px;padding:1px 6px;margin-right:5px;
+    font:700 10.5px 'Inter';color:#475569;
+  }
+  footer .sep{width:1px;height:14px;background:var(--line)}
+  footer .saved{margin-left:auto;color:#10b981;font-weight:600;opacity:0;transition:opacity .4s}
+  footer .saved.show{opacity:1}
+
+  .toast{
+    position:fixed;left:50%;bottom:64px;transform:translate(-50%,16px);
+    background:#0f172a;color:#fff;font:600 12.5px 'Inter';
+    padding:10px 18px;border-radius:999px;box-shadow:0 12px 32px rgba(15,23,42,.35);
+    opacity:0;pointer-events:none;transition:all .3s;z-index:50;
+  }
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="12" r="2.5"/><circle cx="5" cy="18" r="2.5"/><path d="M7.5 6.8c5 .8 6.6 2.2 9 4.4M7.5 17.2c5-.8 6.6-2.2 9-4.4"/></svg>
+    </div>
+    <div>
+      <h1>Customer Journey Flow</h1>
+      <p>Awareness → Purchase, mapped visually</p>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="stats"><b id="statNodes">0</b> stages · <b id="statEdges">0</b> links</div>
+    <div class="sep" style="width:1px;height:22px;background:var(--line)"></div>
+    <button class="btn primary" id="btnAdd">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add stage
+    </button>
+    <button class="btn" id="btnLayout">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h5M4 12h5M4 18h5M15 6h5M15 12h5M15 18h5M9 6l6 6-6 6" opacity=".9"/></svg>
+      Auto layout
+    </button>
+    <button class="btn" id="btnUndo" title="Undo (⌘Z)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>
+      Undo
+    </button>
+    <div class="zoom-group">
+      <button id="btnZoomOut" title="Zoom out">−</button>
+      <div class="zlabel" id="zoomLabel">100%</div>
+      <button id="btnZoomIn" title="Zoom in">+</button>
+      <button id="btnFit" title="Fit to screen" style="font-size:12px;font-weight:700">Fit</button>
+    </div>
+    <button class="btn" id="btnReset" title="Restore the demo journey">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+      Reset
+    </button>
+  </div>
+</header>
+
+<div id="viewport">
+  <div id="world">
+    <svg id="edgeSvg">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="#94a3b8"/>
+        </marker>
+        <marker id="arrowHot" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="#6366f1"/>
+        </marker>
+        <marker id="arrowSel" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0L10 5L0 10z" fill="#ef4444"/>
+        </marker>
+      </defs>
+      <g id="edgeGroup"></g>
+      <path id="tempEdge" style="display:none"></path>
+    </svg>
+  </div>
+  <div id="overlay"></div>
+</div>
+
+<footer>
+  <span><span class="k">drag ●</span>from a stage's right port onto another stage to connect</span>
+  <span class="sep"></span>
+  <span><span class="k">dbl-click</span>empty canvas to add a stage · an edge to label it</span>
+  <span class="sep"></span>
+  <span><span class="k">scroll</span>zoom<span style="opacity:.5"> · drag background to pan</span></span>
+  <span class="sep"></span>
+  <span><span class="k">⌫</span>delete selection<span style="opacity:.5"> · <span class="k">⌘Z</span>undo</span></span>
+  <span class="saved" id="savedFlag">✓ saved</span>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ============================== State ============================== */
+const PALETTE = ['#6366f1','#0ea5e9','#10b981','#f59e0b','#ef4444','#ec4899','#8b5cf6','#14b8a6'];
+const STORE_KEY = 'customer-journey-flow-v1';
+const NODE_W = 232;
+
+const demo = () => ({
+  nodes: [
+    {id:'n1', x:60,  y:230, title:'Awareness',     desc:'Paid ads, social posts, SEO, word of mouth', color:'#6366f1', pct:100},
+    {id:'n2', x:360, y:120, title:'Interest',      desc:'Visits landing pages, reads content, watches demo', color:'#0ea5e9', pct:64},
+    {id:'n3', x:660, y:250, title:'Consideration', desc:'Compares features & pricing, reads reviews', color:'#10b981', pct:41},
+    {id:'n4', x:960, y:110, title:'Intent',        desc:'Starts free trial, adds to cart, books a call', color:'#f59e0b', pct:26},
+    {id:'n5', x:1260,y:250, title:'Purchase',      desc:'Checkout completes, onboarding begins', color:'#ef4444', pct:12},
+    {id:'n6', x:1560,y:120, title:'Advocacy',      desc:'Referrals, reviews, repeat purchases', color:'#8b5cf6', pct:7},
+  ],
+  edges: [
+    {id:'e1', from:'n1', to:'n2', label:'64%'},
+    {id:'e2', from:'n2', to:'n3', label:'41%'},
+    {id:'e3', from:'n3', to:'n4', label:'26%'},
+    {id:'e4', from:'n4', to:'n5', label:'12%'},
+    {id:'e5', from:'n5', to:'n6', label:'7%'},
+    {id:'e6', from:'n3', to:'n5', label:'direct buy'},
+    {id:'e7', from:'n1', to:'n3', label:'retargeting'},
+  ],
+});
+
+let state = load() || demo();
+let view = {x:40, y:20, k:1};
+let selectedEdge = null;
+let hoverNodeId = null;
+let history = [];
+let uid = 100;
+const nid = p => p + (++uid) + Math.random().toString(36).slice(2,6);
+
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    if (s && Array.isArray(s.nodes) && Array.isArray(s.edges)) return s;
+  }catch(e){}
+  return null;
+}
+let saveTimer;
+function save(){
+  try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){}
+  const f = document.getElementById('savedFlag');
+  f.classList.add('show');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>f.classList.remove('show'), 1200);
+}
+function pushHistory(){
+  history.push(JSON.stringify(state));
+  if (history.length > 60) history.shift();
+}
+function undo(){
+  if (!history.length){ toast('Nothing to undo'); return; }
+  state = JSON.parse(history.pop());
+  selectedEdge = null;
+  rebuildAll(); save();
+}
+
+/* ============================== DOM refs ============================== */
+const viewport = document.getElementById('viewport');
+const world    = document.getElementById('world');
+const edgeGroup= document.getElementById('edgeGroup');
+const tempEdge = document.getElementById('tempEdge');
+const overlay  = document.getElementById('overlay');
+const nodeEls  = new Map();   // id -> element
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+/* ============================== View transform ============================== */
+function applyView(){
+  world.style.transform = `translate(${view.x}px,${view.y}px) scale(${view.k})`;
+  const g = 24 * view.k;
+  viewport.style.backgroundSize = `${g}px ${g}px`;
+  viewport.style.backgroundPosition = `${view.x}px ${view.y}px`;
+  document.getElementById('zoomLabel').textContent = Math.round(view.k*100) + '%';
+  updateOverlay();
+}
+function screenToWorld(cx, cy){
+  const r = viewport.getBoundingClientRect();
+  return { x:(cx - r.left - view.x)/view.k, y:(cy - r.top - view.y)/view.k };
+}
+function worldToScreen(x, y){
+  return { x: x*view.k + view.x, y: y*view.k + view.y };
+}
+function zoomAt(cx, cy, factor){
+  const r = viewport.getBoundingClientRect();
+  const wx = (cx - r.left - view.x)/view.k, wy = (cy - r.top - view.y)/view.k;
+  view.k = Math.min(2.5, Math.max(.25, view.k * factor));
+  view.x = cx - r.left - wx*view.k;
+  view.y = cy - r.top - wy*view.k;
+  applyView();
+}
+
+/* ============================== Nodes ============================== */
+function nodeById(id){ return state.nodes.find(n=>n.id===id); }
+
+function makeNodeEl(n){
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.dataset.id = n.id;
+  el.innerHTML = `
+    <div class="node-body">
+      <div class="node-head">
+        <span class="dot" title="Click to change color"></span>
+        <div class="node-title" contenteditable spellcheck="false"></div>
+        <button class="node-del" title="Delete stage">×</button>
+      </div>
+      <div class="node-desc" contenteditable spellcheck="false"></div>
+      <div class="node-meta">
+        <span class="step-chip">stage</span>
+        <div class="funnel-track"><div class="funnel-fill"></div></div>
+        <input class="funnel-pct" title="Share of customers reaching this stage (%)" inputmode="decimal">
+      </div>
+    </div>
+    <span class="port in" title="Entry"></span>
+    <span class="port out" title="Drag to connect"></span>`;
+  const title = el.querySelector('.node-title');
+  const desc  = el.querySelector('.node-desc');
+  const pct   = el.querySelector('.funnel-pct');
+
+  title.textContent = n.title;
+  desc.textContent  = n.desc;
+  pct.value = (n.pct ?? 0) + '%';
+
+  title.addEventListener('blur', () => { n.title = title.textContent.trim() || 'Untitled stage'; title.textContent = n.title; save(); });
+  title.addEventListener('keydown', e => { if (e.key==='Enter'){ e.preventDefault(); title.blur(); } });
+  desc.addEventListener('blur',  () => { n.desc = desc.textContent.trim(); save(); });
+  desc.addEventListener('keydown',  e => { if (e.key==='Enter'){ e.preventDefault(); desc.blur(); } });
+  desc.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData||window.clipboardData).getData('text')); });
+  title.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, (e.clipboardData||window.clipboardData).getData('text').replace(/\n/g,' ')); });
+  pct.addEventListener('change', () => {
+    const v = Math.max(0, Math.min(100, parseFloat(pct.value) || 0));
+    n.pct = v; pct.value = v + '%'; paintNode(n, el); save();
+  });
+  pct.addEventListener('pointerdown', e => e.stopPropagation());
+  el.querySelector('.dot').addEventListener('pointerdown', e => {
+    e.stopPropagation();
+    const i = PALETTE.indexOf(n.color);
+    n.color = PALETTE[(i+1) % PALETTE.length];
+    paintNode(n, el); renderEdges(); save();
+  });
+  el.querySelector('.node-del').addEventListener('pointerdown', e => e.stopPropagation());
+  el.querySelector('.node-del').addEventListener('click', e => {
+    e.stopPropagation(); deleteNode(n.id);
+  });
+  [title, desc].forEach(t => t.addEventListener('pointerdown', e => t.isContentEditable && e.stopPropagation()));
+
+  el.addEventListener('pointerenter', () => { hoverNodeId = n.id; applyEdgeStyles(); });
+  el.addEventListener('pointerleave', () => { hoverNodeId = null; applyEdgeStyles(); });
+
+  attachNodeDrag(el, n);
+  attachPort(el.querySelector('.port.out'), n);
+  return el;
+}
+
+function paintNode(n, el){
+  el.style.setProperty('--c', n.color);
+  el.querySelector('.funnel-fill').style.width = (n.pct ?? 0) + '%';
+}
+
+function renderNodes(){
+  const seen = new Set();
+  state.nodes.forEach(n => {
+    seen.add(n.id);
+    let el = nodeEls.get(n.id);
+    if (!el){ el = makeNodeEl(n); nodeEls.set(n.id, el); world.appendChild(el); }
+    el.style.left = n.x + 'px';
+    el.style.top  = n.y + 'px';
+    paintNode(n, el);
+  });
+  nodeEls.forEach((el, id) => { if (!seen.has(id)){ el.remove(); nodeEls.delete(id); } });
+}
+
+function nodeH(id){ const el = nodeEls.get(id); return el ? el.offsetHeight : 110; }
+
+function anchorOut(n){ return { x: n.x + NODE_W, y: n.y + nodeH(n.id)/2 }; }
+function anchorIn(n){  return { x: n.x,          y: n.y + nodeH(n.id)/2 }; }
+
+function deleteNode(id){
+  pushHistory();
+  state.nodes = state.nodes.filter(n => n.id !== id);
+  state.edges = state.edges.filter(e => e.from !== id && e.to !== id);
+  if (selectedEdge && !state.edges.find(e=>e.id===selectedEdge)) selectedEdge = null;
+  rebuildAll(); save(); toast('Stage deleted');
+}
+
+function addNodeAt(wx, wy, opts={}){
+  pushHistory();
+  const n = {
+    id: nid('n'), x: wx - NODE_W/2, y: wy - 44,
+    title: opts.title || 'New stage',
+    desc: opts.desc ?? 'Describe what happens here',
+    color: opts.color || PALETTE[state.nodes.length % PALETTE.length],
+    pct: opts.pct ?? 50,
+  };
+  state.nodes.push(n);
+  rebuildAll(); save();
+  return n;
+}
+
+/* ============================== Edges ============================== */
+function edgePath(a, b){
+  const dx = Math.abs(b.x - a.x);
+  const c = Math.max(48, dx * .55);
+  return `M ${a.x} ${a.y} C ${a.x+c} ${a.y}, ${b.x-c} ${b.y}, ${b.x} ${b.y}`;
+}
+function bezMid(a, b){
+  const dx = Math.abs(b.x - a.x), c = Math.max(48, dx * .55);
+  const p1 = {x:a.x+c, y:a.y}, p2 = {x:b.x-c, y:b.y};
+  return {
+    x: (a.x + 3*p1.x + 3*p2.x + b.x)/8,
+    y: (a.y + 3*p1.y + 3*p2.y + b.y)/8,
+  };
+}
+
+function renderEdges(){
+  edgeGroup.innerHTML = '';
+  state.edges.forEach(e => {
+    const from = nodeById(e.from), to = nodeById(e.to);
+    if (!from || !to) return;
+    const a = anchorOut(from), b = anchorIn(to);
+    b.x -= 3;
+    const d = edgePath(a, b);
+
+    const hit = document.createElementNS(SVGNS, 'path');
+    hit.setAttribute('d', d); hit.setAttribute('class', 'edge-hit');
+    hit.dataset.eid = e.id;
+    hit.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      selectEdge(e.id === selectedEdge ? null : e.id);
+    });
+    hit.addEventListener('dblclick', ev => { ev.stopPropagation(); startLabelEdit(e); });
+
+    const line = document.createElementNS(SVGNS, 'path');
+    line.setAttribute('d', d);
+    line.dataset.eid = e.id;
+
+    edgeGroup.append(hit, line);
+
+    if (e.label){
+      const m = bezMid(a, b);
+      const t = document.createElementNS(SVGNS, 'text');
+      t.setAttribute('x', m.x); t.setAttribute('y', m.y - 7);
+      t.setAttribute('class', 'edge-label');
+      t.textContent = e.label;
+      edgeGroup.appendChild(t);
+    }
+  });
+  applyEdgeStyles();
+  document.getElementById('statNodes').textContent = state.nodes.length;
+  document.getElementById('statEdges').textContent = state.edges.length;
+}
+
+function applyEdgeStyles(){
+  edgeGroup.querySelectorAll('path').forEach(p => {
+    if (p.id === 'tempEdge' || !p.dataset.eid) return;
+    if (p.classList.contains('edge-hit')) return;
+    const isSel = p.dataset.eid === selectedEdge;
+    const e = state.edges.find(x => x.id === p.dataset.eid);
+    const isHot = !isSel && e && (hoverNodeId === e.from || hoverNodeId === e.to);
+    p.setAttribute('class', 'edge-line' + (isSel ? ' sel' : isHot ? ' hot' : ''));
+    p.setAttribute('marker-end', isSel ? 'url(#arrowSel)' : isHot ? 'url(#arrowHot)' : 'url(#arrow)');
+  });
+}
+
+function selectEdge(id){
+  selectedEdge = id;
+  applyEdgeStyles();
+  updateOverlay();
+}
+
+function deleteEdge(id){
+  pushHistory();
+  state.edges = state.edges.filter(e => e.id !== id);
+  if (selectedEdge === id) selectedEdge = null;
+  renderEdges(); updateOverlay(); save();
+}
+
+function addEdge(fromId, toId){
+  if (fromId === toId) return false;
+  if (state.edges.some(e => e.from === fromId && e.to === toId)) { toast('Already connected'); return false; }
+  pushHistory();
+  state.edges.push({ id: nid('e'), from: fromId, to: toId, label: '' });
+  renderEdges(); save(); return true;
+}
+
+/* ============================== Overlay (chip + label editor) ============================== */
+function edgeMidScreen(e){
+  const from = nodeById(e.from), to = nodeById(e.to);
+  if (!from || !to) return null;
+  const m = bezMid(anchorOut(from), anchorIn(to));
+  return worldToScreen(m.x, m.y);
+}
+function updateOverlay(){
+  overlay.innerHTML = '';
+  if (!selectedEdge) return;
+  const e = state.edges.find(x => x.id === selectedEdge);
+  if (!e) { selectedEdge = null; return; }
+  const p = edgeMidScreen(e);
+  if (!p) return;
+  const chip = document.createElement('div');
+  chip.className = 'edge-chip';
+  chip.style.left = p.x + 'px';
+  chip.style.top  = (p.y + 18) + 'px';
+  chip.innerHTML = `
+    <button data-act="label">✎ Label</button>
+    <button data-act="flip">⇄ Flip</button>
+    <button data-act="del" class="danger">✕ Delete</button>`;
+  chip.addEventListener('pointerdown', ev => ev.stopPropagation());
+  chip.addEventListener('click', ev => {
+    const act = ev.target.dataset?.act;
+    if (act === 'del'){ deleteEdge(e.id); }
+    if (act === 'label'){ startLabelEdit(e); }
+    if (act === 'flip'){
+      pushHistory();
+      const t = e.from; e.from = e.to; e.to = t;
+      renderEdges(); updateOverlay(); save();
+    }
+  });
+  overlay.appendChild(chip);
+}
+function startLabelEdit(e){
+  updateOverlay();
+  const p = edgeMidScreen(e);
+  if (!p) return;
+  const input = document.createElement('input');
+  input.className = 'edge-input';
+  input.placeholder = 'label…';
+  input.value = e.label || '';
+  input.style.left = p.x + 'px';
+  input.style.top  = (p.y - 10) + 'px';
+  overlay.appendChild(input);
+  input.focus(); input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return; done = true;
+    pushHistory();
+    e.label = input.value.trim();
+    input.remove(); renderEdges(); updateOverlay(); save();
+  };
+  input.addEventListener('keydown', ev => {
+    ev.stopPropagation();
+    if (ev.key === 'Enter') commit();
+    if (ev.key === 'Escape'){ done = true; input.remove(); }
+  });
+  input.addEventListener('blur', commit);
+}
+
+/* ============================== Interactions ============================== */
+function attachNodeDrag(el, n){
+  el.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    if (ev.target.closest('.port,.dot,.node-del,input,[contenteditable]')) return;
+    ev.stopPropagation();
+    const start = screenToWorld(ev.clientX, ev.clientY);
+    const ox = n.x - start.x, oy = n.y - start.y;
+    let moved = false;
+    el.classList.add('dragging');
+    const before = JSON.stringify(state);
+    const move = mv => {
+      const w = screenToWorld(mv.clientX, mv.clientY);
+      n.x = Math.round(w.x + ox); n.y = Math.round(w.y + oy);
+      moved = true;
+      el.style.left = n.x + 'px'; el.style.top = n.y + 'px';
+      renderEdges(); updateOverlay();
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      el.classList.remove('dragging');
+      if (moved && JSON.stringify(state) !== before){
+        history.push(before);
+        if (history.length > 60) history.shift();
+        save();
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, {once:true});
+  });
+}
+
+let connecting = false;
+function attachPort(port, n){
+  port.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    ev.stopPropagation(); ev.preventDefault();
+    connecting = true;
+    document.body.classList.add('connecting');
+    const a = anchorOut(n);
+    tempEdge.style.display = '';
+    let targetEl = null;
+    const move = mv => {
+      const w = screenToWorld(mv.clientX, mv.clientY);
+      tempEdge.setAttribute('d', edgePath(a, w));
+      const under = document.elementFromPoint(mv.clientX, mv.clientY);
+      const hitNode = under?.closest?.('.node');
+      if (targetEl && targetEl !== hitNode) targetEl.classList.remove('link-target');
+      if (hitNode && hitNode.dataset.id !== n.id){ hitNode.classList.add('link-target'); targetEl = hitNode; }
+      else targetEl = null;
+    };
+    const up = mv => {
+      window.removeEventListener('pointermove', move);
+      tempEdge.style.display = 'none';
+      document.body.classList.remove('connecting');
+      connecting = false;
+      if (targetEl){
+        targetEl.classList.remove('link-target');
+        if (addEdge(n.id, targetEl.dataset.id)) toast('Connected ✓');
+      }
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up, {once:true});
+  });
+}
+
+/* pan + background interactions */
+viewport.addEventListener('pointerdown', ev => {
+  if (ev.button !== 0 && ev.button !== 1) return;
+  if (ev.target.closest('.node,.edge-chip,.edge-input,path')) return;
+  selectedEdge = null; renderEdges(); updateOverlay();
+  const sx = ev.clientX, sy = ev.clientY, ox = view.x, oy = view.y;
+  viewport.classList.add('panning');
+  const move = mv => { view.x = ox + mv.clientX - sx; view.y = oy + mv.clientY - sy; applyView(); };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', () => { viewport.classList.remove('panning'); window.removeEventListener('pointermove', move); }, {once:true});
+});
+
+viewport.addEventListener('dblclick', ev => {
+  if (ev.target.closest('.node,.edge-chip,.edge-input,svg')) return;
+  const w = screenToWorld(ev.clientX, ev.clientY);
+  const n = addNodeAt(w.x, w.y);
+  const el = nodeEls.get(n.id);
+  if (el){ const t = el.querySelector('.node-title'); t.focus(); document.execCommand('selectAll'); }
+});
+
+viewport.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  zoomAt(ev.clientX, ev.clientY, Math.exp(-ev.deltaY * 0.0014));
+}, {passive:false});
+
+window.addEventListener('keydown', ev => {
+  const editing = document.activeElement && (document.activeElement.isContentEditable || /INPUT|TEXTAREA/.test(document.activeElement.tagName));
+  if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'z'){ ev.preventDefault(); undo(); return; }
+  if (editing) return;
+  if ((ev.key === 'Delete' || ev.key === 'Backspace') && selectedEdge){
+    ev.preventDefault(); deleteEdge(selectedEdge);
+  }
+  if (ev.key === 'Escape'){ selectEdge(null); }
+});
+
+/* ============================== Layout & view ops ============================== */
+function autoLayout(){
+  pushHistory();
+  const layers = new Map();
+  const ids = state.nodes.map(n=>n.id);
+  ids.forEach(id => layers.set(id, 0));
+  for (let pass = 0; pass < ids.length; pass++){
+    let changed = false;
+    state.edges.forEach(e => {
+      if (layers.has(e.from) && layers.has(e.to)){
+        const want = layers.get(e.from) + 1;
+        if (layers.get(e.to) < want){ layers.set(e.to, want); changed = true; }
+      }
+    });
+    if (!changed) break;
+  }
+  const cols = new Map();
+  state.nodes.forEach(n => {
+    const L = layers.get(n.id) || 0;
+    if (!cols.has(L)) cols.set(L, []);
+    cols.get(L).push(n);
+  });
+  const colKeys = [...cols.keys()].sort((a,b)=>a-b);
+  colKeys.forEach((L, ci) => {
+    const list = cols.get(L).sort((a,b)=>a.y-b.y);
+    const totalH = list.reduce((s,n)=>s+nodeH(n.id)+48, 0) - 48;
+    let y = 380 - totalH/2;
+    list.forEach(n => { n.x = 60 + ci*300; n.y = Math.round(y); y += nodeH(n.id) + 48; });
+  });
+  rebuildAll(); save(); fitView(); toast('Auto layout applied');
+}
+
+function fitView(){
+  if (!state.nodes.length) return;
+  let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+  state.nodes.forEach(n => {
+    minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + NODE_W); maxY = Math.max(maxY, n.y + nodeH(n.id));
+  });
+  const r = viewport.getBoundingClientRect();
+  const pad = 70;
+  const k = Math.min(1.4, Math.max(.25, Math.min(
+    (r.width - pad*2) / (maxX - minX),
+    (r.height - pad*2) / (maxY - minY)
+  )));
+  view.k = k;
+  view.x = (r.width  - (maxX - minX)*k)/2 - minX*k;
+  view.y = (r.height - (maxY - minY)*k)/2 - minY*k;
+  applyView();
+}
+
+function rebuildAll(){
+  nodeEls.forEach(el => el.remove());
+  nodeEls.clear();
+  renderNodes(); renderEdges(); updateOverlay();
+}
+
+/* ============================== Toolbar ============================== */
+document.getElementById('btnAdd').addEventListener('click', () => {
+  const r = viewport.getBoundingClientRect();
+  const w = screenToWorld(r.left + r.width/2 + (Math.random()*60-30), r.top + r.height/2 + (nodeEls.size%4)*26 - 40);
+  const n = addNodeAt(w.x, w.y);
+  const el = nodeEls.get(n.id);
+  if (el){ const t = el.querySelector('.node-title'); t.focus(); document.execCommand('selectAll'); }
+});
+document.getElementById('btnLayout').addEventListener('click', autoLayout);
+document.getElementById('btnUndo').addEventListener('click', undo);
+document.getElementById('btnZoomIn').addEventListener('click', () => {
+  const r = viewport.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1.2);
+});
+document.getElementById('btnZoomOut').addEventListener('click', () => {
+  const r = viewport.getBoundingClientRect(); zoomAt(r.left+r.width/2, r.top+r.height/2, 1/1.2);
+});
+document.getElementById('btnFit').addEventListener('click', fitView);
+document.getElementById('btnReset').addEventListener('click', () => {
+  pushHistory();
+  state = demo();
+  selectedEdge = null;
+  rebuildAll(); fitView(); save(); toast('Demo journey restored');
+});
+
+/* ============================== Toast ============================== */
+let toastTimer;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>t.classList.remove('show'), 1600);
+}
+
+/* ============================== Boot ============================== */
+window.addEventListener('resize', updateOverlay);
+rebuildAll();
+requestAnimationFrame(() => { renderEdges(); fitView(); });
+})();
+</script>
+</body>
+</html>

@@ -306,6 +306,16 @@ export const models: ModelConfig[] = [
     published: true,
   },
   {
+    id: "qwen-3.8-flash",
+    name: "Qwen3.8 Flash",
+    harness: "opencode",
+    host: "openrouter",
+    model: "qwen/qwen3.8-flash",
+    variant: "xhigh",
+    color: "bg-teal-700",
+    provider: "qwen",
+  },
+  {
     id: "glm-5.2",
     name: "GLM-5.2",
     harness: "claude",

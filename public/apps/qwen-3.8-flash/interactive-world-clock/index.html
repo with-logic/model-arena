@@ -1,0 +1,677 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Interactive World Clock</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕐</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#070b1a;
+  --ink:#0e1526;
+  --muted:#5b6478;
+  --card:#ffffff;
+  --line:rgba(14,21,38,.08);
+  --accent:#4f7cff;
+  --radius:22px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  background:
+    radial-gradient(1100px 500px at 85% -10%, rgba(79,124,255,.18), transparent 60%),
+    radial-gradient(900px 500px at -10% 20%, rgba(255,140,90,.10), transparent 55%),
+    radial-gradient(800px 600px at 50% 115%, rgba(120,80,255,.14), transparent 60%),
+    var(--bg);
+  color:#eef1fb;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1240px;margin:0 auto;padding:28px 22px 60px}
+
+/* ---------- header ---------- */
+header{
+  display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  position:sticky;top:0;z-index:30;
+  padding:14px 18px;margin:-14px -6px 26px;
+  background:rgba(9,13,28,.72);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:18px;
+}
+.brand{display:flex;align-items:center;gap:12px;margin-right:auto}
+.brand-mark{
+  width:40px;height:40px;border-radius:12px;display:grid;place-items:center;
+  background:conic-gradient(from 210deg,#4f7cff,#9b6bff,#ff9a5a,#ffd75e,#4f7cff);
+  box-shadow:0 6px 22px rgba(79,124,255,.35);
+}
+.brand-mark svg{width:24px;height:24px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round}
+.brand h1{font-family:'Sora','Inter',sans-serif;font-size:19px;font-weight:800;letter-spacing:.2px;line-height:1.1}
+.brand small{display:block;font-family:'Inter';font-weight:500;font-size:11.5px;color:#9aa3bd;letter-spacing:.3px}
+
+.local-chip{
+  display:flex;align-items:center;gap:10px;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);
+  padding:8px 14px;border-radius:14px;
+}
+.local-chip .lc-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.9px;color:#9aa3bd;line-height:1.3}
+.local-chip .lc-city{font-size:12.5px;font-weight:600;color:#dfe5f5;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.local-chip .lc-time{font-family:'Sora';font-weight:700;font-size:17px;font-variant-numeric:tabular-nums}
+
+.seg{display:flex;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);border-radius:12px;padding:3px}
+.seg button{
+  border:0;background:transparent;color:#aab3cc;font:600 12.5px 'Inter';
+  padding:6px 13px;border-radius:9px;cursor:pointer;transition:.2s;letter-spacing:.3px;
+}
+.seg button.on{background:linear-gradient(180deg,#5b86ff,#3f63e8);color:#fff;box-shadow:0 3px 10px rgba(79,124,255,.45)}
+
+.btn-add{
+  display:flex;align-items:center;gap:8px;border:0;cursor:pointer;
+  background:linear-gradient(180deg,#6a5cff,#4f37d8);color:#fff;
+  font:700 13.5px 'Inter';padding:11px 18px;border-radius:13px;
+  box-shadow:0 8px 24px rgba(106,92,255,.4);transition:.2s;
+}
+.btn-add:hover{transform:translateY(-1px);box-shadow:0 12px 28px rgba(106,92,255,.55)}
+.btn-add:active{transform:translateY(0)}
+
+/* ---------- grid & cards ---------- */
+#grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:20px}
+.card{
+  position:relative;background:var(--card);color:var(--ink);
+  border-radius:var(--radius);overflow:hidden;
+  box-shadow:0 18px 40px rgba(3,6,18,.45);
+  animation:pop .5s cubic-bezier(.2,.9,.3,1.2) both;
+  transition:transform .25s, box-shadow .25s, opacity .25s;
+  cursor:grab;
+}
+@keyframes pop{from{opacity:0;transform:translateY(16px) scale(.96)}}
+.card:hover{transform:translateY(-4px);box-shadow:0 26px 54px rgba(3,6,18,.55)}
+.card.dragging{opacity:.35;cursor:grabbing}
+.card.removing{transform:scale(.85);opacity:0}
+
+.sky{position:relative;height:118px}
+.sky .g{position:absolute;inset:0;opacity:0;transition:opacity 1.2s ease}
+.g-morning   {background:linear-gradient(180deg,#3f8fd9 0%,#7cc0ef 45%,#ffd9a8 82%,#ffe9c9 100%)}
+.g-afternoon {background:linear-gradient(180deg,#1c6fd4 0%,#3f97e8 55%,#8fd0ff 100%)}
+.g-evening   {background:linear-gradient(180deg,#2b2a6e 0%,#7a4b9e 45%,#e86f5a 78%,#ffb46b 100%)}
+.g-night     {background:linear-gradient(180deg,#04061a 0%,#0c1235 55%,#1c2355 100%)}
+.card.p-morning .g-morning,.card.p-afternoon .g-afternoon,
+.card.p-evening .g-evening,.card.p-night .g-night{opacity:1}
+
+.stars{position:absolute;inset:0;opacity:0;transition:opacity 1.2s}
+.card.p-night .stars{opacity:1}
+.stars i{position:absolute;border-radius:50%;background:#fff;animation:tw 3s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:.25}50%{opacity:1}}
+
+.horizon{position:absolute;left:0;right:0;bottom:0;height:34px;
+  background:linear-gradient(180deg,transparent,rgba(0,0,0,.28));pointer-events:none}
+.card.p-night .horizon{background:linear-gradient(180deg,transparent,rgba(90,110,255,.12))}
+
+.orb{position:absolute;width:34px;height:34px;transform:translate(-50%,50%);transition:left .9s linear,bottom .9s linear;pointer-events:none}
+.orb svg{width:100%;height:100%;display:block;filter:drop-shadow(0 0 14px rgba(255,200,80,.9))}
+.orb.moon svg{filter:drop-shadow(0 0 10px rgba(210,225,255,.7))}
+.orb .rays{transform-origin:50% 50%;animation:spin 36s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.clock-wrap{position:absolute;left:50%;bottom:-40px;transform:translateX(-50%);z-index:2}
+.clock-face{
+  width:96px;height:96px;border-radius:50%;
+  background:rgba(255,255,255,.92);
+  box-shadow:0 10px 26px rgba(0,0,0,.35), inset 0 0 0 1px rgba(14,21,38,.06);
+  display:grid;place-items:center;
+}
+.card.p-night .clock-face{background:rgba(240,244,255,.96)}
+.clock-face svg{width:88px;height:88px}
+
+.body{padding:52px 18px 16px}
+.loc-row{display:flex;align-items:flex-start;gap:10px}
+.flag{font-size:22px;line-height:1.2;filter:drop-shadow(0 1px 2px rgba(0,0,0,.15))}
+.loc-name{min-width:0;flex:1}
+.loc-name h3{font-family:'Sora';font-size:16.5px;font-weight:700;letter-spacing:.1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loc-name span{font-size:11px;color:var(--muted);font-weight:500}
+.rm{
+  border:0;width:26px;height:26px;border-radius:9px;flex:none;cursor:pointer;
+  background:rgba(14,21,38,.06);color:#8a92a6;font-size:13px;line-height:1;
+  display:grid;place-items:center;transition:.2s;opacity:0;transform:scale(.8);
+}
+.card:hover .rm{opacity:1;transform:scale(1)}
+.rm:hover{background:#ffe3e3;color:#e02424}
+
+.digital{display:flex;align-items:baseline;gap:2px;margin-top:10px;font-family:'Sora';color:var(--ink)}
+.digital .t{font-size:34px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.digital .s{font-size:17px;font-weight:700;color:var(--accent);font-variant-numeric:tabular-nums}
+.digital .ap{font-size:12px;font-weight:700;color:var(--muted);margin-left:5px;text-transform:uppercase}
+
+.meta{display:flex;align-items:center;gap:8px;margin-top:9px;flex-wrap:wrap}
+.phase{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:10.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  padding:4px 10px;border-radius:99px;
+}
+.p-morning .phase{background:#fff2dd;color:#b06a00}
+.p-afternoon .phase{background:#e1efff;color:#1a63b8}
+.p-evening .phase{background:#f3e3ff;color:#8a3ab8}
+.p-night .phase{background:#e6e9f7;color:#43508f}
+.meta .sep{width:3px;height:3px;border-radius:50%;background:#c3c9d8}
+.meta .d,.meta .delta{font-size:11.5px;color:var(--muted);font-weight:500;font-variant-numeric:tabular-nums}
+.meta .delta{color:var(--ink);font-weight:600}
+.you-chip{font-size:10px;font-weight:800;letter-spacing:.6px;color:#0b8f5d;background:#d8f5e6;border-radius:99px;padding:3px 8px;text-transform:uppercase}
+
+/* ---------- empty state ---------- */
+.empty{
+  grid-column:1/-1;text-align:center;padding:70px 20px;color:#aab3cc;
+  border:1.5px dashed rgba(255,255,255,.14);border-radius:24px;
+}
+.empty h2{font-family:'Sora';color:#e7ebf8;font-size:20px;margin-bottom:6px}
+.empty p{font-size:13.5px;margin-bottom:18px}
+
+/* ---------- modal ---------- */
+.overlay{position:fixed;inset:0;z-index:50;display:none;align-items:flex-start;justify-content:center;
+  background:rgba(4,7,18,.66);backdrop-filter:blur(6px);padding:8vh 18px 18px}
+.overlay.open{display:flex;animation:fade .2s ease}
+@keyframes fade{from{opacity:0}}
+.sheet{
+  width:min(560px,100%);background:#101630;color:#e8ecfa;
+  border:1px solid rgba(255,255,255,.1);border-radius:22px;overflow:hidden;
+  box-shadow:0 40px 90px rgba(0,0,0,.6);animation:rise .28s cubic-bezier(.2,.9,.3,1.1);
+}
+@keyframes rise{from{transform:translateY(24px) scale(.97);opacity:0}}
+.sheet-head{padding:18px 18px 12px;border-bottom:1px solid rgba(255,255,255,.07)}
+.sheet-head .row{display:flex;align-items:center;gap:12px}
+.sheet-head h2{font-family:'Sora';font-size:16px;font-weight:700;margin-right:auto}
+.x{border:0;background:rgba(255,255,255,.08);color:#c8d0e8;width:30px;height:30px;border-radius:10px;cursor:pointer;font-size:14px}
+.x:hover{background:rgba(255,255,255,.16)}
+.search{
+  margin-top:12px;width:100%;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);
+  color:#fff;font:500 14px 'Inter';padding:11px 14px;border-radius:12px;outline:none;transition:.2s;
+}
+.search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(79,124,255,.25)}
+.search::placeholder{color:#7c86a3}
+.city-list{max-height:52vh;overflow-y:auto;padding:8px}
+.city-list::-webkit-scrollbar{width:8px}
+.city-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:8px}
+.ci{
+  display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;
+  cursor:pointer;transition:.15s;border:1px solid transparent;
+}
+.ci:hover{background:rgba(79,124,255,.12);border-color:rgba(79,124,255,.3)}
+.ci .flag{font-size:20px}
+.ci .cn{flex:1;min-width:0}
+.ci .cn b{display:block;font-size:13.5px;font-weight:600}
+.ci .cn span{font-size:11px;color:#8b95b4}
+.ci .ct{font-family:'Sora';font-size:14px;font-weight:700;font-variant-numeric:tabular-nums;color:#cdd6f2}
+.ci .ct small{display:block;text-align:right;font-family:'Inter';font-size:10px;font-weight:500;color:#8b95b4}
+.ci.added{opacity:.55;cursor:default}
+.ci.added:hover{background:transparent;border-color:transparent}
+.ci .check{font-size:11px;font-weight:700;color:#57d99a;letter-spacing:.4px}
+.no-res{padding:26px;text-align:center;color:#8b95b4;font-size:13px}
+
+footer{margin-top:34px;text-align:center;font-size:11.5px;color:#66708e;letter-spacing:.3px}
+footer b{color:#98a2c0;font-weight:600}
+
+@media (max-width:640px){
+  header{gap:12px}
+  .brand{margin-right:0;width:100%}
+  .local-chip{order:3}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+      </div>
+      <div>
+        <h1>Interactive World Clock</h1>
+        <small>Every timezone, in real time</small>
+      </div>
+    </div>
+    <div class="local-chip" id="localChip">
+      <div>
+        <div class="lc-label">Your time</div>
+        <div class="lc-city" id="localCity">—</div>
+      </div>
+      <div class="lc-time" id="localTime">--:--</div>
+    </div>
+    <div class="seg" role="group" aria-label="Clock format">
+      <button id="b12" aria-pressed="false">12h</button>
+      <button id="b24" aria-pressed="true">24h</button>
+    </div>
+    <button class="btn-add" id="btnAdd">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      Add city
+    </button>
+  </header>
+
+  <main id="grid" aria-label="City clocks"></main>
+
+  <footer>Tip: <b>drag cards to reorder</b> · times update live and respect daylight saving</footer>
+</div>
+
+<div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-label="Add a city">
+  <div class="sheet">
+    <div class="sheet-head">
+      <div class="row">
+        <h2>Add a city</h2>
+        <button class="x" id="btnClose" aria-label="Close">✕</button>
+      </div>
+      <input class="search" id="search" type="text" placeholder="Search 90+ cities — Tokyo, Berlin, UTC+5:30…" autocomplete="off">
+    </div>
+    <div class="city-list" id="cityList"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+const CITIES = [
+["Tokyo","Japan","Asia/Tokyo","🇯🇵"],["Seoul","South Korea","Asia/Seoul","🇰🇷"],
+["Shanghai","China","Asia/Shanghai","🇨🇳"],["Hong Kong","China SAR","Asia/Hong_Kong","🇭🇰"],
+["Taipei","Taiwan","Asia/Taipei","🇹🇼"],["Manila","Philippines","Asia/Manila","🇵🇭"],
+["Singapore","Singapore","Asia/Singapore","🇸🇬"],["Kuala Lumpur","Malaysia","Asia/Kuala_Lumpur","🇲🇾"],
+["Jakarta","Indonesia","Asia/Jakarta","🇮🇩"],["Bandar Seri Begawan","Brunei","Asia/Brunei","🇧🇳"],
+["Bangkok","Thailand","Asia/Bangkok","🇹🇭"],["Ho Chi Minh City","Vietnam","Asia/Ho_Chi_Minh","🇻🇳"],
+["Phnom Penh","Cambodia","Asia/Phnom_Penh","🇰🇭"],["Yangon","Myanmar","Asia/Yangon","🇲🇲"],
+["Kathmandu","Nepal","Asia/Kathmandu","🇳🇵"],["New Delhi","India","Asia/Kolkata","🇮🇳"],
+["Mumbai","India","Asia/Kolkata","🇮🇳"],["Colombo","Sri Lanka","Asia/Colombo","🇱🇰"],
+["Dhaka","Bangladesh","Asia/Dhaka","🇧🇩"],["Karachi","Pakistan","Asia/Karachi","🇵🇰"],
+["Tashkent","Uzbekistan","Asia/Tashkent","🇺🇿"],["Almaty","Kazakhstan","Asia/Almaty","🇰🇿"],
+["Bishkek","Kyrgyzstan","Asia/Bishkek","🇰🇬"],["Baku","Azerbaijan","Asia/Baku","🇦🇿"],
+["Tbilisi","Georgia","Asia/Tbilisi","🇬🇪"],["Yerevan","Armenia","Asia/Yerevan","🇦🇲"],
+["Tehran","Iran","Asia/Tehran","🇮🇷"],["Baghdad","Iraq","Asia/Baghdad","🇮🇶"],
+["Kuwait City","Kuwait","Asia/Kuwait","🇰🇼"],["Riyadh","Saudi Arabia","Asia/Riyadh","🇸🇦"],
+["Dubai","UAE","Asia/Dubai","🇦🇪"],["Abu Dhabi","UAE","Asia/Dubai","🇦🇪"],["Doha","Qatar","Asia/Qatar","🇶🇦"],
+["Muscat","Oman","Asia/Muscat","🇴🇲"],["Jerusalem","Israel","Asia/Jerusalem","🇮🇱"],
+["Tel Aviv","Israel","Asia/Tel_Aviv","🇮🇱"],["Istanbul","Türkiye","Europe/Istanbul","🇹🇷"],
+["Moscow","Russia","Europe/Moscow","🇷🇺"],["Kyiv","Ukraine","Europe/Kyiv","🇺🇦"],
+["Minsk","Belarus","Europe/Minsk","🇧🇾"],["Warsaw","Poland","Europe/Warsaw","🇵🇱"],
+["Prague","Czechia","Europe/Prague","🇨🇿"],["Vienna","Austria","Europe/Vienna","🇦🇹"],
+["Berlin","Germany","Europe/Berlin","🇩🇪"],["Zurich","Switzerland","Europe/Zurich","🇨🇭"],
+["Amsterdam","Netherlands","Europe/Amsterdam","🇳🇱"],["Copenhagen","Denmark","Europe/Copenhagen","🇩🇰"],
+["Stockholm","Sweden","Europe/Stockholm","🇸🇪"],["Oslo","Norway","Europe/Oslo","🇳🇴"],
+["Helsinki","Finland","Europe/Helsinki","🇫🇮"],["Madrid","Spain","Europe/Madrid","🇪🇸"],
+["Barcelona","Spain","Europe/Madrid","🇪🇸"],["Paris","France","Europe/Paris","🇫🇷"],
+["Rome","Italy","Europe/Rome","🇮🇹"],["Athens","Greece","Europe/Athens","🇬🇷"],
+["Bucharest","Romania","Europe/Bucharest","🇷🇴"],["Dublin","Ireland","Europe/Dublin","🇮🇪"],
+["London","United Kingdom","Europe/London","🇬🇧"],["Lisbon","Portugal","Europe/Lisbon","🇵🇹"],
+["Reykjavík","Iceland","Atlantic/Reykjavik","🇮🇸"],["Cairo","Egypt","Africa/Cairo","🇪🇬"],
+["Casablanca","Morocco","Africa/Casablanca","🇲🇦"],["Algiers","Algeria","Africa/Algiers","🇩🇿"],
+["Tunis","Tunisia","Africa/Tunis","🇹🇳"],["Lagos","Nigeria","Africa/Lagos","🇳🇬"],
+["Nairobi","Kenya","Africa/Nairobi","🇰🇪"],["Addis Ababa","Ethiopia","Africa/Addis_Ababa","🇪🇹"],
+["Dar es Salaam","Tanzania","Africa/Dar_es_Salaam","🇹🇿"],["Johannesburg","South Africa","Africa/Johannesburg","🇿🇦"],
+["Cape Town","South Africa","Africa/Johannesburg","🇿🇦"],["Khartoum","Sudan","Africa/Khartoum","🇸🇩"],
+["Ankara","Türkiye","Europe/Istanbul","🇹🇷"],["Yekaterinburg","Russia","Asia/Yekaterinburg","🇷🇺"],
+["Novosibirsk","Russia","Asia/Novosibirsk","🇷🇺"],["Irkutsk","Russia","Asia/Irkutsk","🇷🇺"],
+["Yakutsk","Russia","Asia/Yakutsk","🇷🇺"],["Vladivostok","Russia","Asia/Vladivostok","🇷🇺"],
+["Perth","Australia","Australia/Perth","🇦🇺"],["Adelaide","Australia","Australia/Adelaide","🇦🇺"],
+["Brisbane","Australia","Australia/Brisbane","🇦🇺"],["Melbourne","Australia","Australia/Melbourne","🇦🇺"],
+["Sydney","Australia","Australia/Sydney","🇦🇺"],["Hobart","Australia","Australia/Hobart","🇦🇺"],
+["Port Moresby","Papua New Guinea","Pacific/Port_Moresby","🇵🇬"],["Nouméa","New Caledonia","Pacific/Noumea","🇳🇨"],
+["Honiara","Solomon Islands","Pacific/Guadalcanal","🇸🇧"],["Auckland","New Zealand","Pacific/Auckland","🇳🇿"],
+["Wellington","New Zealand","Pacific/Auckland","🇳🇿"],["Christchurch","New Zealand","Pacific/Auckland","🇳🇿"],
+["Suva","Fiji","Pacific/Fiji","🇫🇯"],
+["Chatham Islands","New Zealand","Pacific/Chatham","🇳🇿"],["Apia","Samoa","Pacific/Apia","🇼🇸"],
+["Nukuʻalofa","Tonga","Pacific/Tongatapu","🇹🇴"],["Tarawa (Kiribati)","Kiribati","Pacific/Tarawa","🇰🇮"],
+["Kiritimati (Line Is.)","Kiribati","Pacific/Kiritimati","🇰🇮"],
+["Honolulu","United States","Pacific/Honolulu","🇺🇸"],["Anchorage","United States","America/Anchorage","🇺🇸"],
+["Los Angeles","United States","America/Los_Angeles","🇺🇸"],["San Francisco","United States","America/Los_Angeles","🇺🇸"],
+["Seattle","United States","America/Los_Angeles","🇺🇸"],["Las Vegas","United States","America/Los_Angeles","🇺🇸"],
+["Vancouver","Canada","America/Vancouver","🇨🇦"],["Portland","United States","America/Los_Angeles","🇺🇸"],
+["Denver","United States","America/Denver","🇺🇸"],["Phoenix","United States","America/Phoenix","🇺🇸"],
+["Salt Lake City","United States","America/Denver","🇺🇸"],["Calgary","Canada","America/Edmonton","🇨🇦"],
+["Edmonton","Canada","America/Edmonton","🇨🇦"],["Mexico City","Mexico","America/Mexico_City","🇲🇽"],
+["Monterrey","Mexico","America/Monterrey","🇲🇽"],["Houston","United States","America/Chicago","🇺🇸"],
+["Chicago","United States","America/Chicago","🇺🇸"],["Winnipeg","Canada","America/Winnipeg","🇨🇦"],
+["Guatemala City","Guatemala","America/Guatemala","🇬🇹"],["San Salvador","El Salvador","America/El_Salvador","🇸🇻"],
+["San José","Costa Rica","America/Costa_Rica","🇨🇷"],["Panama City","Panama","America/Panama","🇵🇦"],
+["Havana","Cuba","America/Havana","🇨🇺"],["Cancún","Mexico","America/Cancun","🇲🇽"],
+["Kingston","Jamaica","America/Jamaica","🇯🇲"],["Port-au-Prince","Haiti","America/Port-au-Prince","🇭🇹"],
+["Santo Domingo","Dominican Rep.","America/Santo_Domingo","🇩🇴"],["San Juan","Puerto Rico","America/Puerto_Rico","🇵🇷"],
+["Nassau","Bahamas","America/Nassau","🇧🇸"],["Bogotá","Colombia","America/Bogota","🇨🇴"],
+["Lima","Peru","America/Lima","🇵🇪"],["Quito","Ecuador","America/Guayaquil","🇪🇨"],
+["Caracas","Venezuela","America/Caracas","🇻🇪"],["La Paz","Bolivia","America/La_Paz","🇧🇴"],
+["Santiago","Chile","America/Santiago","🇨🇱"],["Buenos Aires","Argentina","America/Argentina/Buenos_Aires","🇦🇷"],
+["Córdoba","Argentina","America/Argentina/Cordoba","🇦🇷"],["Montevideo","Uruguay","America/Montevideo","🇺🇾"],
+["Asunción","Paraguay","America/Asuncion","🇵🇾"],["São Paulo","Brazil","America/Sao_Paulo","🇧🇷"],
+["Rio de Janeiro","Brazil","America/Sao_Paulo","🇧🇷"],["Brasília","Brazil","America/Sao_Paulo","🇧🇷"],
+["Salvador","Brazil","America/Bahia","🇧🇷"],["Fortaleza","Brazil","America/Fortaleza","🇧🇷"],
+["Recife","Brazil","America/Recife","🇧🇷"],["Fernando de Noronha","Brazil","America/Noronha","🇧🇷"],
+["Georgetown","Guyana","America/Guyana","🇬🇾"],["Paramaribo","Suriname","America/Paramaribo","🇸🇷"],
+["Halifax","Canada","America/Halifax","🇨🇦"],["St. John's","Canada","America/St_Johns","🇨🇦"],
+["Nuuk","Greenland","America/Nuuk","🇬🇱"],["Punta Arenas","Chile","America/Santiago","🇨🇱"],
+["New York","United States","America/New_York","🇺🇸"]
+].map(([name,country,tz,flag])=>({name,country,tz,flag}));
+
+const DEFAULTS = ["New York","London","Dubai","Tokyo","Sydney","Los Angeles"];
+
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const LS_CITIES = "wc.cities.v1", LS_FMT = "wc.fmt.v1";
+
+let clock12 = localStorage.getItem(LS_FMT) === "12";
+let selected = loadSelected();
+
+function loadSelected(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(LS_CITIES));
+    if(Array.isArray(raw)){
+      const valid = raw.map(n=>CITIES.find(c=>c.name===n)).filter(Boolean);
+      if(valid.length) return valid;
+    }
+  }catch(e){}
+  return DEFAULTS.map(n=>CITIES.find(c=>c.name===n)).filter(Boolean);
+}
+function saveSelected(){ localStorage.setItem(LS_CITIES, JSON.stringify(selected.map(c=>c.name))); }
+
+/* ---------- timezone helpers (cached formatters) ---------- */
+const fmtCache = new Map();
+function partsFmt(tz){
+  let f = fmtCache.get(tz);
+  if(!f){
+    f = new Intl.DateTimeFormat("en-US",{timeZone:tz,hourCycle:"h23",
+      year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    fmtCache.set(tz,f);
+  }
+  return f;
+}
+function tzParts(date,tz){
+  const p={}; for(const x of partsFmt(tz).formatToParts(date)) if(x.type!=="literal") p[x.type]=+x.value;
+  return p;
+}
+function tzOffsetMin(date,tz){
+  const p = tzParts(date,tz);
+  const asUTC = Date.UTC(p.year,p.month-1,p.day,p.hour,p.minute,p.second);
+  return Math.round((asUTC - Math.floor(date.getTime()/1000)*1000)/60000);
+}
+const dateFmtCache = new Map();
+function shortDate(date,tz){
+  let f = dateFmtCache.get(tz);
+  if(!f){ f = new Intl.DateTimeFormat("en-US",{timeZone:tz,weekday:"short",month:"short",day:"numeric"}); dateFmtCache.set(tz,f); }
+  return f.format(date);
+}
+function utcLabel(off){
+  const s = off<0?"−":"+", a = Math.abs(off), h = Math.floor(a/60), m = a%60;
+  return `UTC${s}${h}${m?":"+String(m).padStart(2,"0"):""}`;
+}
+function deltaLabel(diff){
+  if(diff===0) return "same time";
+  const s = diff<0?"−":"+", a = Math.abs(diff), h = Math.floor(a/60), m = a%60;
+  return `${s}${h}h${m?" "+m+"m":""}`;
+}
+function phaseOf(h){ return h<5?"night":h<12?"morning":h<17?"afternoon":h<21?"evening":"night"; }
+const PHASE_ICON = {morning:"🌅",afternoon:"☀️",evening:"🌆",night:"🌙"};
+const PHASE_NAME = {morning:"Morning",afternoon:"Afternoon",evening:"Evening",night:"Night"};
+
+/* ---------- svg builders ---------- */
+function analogSVG(){
+  let ticks = "";
+  for(let i=0;i<60;i++){
+    const maj = i%5===0, a = i*6*Math.PI/180;
+    const r1 = maj?33:36, r2 = 39.5;
+    const x1=50+r1*Math.sin(a), y1=50-r1*Math.cos(a), x2=50+r2*Math.sin(a), y2=50-r2*Math.cos(a);
+    ticks += `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" stroke="${maj?"#2a3550":"#c8cede"}" stroke-width="${maj?2.4:1}" stroke-linecap="round"/>`;
+  }
+  return `<svg viewBox="0 0 100 100" aria-hidden="true">${ticks}
+    <line class="hH" x1="50" y1="50" x2="50" y2="27" stroke="#1c2740" stroke-width="4.4" stroke-linecap="round"/>
+    <line class="hM" x1="50" y1="50" x2="50" y2="17" stroke="#3d4c70" stroke-width="3" stroke-linecap="round"/>
+    <line class="hS" x1="50" y1="54" x2="50" y2="14" stroke="#ff5d5d" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="3.1" fill="#1c2740"/><circle cx="50" cy="50" r="1.3" fill="#ff5d5d"/>
+  </svg>`;
+}
+const SUN_SVG = `<svg viewBox="0 0 24 24"><g class="rays" stroke="#ffd75e" stroke-width="2" stroke-linecap="round">
+  <path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M19.4 4.6l-2.1 2.1M6.7 17.3l-2.1 2.1"/></g>
+  <circle cx="12" cy="12" r="5.4" fill="#ffcf3f"/><circle cx="12" cy="12" r="5.4" fill="url(#sg)"/>
+  <defs><radialGradient id="sg"><stop offset="0%" stop-color="#fff3b0"/><stop offset="100%" stop-color="#ffb02e"/></radialGradient></defs></svg>`;
+const MOON_SVG = `<svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" fill="#e8eeff"/></svg>`;
+
+function starSpots(){
+  let html = "";
+  for(let i=0;i<16;i++){
+    const s = (Math.random()*1.8+1).toFixed(1);
+    html += `<i style="left:${(Math.random()*96+2).toFixed(1)}%;top:${(Math.random()*72+2).toFixed(1)}%;width:${s}px;height:${s}px;animation-delay:${(Math.random()*3).toFixed(1)}s;animation-duration:${(2+Math.random()*3).toFixed(1)}s"></i>`;
+  }
+  return html;
+}
+
+/* ---------- card creation ---------- */
+const grid = document.getElementById("grid");
+const cards = [];
+
+function makeCard(city, idx){
+  const el = document.createElement("article");
+  el.className = "card p-day";
+  el.draggable = true;
+  el.dataset.name = city.name;
+  el.style.animationDelay = Math.min(idx*45,400)+"ms";
+  el.innerHTML = `
+    <div class="sky">
+      <div class="g g-morning"></div><div class="g g-afternoon"></div>
+      <div class="g g-evening"></div><div class="g g-night"></div>
+      <div class="stars">${starSpots()}</div>
+      <div class="horizon"></div>
+      <div class="orb">${SUN_SVG}</div>
+      <div class="clock-wrap"><div class="clock-face">${analogSVG()}</div></div>
+    </div>
+    <div class="body">
+      <div class="loc-row">
+        <span class="flag">${city.flag}</span>
+        <div class="loc-name"><h3>${city.name}</h3><span class="sub"></span></div>
+        <button class="rm" title="Remove ${city.name}" aria-label="Remove ${city.name}">✕</button>
+      </div>
+      <div class="digital"><span class="t">--:--</span><span class="s"></span><span class="ap"></span></div>
+      <div class="meta">
+        <span class="phase"></span><span class="sep"></span>
+        <span class="d"></span><span class="sep"></span><span class="delta"></span>
+      </div>
+    </div>`;
+  const q = s => el.querySelector(s);
+  const rec = {
+    el, city,
+    sub:q(".sub"), t:q(".t"), s:q(".s"), ap:q(".ap"),
+    phase:q(".phase"), d:q(".d"), delta:q(".delta"),
+    orb:q(".orb"), hH:q(".hH"), hM:q(".hM"), hS:q(".hS"),
+    lastSec:-1, lastPhase:null
+  };
+  q(".rm").addEventListener("click", e=>{ e.stopPropagation(); removeCity(rec); });
+  attachDrag(rec);
+  return rec;
+}
+
+function rebuild(){
+  grid.innerHTML = "";
+  cards.length = 0;
+  if(!selected.length){
+    grid.innerHTML = `<div class="empty"><h2>No cities yet</h2>
+      <p>Add a city to start watching the world turn.</p>
+      <button class="btn-add" style="margin:0 auto" onclick="openModal()">＋ Add your first city</button></div>`;
+    return;
+  }
+  selected.forEach((c,i)=>{ const r = makeCard(c,i); cards.push(r); grid.appendChild(r.el); });
+}
+
+function removeCity(rec){
+  rec.el.classList.add("removing");
+  setTimeout(()=>{
+    selected = selected.filter(c=>c!==rec.city);
+    saveSelected(); rebuild();
+  },240);
+}
+
+/* ---------- rendering per tick ---------- */
+function fmtTime(p){
+  if(clock12){
+    const ap = p.hour>=12?"PM":"AM";
+    const h = p.hour%12 || 12;
+    return {main:String(h).padStart(2,"0")+":"+String(p.minute).padStart(2,"0"), sec:":"+String(p.second).padStart(2,"0"), ap};
+  }
+  return {main:String(p.hour).padStart(2,"0")+":"+String(p.minute).padStart(2,"0"), sec:":"+String(p.second).padStart(2,"0"), ap:""};
+}
+
+function updateCard(rec, now){
+  const p = tzParts(now, rec.city.tz);
+  const secKey = now.getTime();
+  if(p.second !== rec.lastSec){
+    rec.lastSec = p.second;
+    const f = fmtTime(p);
+    rec.t.textContent = f.main;
+    rec.s.textContent = clock12 ? f.sec : "";
+    rec.ap.textContent = f.ap;
+    const ph = phaseOf(p.hour);
+    if(ph !== rec.lastPhase){
+      rec.lastPhase = ph;
+      rec.el.classList.remove("p-morning","p-afternoon","p-evening","p-night");
+      rec.el.classList.add("p-"+ph);
+      rec.phase.textContent = PHASE_ICON[ph]+" "+PHASE_NAME[ph];
+    }
+    rec.d.textContent = shortDate(now, rec.city.tz);
+    const off = tzOffsetMin(now, rec.city.tz);
+    const localOff = -now.getTimezoneOffset();
+    rec.sub.textContent = `${rec.city.country} · ${utcLabel(off)}`;
+    rec.delta.textContent = rec.city.tz===LOCAL_TZ ? "Local" : deltaLabel(off-localOff);
+    rec.delta.style.color = rec.city.tz===LOCAL_TZ ? "#0b8f5d" : "";
+    const tf = p.hour + p.minute/60;
+    const isDay = tf>=6 && tf<18;
+    const frac = isDay ? (tf-6)/12 : ((tf+24-18)%24)/12;
+    rec.orb.classList.toggle("moon", !isDay);
+    rec.orb.innerHTML = isDay ? SUN_SVG : MOON_SVG;
+    rec.orb.style.left = (6 + 88*frac).toFixed(1)+"%";
+    rec.orb.style.bottom = (14 + 78*Math.sin(Math.PI*frac)).toFixed(1)+"%";
+  }
+  const ms = now.getMilliseconds();
+  const hDeg = ((p.hour%12)+p.minute/60)*30;
+  const mDeg = (p.minute+p.second/60)*6;
+  const sDeg = (p.second+ms/1000)*6;
+  rec.hH.setAttribute("transform",`rotate(${hDeg.toFixed(2)} 50 50)`);
+  rec.hM.setAttribute("transform",`rotate(${mDeg.toFixed(2)} 50 50)`);
+  rec.hS.setAttribute("transform",`rotate(${sDeg.toFixed(2)} 50 50)`);
+}
+
+/* ---------- header local clock ---------- */
+const localCityEl = document.getElementById("localCity");
+const localTimeEl = document.getElementById("localTime");
+localCityEl.textContent = LOCAL_TZ.split("/").pop().replace(/_/g," ");
+localCityEl.title = LOCAL_TZ;
+
+function updateHeader(now){
+  const p = tzParts(now, LOCAL_TZ);
+  if(p.second !== updateHeader._s){
+    updateHeader._s = p.second;
+    const f = fmtTime(p);
+    localTimeEl.textContent = f.main + (clock12 ? " "+f.ap.toLowerCase() : "");
+  }
+}
+
+/* ---------- 12/24 toggle ---------- */
+const b12 = document.getElementById("b12"), b24 = document.getElementById("b24");
+function syncFmt(){
+  b12.classList.toggle("on", clock12); b24.classList.toggle("on", !clock12);
+  b12.setAttribute("aria-pressed", clock12); b24.setAttribute("aria-pressed", !clock12);
+  cards.forEach(r=>r.lastSec=-1);
+}
+b12.addEventListener("click",()=>{ clock12=true; localStorage.setItem(LS_FMT,"12"); syncFmt(); });
+b24.addEventListener("click",()=>{ clock12=false; localStorage.setItem(LS_FMT,"24"); syncFmt(); });
+
+/* ---------- drag to reorder ---------- */
+let dragRec = null;
+function attachDrag(rec){
+  rec.el.addEventListener("dragstart", e=>{
+    dragRec = rec; rec.el.classList.add("dragging");
+    e.dataTransfer.effectAllowed = "move";
+    try{ e.dataTransfer.setData("text/plain", rec.city.name); }catch(_){}
+  });
+  rec.el.addEventListener("dragend", ()=>{
+    rec.el.classList.remove("dragging");
+    dragRec = null;
+    const order = [...grid.querySelectorAll(".card")].map(el=>el.dataset.name);
+    selected.sort((a,b)=>order.indexOf(a.name)-order.indexOf(b.name));
+    saveSelected();
+  });
+}
+grid.addEventListener("dragover", e=>{
+  if(!dragRec) return;
+  e.preventDefault();
+  const target = e.target.closest(".card");
+  if(!target || target === dragRec.el) return;
+  const rect = target.getBoundingClientRect();
+  const after = (e.clientX - rect.left) > rect.width/2;
+  grid.insertBefore(dragRec.el, after ? target.nextSibling : target);
+});
+
+/* ---------- modal ---------- */
+const overlay = document.getElementById("overlay");
+const search = document.getElementById("search");
+const cityList = document.getElementById("cityList");
+
+function openModal(){
+  if(overlay.classList.contains("open")) return;
+  overlay.classList.add("open");
+  search.value = "";
+  renderList();
+  setTimeout(()=>search.focus(),50);
+}
+function closeModal(){ overlay.classList.remove("open"); }
+document.getElementById("btnAdd").addEventListener("click", openModal);
+document.getElementById("btnClose").addEventListener("click", closeModal);
+overlay.addEventListener("click", e=>{ if(e.target===overlay) closeModal(); });
+document.addEventListener("keydown", e=>{ if(e.key==="Escape") closeModal(); });
+search.addEventListener("input", renderList);
+
+function renderList(){
+  const q = search.value.trim().toLowerCase();
+  const uniq = [];
+  const seen = new Set();
+  for(const c of [...CITIES].sort((a,b)=>a.name.localeCompare(b.name))){
+    const key = c.name;
+    if(seen.has(key)) continue; seen.add(key);
+    if(!q || c.name.toLowerCase().includes(q) || c.country.toLowerCase().includes(q) || c.tz.toLowerCase().includes(q)) uniq.push(c);
+  }
+  if(!uniq.length){ cityList.innerHTML = `<div class="no-res">No cities match “${search.value}”.</div>`; return; }
+  cityList.innerHTML = uniq.map(c=>{
+    const added = selected.some(s=>s.name===c.name);
+    return `<div class="ci${added?" added":""}" data-name="${c.name}">
+      <span class="flag">${c.flag}</span>
+      <div class="cn"><b>${c.name}</b><span>${c.country} · ${c.tz.split("/").pop().replace(/_/g," ")}</span></div>
+      ${added ? '<span class="check">✓ added</span>' : '<span class="ct" data-tz="'+c.tz+'"></span>'}
+    </div>`;
+  }).join("");
+  cityList.querySelectorAll(".ci:not(.added)").forEach(row=>{
+    row.addEventListener("click", ()=>{
+      const c = CITIES.find(x=>x.name===row.dataset.name);
+      if(c && !selected.some(s=>s.name===c.name)){
+        selected.push(c); saveSelected(); rebuild(); closeModal();
+      }
+    });
+  });
+  updateListTimes();
+}
+function updateListTimes(){
+  if(!overlay.classList.contains("open")) return;
+  const now = new Date();
+  cityList.querySelectorAll(".ct").forEach(el=>{
+    const p = tzParts(now, el.dataset.tz);
+    const f = fmtTime(p);
+    el.innerHTML = f.main + `<small>${clock12?f.ap:utcLabel(tzOffsetMin(now, el.dataset.tz))}</small>`;
+  });
+}
+
+/* ---------- main loop ---------- */
+function frame(){
+  const now = new Date();
+  for(const r of cards) updateCard(r, now);
+  updateHeader(now);
+  requestAnimationFrame(frame);
+}
+setInterval(updateListTimes, 1000);
+
+window.openModal = openModal;
+rebuild();
+syncFmt();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

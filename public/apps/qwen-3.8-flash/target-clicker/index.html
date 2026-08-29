@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Target Clicker — 20s Reflex Challenge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1e2333;
+    --ink-soft:#6b7280;
+    --glass:rgba(255,255,255,.72);
+    --glass-border:rgba(255,255,255,.9);
+    --shadow:0 20px 50px -12px rgba(30,35,60,.25);
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;overflow:hidden}
+  body{
+    font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+    color:var(--ink);
+    background:linear-gradient(135deg,#eef2ff 0%,#fdf2f8 45%,#ecfeff 100%);
+    user-select:none;-webkit-user-select:none;
+  }
+
+  /* ---------- ambient background ---------- */
+  .blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.4;pointer-events:none;z-index:0}
+  .b1{width:44vmax;height:44vmax;left:-12vmax;top:-14vmax;background:#c7d2fe;animation:drift1 26s ease-in-out infinite alternate}
+  .b2{width:38vmax;height:38vmax;right:-10vmax;top:8vmax;background:#fbcfe8;animation:drift2 22s ease-in-out infinite alternate}
+  .b3{width:34vmax;height:34vmax;left:22vmax;bottom:-16vmax;background:#a7f3d0;animation:drift3 30s ease-in-out infinite alternate}
+  @keyframes drift1{to{transform:translate(6vmax,4vmax) scale(1.15)}}
+  @keyframes drift2{to{transform:translate(-5vmax,6vmax) scale(.9)}}
+  @keyframes drift3{to{transform:translate(4vmax,-5vmax) scale(1.1)}}
+  #dotgrid{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background-image:radial-gradient(rgba(99,102,241,.14) 1.2px,transparent 1.3px);
+    background-size:28px 28px;
+    -webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 78%);
+            mask-image:radial-gradient(ellipse at center,#000 30%,transparent 78%);}
+
+  /* ---------- stage ---------- */
+  #stage{position:fixed;inset:0;z-index:1;touch-action:none;cursor:crosshair}
+
+  /* ---------- targets ---------- */
+  .target{
+    position:absolute;width:var(--sz);height:var(--sz);
+    transform:translate(-50%,-50%) scale(0);
+    border-radius:50%;
+    animation:pop .22s cubic-bezier(.34,1.56,.64,1) forwards;
+    will-change:transform;
+  }
+  @keyframes pop{from{transform:translate(-50%,-50%) scale(0)}to{transform:translate(-50%,-50%) scale(1)}}
+  .target .disc{
+    position:absolute;inset:0;border-radius:50%;
+    background:
+      radial-gradient(circle at 32% 28%, hsl(var(--hue) 95% 78% / .95), hsl(var(--hue) 85% 58% / .92) 45%, hsl(calc(var(--hue) + 40) 80% 48% / .95) 100%);
+    box-shadow:0 10px 28px -6px hsl(var(--hue) 80% 45% / .55), inset 0 -6px 14px hsl(calc(var(--hue) + 40) 80% 35% / .4), inset 0 4px 10px rgba(255,255,255,.6);
+  }
+  .target .ring{position:absolute;border-radius:50%;border:2px solid rgba(255,255,255,.85)}
+  .target .r2{inset:18%}
+  .target .r1{inset:36%}
+  .target .core{
+    position:absolute;inset:45%;border-radius:50%;
+    background:#fff;box-shadow:0 0 12px rgba(255,255,255,.9);
+    animation:corePulse 1s ease-in-out infinite;
+  }
+  @keyframes corePulse{50%{transform:scale(.72)}}
+  .target .halo{
+    position:absolute;inset:-14%;border-radius:50%;
+    border:2px dashed hsl(var(--hue) 90% 60% / .65);
+    animation:spin 5s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .target .approach{
+    position:absolute;inset:0;border-radius:50%;
+    border:3px solid hsl(var(--hue) 95% 55% / .85);
+    transform:scale(2.6);opacity:.9;
+    animation:approach var(--life) linear forwards;
+    pointer-events:none;
+  }
+  @keyframes approach{to{transform:scale(1);opacity:.35}}
+  .target.hit{animation:hit .22s ease-out forwards;pointer-events:none}
+  @keyframes hit{from{transform:translate(-50%,-50%) scale(1);opacity:1}to{transform:translate(-50%,-50%) scale(1.55);opacity:0}}
+  .target.escaped{animation:esc .3s ease-in forwards;pointer-events:none;filter:grayscale(1)}
+  @keyframes esc{from{transform:translate(-50%,-50%) scale(1);opacity:1}to{transform:translate(-50%,-50%) scale(.55);opacity:0}}
+
+  /* ---------- fx ---------- */
+  .spark{position:absolute;width:8px;height:8px;border-radius:50%;pointer-events:none;z-index:5;transform:translate(-50%,-50%)}
+  .pop{
+    position:absolute;transform:translate(-50%,-50%);pointer-events:none;z-index:6;
+    font-weight:900;font-size:22px;letter-spacing:-.5px;
+    color:hsl(var(--h) 80% 45%);text-shadow:0 2px 0 #fff,0 6px 18px hsl(var(--h) 80% 50% / .4);
+    white-space:nowrap;
+  }
+  .pop .zone{display:block;font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;text-align:center;text-shadow:none;color:hsl(var(--h) 60% 40% / .9)}
+  .ripple{position:absolute;width:10px;height:10px;border-radius:50%;border:2px solid rgba(120,125,150,.55);transform:translate(-50%,-50%);pointer-events:none;z-index:2}
+
+  /* ---------- HUD ---------- */
+  #hud{
+    position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:10;
+    display:flex;align-items:center;gap:22px;
+    width:min(720px,calc(100vw - 24px));
+    padding:12px 20px;
+    background:var(--glass);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+    border:1px solid var(--glass-border);border-radius:20px;box-shadow:var(--shadow);
+    opacity:0;transition:opacity .35s,transform .35s;pointer-events:none;
+  }
+  #hud.show{opacity:1;pointer-events:auto}
+  .hud-block{display:flex;flex-direction:column;align-items:center;min-width:64px}
+  .hud-label{font-size:9px;font-weight:800;letter-spacing:1.6px;color:var(--ink-soft);text-transform:uppercase}
+  .hud-value{font-size:24px;font-weight:900;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
+  #hudScore .hud-value{color:#4338ca}
+  #hudAcc .hud-value{color:#0d9488}
+  #hudCombo .hud-value{color:#db2777;transition:transform .12s}
+  #hudCombo.bump .hud-value{transform:scale(1.25)}
+  #timeWrap{flex:1;display:flex;flex-direction:column;gap:6px}
+  #timeTop{display:flex;justify-content:space-between;font-size:10px;font-weight:800;letter-spacing:1.2px;color:var(--ink-soft);text-transform:uppercase}
+  #timeTop span:last-child{font-variant-numeric:tabular-nums;color:var(--ink)}
+  #timeTrack{height:10px;border-radius:99px;background:rgba(30,35,60,.08);overflow:hidden;box-shadow:inset 0 1px 3px rgba(30,35,60,.12)}
+  #timeFill{height:100%;width:100%;border-radius:99px;background:hsl(150 70% 45%);transition:background .3s}
+  #btnMute{
+    border:none;background:rgba(30,35,60,.06);color:var(--ink-soft);
+    width:36px;height:36px;border-radius:12px;font-size:15px;cursor:pointer;
+    display:grid;place-items:center;transition:background .2s;
+  }
+  #btnMute:hover{background:rgba(30,35,60,.12)}
+
+  /* ---------- overlays ---------- */
+  .overlay{
+    position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:20px;
+    background:rgba(238,242,255,.45);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    transition:opacity .3s;
+  }
+  .overlay.hidden{opacity:0;pointer-events:none}
+  .card{
+    width:min(460px,100%);text-align:center;
+    background:var(--glass);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);
+    border:1px solid var(--glass-border);border-radius:28px;box-shadow:var(--shadow);
+    padding:40px 36px;
+    animation:cardIn .45s cubic-bezier(.34,1.4,.64,1);
+  }
+  @keyframes cardIn{from{transform:translateY(24px) scale(.94);opacity:0}}
+  .logo{font-size:52px;line-height:1;animation:wobble 2.6s ease-in-out infinite;display:inline-block}
+  @keyframes wobble{0%,100%{transform:rotate(-8deg) scale(1)}50%{transform:rotate(8deg) scale(1.12)}}
+  h1{font-size:34px;font-weight:900;letter-spacing:-1.2px;margin:12px 0 6px;
+     background:linear-gradient(90deg,#4338ca,#db2777,#ea580c);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:var(--ink-soft);font-size:14px;font-weight:600;line-height:1.6;margin-bottom:26px}
+  .sub b{color:var(--ink)}
+  .how{display:flex;justify-content:center;gap:10px;margin-bottom:28px;flex-wrap:wrap}
+  .chip{font-size:11px;font-weight:800;letter-spacing:.4px;padding:7px 12px;border-radius:99px;background:rgba(67,56,202,.08);color:#4338ca;border:1px solid rgba(67,56,202,.15)}
+  .chip.pink{background:rgba(219,39,119,.08);color:#db2777;border-color:rgba(219,39,119,.15)}
+  .chip.teal{background:rgba(13,148,136,.08);color:#0d9488;border-color:rgba(13,148,136,.15)}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    font-family:inherit;font-size:17px;font-weight:800;letter-spacing:.2px;color:#fff;
+    background:linear-gradient(135deg,#6366f1,#4338ca);
+    border:none;border-radius:16px;padding:15px 42px;cursor:pointer;
+    box-shadow:0 12px 26px -8px rgba(67,56,202,.6), inset 0 1px 0 rgba(255,255,255,.35);
+    transition:transform .15s,box-shadow .15s;
+  }
+  .btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 18px 32px -8px rgba(67,56,202,.65)}
+  .btn:active{transform:translateY(0) scale(.97)}
+  .keyhint{margin-top:14px;font-size:11px;font-weight:700;color:var(--ink-soft);letter-spacing:.5px}
+  .keyhint kbd{background:rgba(30,35,60,.08);border:1px solid rgba(30,35,60,.14);border-bottom-width:2px;border-radius:5px;padding:2px 7px;font-family:inherit;font-size:10px}
+
+  /* end screen */
+  #endTitle{font-size:15px;font-weight:900;letter-spacing:3px;text-transform:uppercase;color:var(--ink-soft)}
+  #finalScore{font-size:76px;font-weight:900;letter-spacing:-3px;line-height:1.05;font-variant-numeric:tabular-nums;
+    background:linear-gradient(120deg,#4338ca,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent;margin:6px 0 2px}
+  #rating{display:inline-block;font-size:13px;font-weight:900;letter-spacing:1px;text-transform:uppercase;
+    padding:7px 16px;border-radius:99px;margin-bottom:22px;
+    background:linear-gradient(90deg,rgba(99,102,241,.12),rgba(219,39,119,.12));
+    color:#4338ca;border:1px solid rgba(99,102,241,.25)}
+  #newBest{display:none;font-size:12px;font-weight:900;color:#d97706;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;animation:corePulse 1s infinite}
+  .stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:28px}
+  .stat{background:rgba(255,255,255,.6);border:1px solid rgba(30,35,60,.06);border-radius:16px;padding:14px 8px}
+  .stat .v{font-size:23px;font-weight:900;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+  .stat .k{font-size:9px;font-weight:800;letter-spacing:1.3px;text-transform:uppercase;color:var(--ink-soft);margin-top:3px}
+  .stat:nth-child(1) .v{color:#0d9488}.stat:nth-child(2) .v{color:#db2777}.stat:nth-child(3) .v{color:#d97706}
+
+  /* countdown */
+  #countdown{position:fixed;inset:0;z-index:30;display:none;place-items:center;pointer-events:none}
+  #countdown.show{display:grid}
+  #cdNum{font-size:clamp(120px,28vw,220px);font-weight:900;letter-spacing:-6px;
+    background:linear-gradient(120deg,#6366f1,#db2777);-webkit-background-clip:text;background-clip:text;color:transparent;
+    text-shadow:0 30px 60px rgba(99,102,241,.25)}
+  #cdNum.go{animation:cdGo .6s cubic-bezier(.2,.9,.3,1) forwards}
+  @keyframes cdGo{0%{transform:scale(.3);opacity:0}30%{transform:scale(1.15);opacity:1}70%{transform:scale(1);opacity:1}100%{transform:scale(1.6);opacity:0}}
+</style>
+</head>
+<body>
+  <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+  <div id="dotgrid"></div>
+
+  <div id="stage"></div>
+
+  <header id="hud">
+    <div class="hud-block" id="hudScore"><span class="hud-label">Score</span><span class="hud-value" id="vScore">0</span></div>
+    <div id="timeWrap">
+      <div id="timeTop"><span>Time left</span><span id="vTime">20.0s</span></div>
+      <div id="timeTrack"><div id="timeFill"></div></div>
+    </div>
+    <div class="hud-block" id="hudAcc"><span class="hud-label">Accuracy</span><span class="hud-value" id="vAcc">—</span></div>
+    <div class="hud-block" id="hudCombo"><span class="hud-label">Combo</span><span class="hud-value" id="vCombo">×1</span></div>
+    <button id="btnMute" title="Toggle sound" aria-label="Toggle sound">🔊</button>
+  </header>
+
+  <div class="overlay" id="startScreen">
+    <div class="card">
+      <span class="logo">🎯</span>
+      <h1>Target Clicker</h1>
+      <p class="sub">Targets pop up all over the screen and vanish fast.<br>Hit as many as you can in <b>20 seconds</b>.</p>
+      <div class="how">
+        <span class="chip">Bullseye = 300 pts</span>
+        <span class="chip pink">Streaks multiply ×5</span>
+        <span class="chip teal">Clicking air hurts accuracy</span>
+      </div>
+      <button class="btn" id="btnStart">Start&nbsp;Game</button>
+      <p class="keyhint">or press <kbd>Space</kbd></p>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="endScreen">
+    <div class="card">
+      <div id="endTitle">Time!</div>
+      <div id="finalScore">0</div>
+      <div id="newBest">★ New personal best</div><br>
+      <span id="rating">Rookie</span>
+      <div class="stats">
+        <div class="stat"><div class="v" id="sAcc">0%</div><div class="k">Accuracy</div></div>
+        <div class="stat"><div class="v" id="sHits">0</div><div class="k">Hits</div></div>
+        <div class="stat"><div class="v" id="sCombo">0</div><div class="k">Best combo</div></div>
+        <div class="stat"><div class="v" id="sMiss">0</div><div class="k">Misses</div></div>
+        <div class="stat"><div class="v" id="sEsc">0</div><div class="k">Escaped</div></div>
+        <div class="stat"><div class="v" id="sBest">0</div><div class="k">All-time best</div></div>
+      </div>
+      <button class="btn" id="btnAgain">Play&nbsp;Again</button>
+      <p class="keyhint">or press <kbd>Space</kbd></p>
+    </div>
+  </div>
+
+  <div id="countdown"><span id="cdNum">3</span></div>
+
+<script>
+(() => {
+  'use strict';
+  const GAME_MS = 20000;
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), hud = $('hud');
+  const vScore = $('vScore'), vTime = $('vTime'), vAcc = $('vAcc'), vCombo = $('vCombo');
+  const timeFill = $('timeFill'), hudCombo = $('hudCombo');
+  const startScreen = $('startScreen'), endScreen = $('endScreen');
+  const cdEl = $('countdown'), cdNum = $('cdNum');
+
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const rnd = (a, b) => a + Math.random() * (b - a);
+
+  /* ---------------- audio ---------------- */
+  let actx = null, muted = false;
+  const ensureAudio = () => { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); };
+  function blip(freq, dur = .09, type = 'triangle', vol = .05, slide = 0) {
+    if (muted || !actx) return;
+    const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + .02);
+  }
+  $('btnMute').addEventListener('click', () => { muted = !muted; $('btnMute').textContent = muted ? '🔇' : '🔊'; });
+
+  /* ---------------- state ---------------- */
+  let running = false, score = 0, hits = 0, misses = 0, escaped = 0, combo = 0, bestCombo = 0;
+  let startTime = 0, nextSpawnAt = 0, rafId = 0;
+  const targets = new Set();
+  const mult = () => Math.min(5, 1 + Math.floor(combo / 4));
+  const accuracy = () => (hits + misses) ? Math.round(hits / (hits + misses) * 100) : null;
+
+  /* ---------------- spawning ---------------- */
+  function spawnTarget(t) {
+    const size = lerp(112, 64, t) * rnd(.85, 1.15);
+    const life = lerp(1500, 780, t) * rnd(.88, 1.12);
+    const W = innerWidth, H = innerHeight;
+    const m = size / 2 + 14, top = 110;
+    const x = rnd(m, Math.max(m + 1, W - m));
+    const y = rnd(top + size / 2, Math.max(top + size / 2 + 1, H - m));
+    const hue = Math.floor(rnd(0, 360));
+
+    const el = document.createElement('div');
+    el.className = 'target';
+    el.style.cssText = `--sz:${size}px;--hue:${hue};--life:${life}ms;left:${x}px;top:${y}px`;
+    el.innerHTML = '<div class="halo"></div><div class="approach"></div><div class="disc"></div><div class="ring r2"></div><div class="ring r1"></div><div class="core"></div>';
+
+    const tObj = { el, expireAt: performance.now() + life, hit: false, hue, size };
+    el.addEventListener('pointerdown', e => { e.stopPropagation(); onHit(tObj, e); });
+    stage.appendChild(el);
+    targets.add(tObj);
+    blip(rnd(520, 720), .05, 'sine', .015, 120);
+  }
+
+  function escapeTarget(tObj) {
+    targets.delete(tObj);
+    escaped++; combo = 0; syncHud();
+    tObj.el.classList.add('escaped');
+    setTimeout(() => tObj.el.remove(), 320);
+    blip(190, .12, 'sawtooth', .02, -80);
+  }
+
+  /* ---------------- fx ---------------- */
+  function burst(x, y, hue, big) {
+    const n = big ? 16 : 10;
+    for (let i = 0; i < n; i++) {
+      const s = document.createElement('div');
+      s.className = 'spark';
+      const h = hue + rnd(-30, 30);
+      s.style.cssText = `left:${x}px;top:${y}px;background:hsl(${h} 90% ${rnd(50, 72)}%)`;
+      stage.appendChild(s);
+      const ang = rnd(0, Math.PI * 2), dist = rnd(30, big ? 130 : 90);
+      s.animate(
+        [{ transform: 'translate(-50%,-50%) scale(1)', opacity: 1 },
+         { transform: `translate(calc(-50% + ${Math.cos(ang) * dist}px), calc(-50% + ${Math.sin(ang) * dist}px)) scale(0)`, opacity: 0 }],
+        { duration: rnd(420, 720), easing: 'cubic-bezier(.12,.65,.3,1)' }
+      ).onfinish = () => s.remove();
+    }
+  }
+  function popup(x, y, text, hue, zone) {
+    const p = document.createElement('div');
+    p.className = 'pop'; p.style.cssText = `left:${x}px;top:${y}px;--h:${hue}`;
+    p.innerHTML = text + (zone ? `<span class="zone">${zone}</span>` : '');
+    stage.appendChild(p);
+    p.animate([{ transform: 'translate(-50%,-50%) scale(.5)', opacity: 0 },
+               { transform: 'translate(-50%,-90%) scale(1.1)', opacity: 1, offset: .25 },
+               { transform: 'translate(-50%,-190%) scale(1)', opacity: 0 }],
+              { duration: 850, easing: 'cubic-bezier(.2,.8,.3,1)' }).onfinish = () => p.remove();
+  }
+  function ripple(x, y) {
+    const r = document.createElement('div');
+    r.className = 'ripple'; r.style.cssText = `left:${x}px;top:${y}px`;
+    stage.appendChild(r);
+    r.animate([{ transform: 'translate(-50%,-50%) scale(1)', opacity: .9 },
+               { transform: 'translate(-50%,-50%) scale(7)', opacity: 0 }],
+              { duration: 450, easing: 'ease-out' }).onfinish = () => r.remove();
+  }
+
+  /* ---------------- input ---------------- */
+  function onHit(tObj, e) {
+    if (!running || tObj.hit) return;
+    tObj.hit = true;
+    targets.delete(tObj);
+    const rect = tObj.el.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+    const d = Math.hypot(e.clientX - cx, e.clientY - cy) / (rect.width / 2);
+    const zone = d < .34 ? 3 : d < .67 ? 2 : 1;
+    const base = zone === 3 ? 300 : zone === 2 ? 200 : 100;
+    const gain = base * mult();
+    score += gain; hits++; combo++;
+    bestCombo = Math.max(bestCombo, combo);
+
+    popup(cx, cy - tObj.size / 2, `+${gain}`, tObj.hue, zone === 3 ? 'Bullseye' : zone === 2 ? 'Great' : null);
+    burst(e.clientX, e.clientY, tObj.hue, zone === 3);
+    tObj.el.classList.add('hit');
+    setTimeout(() => tObj.el.remove(), 240);
+
+    if (zone === 3) { blip(880, .1, 'triangle', .06, 240); setTimeout(() => blip(1320, .12, 'triangle', .05), 60); }
+    else blip(440 + Math.min(combo, 16) * 38, .08, 'triangle', .05, 160);
+    syncHud(); bumpCombo();
+  }
+
+  stage.addEventListener('pointerdown', e => {
+    if (!running) return;
+    misses++; combo = 0;
+    ripple(e.clientX, e.clientY);
+    blip(150, .09, 'square', .025, -60);
+    syncHud();
+  });
+
+  /* ---------------- hud ---------------- */
+  function bumpCombo() {
+    hudCombo.classList.remove('bump'); void hudCombo.offsetWidth;
+    hudCombo.classList.add('bump');
+  }
+  function syncHud() {
+    vScore.textContent = score.toLocaleString();
+    const a = accuracy();
+    vAcc.textContent = a === null ? '—' : a + '%';
+    vCombo.textContent = '×' + mult();
+  }
+
+  /* ---------------- loop ---------------- */
+  function tick(now) {
+    if (!running) return;
+    const elapsed = now - startTime;
+    const remain = Math.max(0, GAME_MS - elapsed);
+    const t = Math.min(1, elapsed / GAME_MS);
+
+    vTime.textContent = (remain / 1000).toFixed(1) + 's';
+    timeFill.style.width = (remain / GAME_MS * 100) + '%';
+    timeFill.style.background = `hsl(${lerp(150, 0, Math.pow(t, 1.6))} 75% 46%)`;
+
+    const maxActive = 1 + Math.floor(t * 2.4);
+    if (now >= nextSpawnAt && targets.size < maxActive) {
+      spawnTarget(t);
+      nextSpawnAt = now + lerp(920, 460, t) * rnd(.75, 1.25);
+    }
+    for (const to of [...targets]) if (now > to.expireAt) escapeTarget(to);
+
+    if (remain <= 0) return endGame();
+    rafId = requestAnimationFrame(tick);
+  }
+
+  /* ---------------- game flow ---------------- */
+  function startGame() {
+    score = hits = misses = escaped = combo = bestCombo = 0;
+    for (const to of targets) to.el.remove();
+    targets.clear();
+    syncHud();
+    startScreen.classList.add('hidden');
+    endScreen.classList.add('hidden');
+    hud.classList.add('show');
+    countdownThen(() => {
+      running = true;
+      startTime = nextSpawnAt = performance.now();
+      rafId = requestAnimationFrame(tick);
+    });
+  }
+  function countdownThen(fn) {
+    cdEl.classList.add('show');
+    let n = 3;
+    const step = () => {
+      cdNum.textContent = n > 0 ? n : 'GO!';
+      cdNum.classList.remove('go'); void cdNum.offsetWidth;
+      cdNum.classList.add('go');
+      blip(n > 0 ? 520 : 880, .15, 'sine', .05);
+      if (n-- > 0) setTimeout(step, 620); else { cdEl.classList.remove('show'); fn(); }
+    };
+    step();
+  }
+  function endGame() {
+    running = false;
+    cancelAnimationFrame(rafId);
+    for (const to of targets) { to.el.classList.add('escaped'); setTimeout(() => to.el.remove(), 320); }
+    targets.clear();
+    hud.classList.remove('show');
+
+    const acc = accuracy() ?? 0;
+    let best = 0;
+    try { best = +(localStorage.getItem('tc_best') || 0); } catch {}
+    const isNew = score > best;
+    try { if (isNew) localStorage.setItem('tc_best', score); } catch {}
+
+    $('sAcc').textContent = acc + '%';
+    $('sHits').textContent = hits;
+    $('sMiss').textContent = misses;
+    $('sEsc').textContent = escaped;
+    $('sCombo').textContent = bestCombo;
+    $('sBest').textContent = Math.max(best, score).toLocaleString();
+    $('newBest').style.display = isNew ? 'block' : 'none';
+    $('rating').textContent =
+      score >= 6000 ? '🏆 Lights Out' :
+      score >= 4200 ? '🥇 Sharpshooter' :
+      score >= 2600 ? '🥈 Crack Shot' :
+      score >= 1200 ? '🥉 Getting Warm' : 'Rookie';
+
+    endScreen.classList.remove('hidden');
+    const fs = $('finalScore'); const t0 = performance.now();
+    const count = now => {
+      const p = Math.min(1, (now - t0) / 900), e = 1 - Math.pow(1 - p, 3);
+      fs.textContent = Math.round(score * e).toLocaleString();
+      if (p < 1) requestAnimationFrame(count);
+    };
+    requestAnimationFrame(count);
+    [660, 830, 990, 1320].forEach((f, i) => setTimeout(() => blip(f, .16, 'triangle', .05), i * 110));
+  }
+
+  $('btnStart').addEventListener('click', () => { ensureAudio(); startGame(); });
+  $('btnAgain').addEventListener('click', () => { ensureAudio(); startGame(); });
+  addEventListener('keydown', e => {
+    if (e.code === 'Space' && !running && !cdEl.classList.contains('show') &&
+        (!startScreen.classList.contains('hidden') || !endScreen.classList.contains('hidden'))) {
+      e.preventDefault(); ensureAudio(); startGame();
+    }
+  });
+  syncHud();
+})();
+</script>
+</body>
+</html>

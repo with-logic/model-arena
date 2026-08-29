@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Webcam Filter Playground</title>
+<style>
+  :root{
+    --bg:#0a0b10;
+    --panel:rgba(255,255,255,.045);
+    --panel-border:rgba(255,255,255,.09);
+    --text:#e8eaf0;
+    --muted:#8b90a0;
+    --accent:#7c5cff;
+    --accent2:#00e5c3;
+    --radius:16px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:
+      radial-gradient(1200px 700px at 85% -10%, rgba(124,92,255,.16), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(0,229,195,.10), transparent 60%),
+      var(--bg);
+    color:var(--text);
+    min-height:100%;
+    display:flex;flex-direction:column;align-items:center;
+    padding:22px 18px 40px;
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+  }
+  header{
+    width:100%;max-width:1060px;
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:16px;gap:12px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:11px}
+  .logo{
+    width:36px;height:36px;border-radius:11px;
+    background:conic-gradient(from 210deg,var(--accent),var(--accent2),#ff5c8a,var(--accent));
+    display:grid;place-items:center;font-size:17px;
+    box-shadow:0 4px 18px rgba(124,92,255,.4);
+  }
+  h1{font-size:17px;font-weight:700;letter-spacing:.2px}
+  h1 span{color:var(--muted);font-weight:500}
+  .hint{font-size:11.5px;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  kbd{
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.13);
+    border-bottom-width:2px;border-radius:5px;padding:1px 5px;font-size:10px;
+    font-family:inherit;color:#c9cdda;
+  }
+  main{width:100%;max-width:1060px;display:grid;grid-template-columns:1fr 268px;gap:16px}
+  @media (max-width:900px){main{grid-template-columns:1fr}}
+
+  /* ---- stage ---- */
+  .stage{
+    position:relative;border-radius:var(--radius);overflow:hidden;
+    background:#000;aspect-ratio:4/3;
+    border:1px solid var(--panel-border);
+    box-shadow:0 20px 60px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.03);
+  }
+  .stage:fullscreen{aspect-ratio:unset;height:100vh;border-radius:0;border:none}
+  canvas#display{width:100%;height:100%;display:block;object-fit:cover;image-rendering:auto}
+  .overlay{
+    position:absolute;inset:0;display:flex;flex-direction:column;gap:12px;
+    align-items:center;justify-content:center;text-align:center;padding:24px;
+    background:rgba(8,9,14,.82);backdrop-filter:blur(6px);
+    transition:opacity .35s;
+  }
+  .overlay.hidden{opacity:0;pointer-events:none}
+  .overlay .big{font-size:34px}
+  .overlay p{color:var(--muted);font-size:13.5px;max-width:340px;line-height:1.55}
+  .btn{
+    border:1px solid var(--panel-border);background:var(--panel);color:var(--text);
+    border-radius:10px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;
+    transition:transform .12s, background .2s, border-color .2s;
+  }
+  .btn:hover{background:rgba(255,255,255,.09);transform:translateY(-1px)}
+  .btn:active{transform:translateY(0) scale(.98)}
+  .btn.primary{
+    background:linear-gradient(135deg,var(--accent),#5a3de0);border-color:transparent;
+    box-shadow:0 6px 20px rgba(124,92,255,.35);
+  }
+  .btn.primary:hover{filter:brightness(1.12)}
+  .badge{
+    position:absolute;top:12px;left:12px;display:flex;gap:8px;align-items:center;
+    font-size:11px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  }
+  .live{
+    background:rgba(0,0,0,.45);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:5px 11px;
+    display:flex;align-items:center;gap:6px;color:#d6d9e4;
+  }
+  .dot{width:7px;height:7px;border-radius:50%;background:#ff4d5e;box-shadow:0 0 8px #ff4d5e;animation:pulse 1.6s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  .fx-name{
+    position:absolute;bottom:12px;left:12px;
+    background:rgba(0,0,0,.45);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.1);border-radius:999px;
+    padding:5px 12px;font-size:12px;font-weight:600;color:#eef0f6;
+    transition:opacity .3s;
+  }
+  .flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none}
+  .flash.go{animation:flash .35s ease-out}
+  @keyframes flash{0%{opacity:.85}100%{opacity:0}}
+
+  /* ---- sidebar ---- */
+  aside{display:flex;flex-direction:column;gap:14px;min-width:0}
+  .card{
+    background:var(--panel);border:1px solid var(--panel-border);
+    border-radius:var(--radius);padding:14px;
+  }
+  .card h3{
+    font-size:10.5px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .chips{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}
+  .chip{
+    display:flex;align-items:center;gap:7px;
+    background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;padding:8px 9px;font-size:12px;font-weight:600;color:#c6cad6;
+    cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .chip .ico{font-size:14px;flex:none}
+  .chip:hover{background:rgba(255,255,255,.09);color:#fff}
+  .chip.active{
+    background:linear-gradient(135deg,rgba(124,92,255,.35),rgba(0,229,195,.18));
+    border-color:rgba(124,92,255,.7);color:#fff;
+    box-shadow:0 0 0 1px rgba(124,92,255,.35), 0 4px 16px rgba(124,92,255,.25);
+  }
+  .row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
+  .row:first-of-type{margin-top:0}
+  .row label{font-size:12px;color:#c6cad6;font-weight:600;flex:none}
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;flex:1;height:4px;border-radius:2px;
+    background:linear-gradient(90deg,var(--accent) var(--fill,50%),rgba(255,255,255,.14) var(--fill,50%));
+    outline:none;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:#fff;border:3px solid var(--accent);
+    box-shadow:0 2px 8px rgba(0,0,0,.5);cursor:grab;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:10px;height:10px;border-radius:50%;background:#fff;border:3px solid var(--accent);cursor:grab;
+  }
+  .val{font-size:11px;color:var(--muted);width:30px;text-align:right;font-variant-numeric:tabular-nums}
+  .toggle{
+    position:relative;width:38px;height:21px;border-radius:999px;flex:none;
+    background:rgba(255,255,255,.14);cursor:pointer;transition:background .2s;border:none;
+  }
+  .toggle::after{
+    content:"";position:absolute;top:2.5px;left:3px;width:16px;height:16px;border-radius:50%;
+    background:#fff;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+  .toggle.on{background:var(--accent)}
+  .toggle.on::after{transform:translateX(16px)}
+  .actions{display:grid;grid-template-columns:1fr auto auto;gap:7px}
+  .actions .btn{padding:10px 12px;display:flex;align-items:center;justify-content:center;gap:6px}
+  .icon-btn{width:38px;flex:none}
+
+  /* ---- snapshots ---- */
+  .shots{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;min-height:44px}
+  .shot{position:relative;border-radius:8px;overflow:hidden;aspect-ratio:4/3;cursor:pointer;border:1px solid rgba(255,255,255,.1)}
+  .shot img{width:100%;height:100%;object-fit:cover;display:block}
+  .shot .x{
+    position:absolute;top:2px;right:2px;width:16px;height:16px;border-radius:5px;
+    background:rgba(0,0,0,.6);color:#fff;font-size:10px;line-height:16px;text-align:center;
+    opacity:0;transition:opacity .15s;font-weight:700;
+  }
+  .shot:hover .x{opacity:1}
+  .shot:hover{outline:2px solid var(--accent)}
+  .empty{grid-column:1/-1;font-size:11.5px;color:var(--muted);text-align:center;padding:12px 0}
+  .shots-head .count{color:var(--muted);font-weight:600;letter-spacing:0;text-transform:none;font-size:11px}
+  footer{margin-top:18px;font-size:11px;color:#565b6b;text-align:center}
+  video{display:none}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="logo">📸</div>
+    <h1>Webcam Filter Playground <span>· live fx</span></h1>
+  </div>
+  <div class="hint">
+    <span><kbd>Space</kbd> snap</span>
+    <span><kbd>R</kbd> random</span>
+    <span><kbd>M</kbd> mirror</span>
+    <span><kbd>←→</kbd> fx</span>
+    <span><kbd>F</kbd> fullscreen</span>
+  </div>
+</header>
+
+<main>
+  <div class="stage" id="stage">
+    <canvas id="display" width="640" height="480"></canvas>
+    <div class="badge">
+      <div class="live"><span class="dot"></span><span id="liveLabel">Live</span></div>
+    </div>
+    <div class="fx-name" id="fxName">Normal</div>
+    <div class="overlay" id="overlay">
+      <div class="big">🎥</div>
+      <p id="overlayMsg">Requesting camera access…<br>Your video never leaves this page — everything runs locally.</p>
+      <button class="btn primary" id="startBtn" style="display:none">Enable camera</button>
+    </div>
+    <div class="flash" id="flash"></div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h3>Effects</h3>
+      <div class="chips" id="chips"></div>
+    </div>
+
+    <div class="card">
+      <h3>Controls</h3>
+      <div class="row">
+        <label>Intensity</label>
+        <input type="range" id="intensity" min="0" max="100" value="50">
+        <span class="val" id="intVal">50</span>
+      </div>
+      <div class="row">
+        <label>Mirror</label>
+        <button class="toggle on" id="mirrorBtn" aria-label="toggle mirror"></button>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="actions" style="width:100%">
+          <button class="btn primary" id="snapBtn">📷 Snap</button>
+          <button class="btn icon-btn" id="randomBtn" title="Random effect (R)">🎲</button>
+          <button class="btn icon-btn" id="fsBtn" title="Fullscreen (F)">⛶</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="flex:1">
+      <h3 class="shots-head">Snapshots <span class="count" id="shotCount"></span></h3>
+      <div class="shots" id="shots"><div class="empty">Click 📷 Snap or press Space.<br>Click a thumbnail to download.</div></div>
+    </div>
+  </aside>
+</main>
+
+<footer>Drop an image anywhere to use it instead of the camera · Made with canvas &amp; pixels</footer>
+<video id="video" playsinline autoplay muted></video>
+
+<script>
+(() => {
+"use strict";
+
+// ---------- elements ----------
+const video = document.getElementById('video');
+const display = document.getElementById('display');
+const dctx = display.getContext('2d');
+const overlay = document.getElementById('overlay');
+const overlayMsg = document.getElementById('overlayMsg');
+const startBtn = document.getElementById('startBtn');
+const fxNameEl = document.getElementById('fxName');
+const flashEl = document.getElementById('flash');
+const chipsEl = document.getElementById('chips');
+const intensityEl = document.getElementById('intensity');
+const intValEl = document.getElementById('intVal');
+const mirrorBtn = document.getElementById('mirrorBtn');
+const shotsEl = document.getElementById('shots');
+const shotCountEl = document.getElementById('shotCount');
+const liveLabel = document.getElementById('liveLabel');
+
+// offscreen working canvases
+const s = document.createElement('canvas'); // source frame
+const o = document.createElement('canvas'); // output frame
+const sctx = s.getContext('2d', {willReadFrequently:true});
+const octx = o.getContext('2d');
+
+let W = 640, H = 480;
+let mirror = true;
+let intensity = .5;
+let running = false;
+let stillSource = null;   // dropped <img> used instead of camera
+let rafId = 0;
+
+// ---------- effects ----------
+const effects = [
+  {id:'none',   name:'Normal',      ico:'🔘'},
+  {id:'gray',   name:'Grayscale',   ico:'🌫️'},
+  {id:'thermal',name:'Thermal',     ico:'🔥'},
+  {id:'neon',   name:'Neon Edge',   ico:'💡'},
+  {id:'glitch', name:'Glitch',      ico:'📺'},
+  {id:'vhs',    name:'VHS ’84',     ico:'🥏'},
+  {id:'kaleido',name:'Kaleidoscope',ico:'🌸'},
+  {id:'wave',   name:'Heat Wave',   ico:'🌊'},
+  {id:'pixel',  name:'Pixelate',    ico:'🧱'},
+  {id:'poster', name:'Posterize',   ico:'🎨'},
+  {id:'night',  name:'Night Vision',ico:'🥽'},
+  {id:'dream',  name:'Dreamy',      ico:'☁️'},
+  {id:'xray',   name:'X-Ray',       ico:'🦴'},
+  {id:'rainbow',name:'Rainbow',     ico:'🌈'},
+];
+let current = effects[0];
+
+// ---------- ui build ----------
+effects.forEach(fx => {
+  const b = document.createElement('button');
+  b.className = 'chip' + (fx === current ? ' active' : '');
+  b.innerHTML = `<span class="ico">${fx.ico}</span>${fx.name}`;
+  b.onclick = () => selectEffect(fx);
+  b.dataset.id = fx.id;
+  chipsEl.appendChild(b);
+});
+
+function selectEffect(fx){
+  current = fx;
+  fxNameEl.textContent = fx.ico + '  ' + fx.name;
+  chipsEl.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.id === fx.id));
+}
+function cycleEffect(dir){
+  const i = effects.indexOf(current);
+  selectEffect(effects[(i + dir + effects.length) % effects.length]);
+}
+
+intensityEl.addEventListener('input', () => {
+  intensity = intensityEl.value / 100;
+  intValEl.textContent = intensityEl.value;
+  intensityEl.style.setProperty('--fill', intensityEl.value + '%');
+});
+intensityEl.style.setProperty('--fill','50%');
+
+mirrorBtn.onclick = () => { mirror = !mirror; mirrorBtn.classList.toggle('on', mirror); };
+document.getElementById('snapBtn').onclick = snapshot;
+document.getElementById('randomBtn').onclick = () => selectEffect(effects[Math.floor(Math.random()*effects.length)]);
+document.getElementById('fsBtn').onclick = () => {
+  const st = document.getElementById('stage');
+  document.fullscreenElement ? document.exitFullscreen() : st.requestFullscreen?.();
+};
+
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space'){ e.preventDefault(); snapshot(); }
+  else if (e.key === 'r' || e.key === 'R') document.getElementById('randomBtn').click();
+  else if (e.key === 'm' || e.key === 'M') mirrorBtn.click();
+  else if (e.key === 'f' || e.key === 'F') document.getElementById('fsBtn').click();
+  else if (e.key === 'ArrowRight') cycleEffect(1);
+  else if (e.key === 'ArrowLeft') cycleEffect(-1);
+});
+
+// ---------- camera ----------
+async function startCamera(){
+  overlayMsg.innerHTML = 'Requesting camera access…<br>Your video never leaves this page — everything runs locally.';
+  startBtn.style.display = 'none';
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {width:{ideal:1280}, height:{ideal:960}, facingMode:'user'}, audio:false
+    });
+    video.srcObject = stream;
+    await video.play();
+    sizeCanvases(video.videoWidth || 640, video.videoHeight || 480);
+    hideOverlay();
+    if (!running){ running = true; loop(); }
+  } catch(err) {
+    overlayMsg.innerHTML = 'Camera unavailable (' + (err.name || 'error') + ').<br>You can still play: <b>drop an image file</b> onto the page, or retry.';
+    startBtn.style.display = '';
+    startBtn.textContent = 'Retry camera';
+  }
+}
+startBtn.onclick = startCamera;
+
+function sizeCanvases(vw, vh){
+  const maxW = 720;
+  const scale = Math.min(1, maxW / vw);
+  W = Math.round(vw * scale / 2) * 2;
+  H = Math.round(vh * scale / 2) * 2;
+  [s, o, display].forEach(c => { c.width = W; c.height = H; });
+}
+
+function hideOverlay(){ overlay.classList.add('hidden'); }
+function showOverlay(msg){ overlayMsg.innerHTML = msg; overlay.classList.remove('hidden'); }
+
+// drag & drop image source
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault();
+  const f = [...(e.dataTransfer?.files || [])].find(f => f.type.startsWith('image/'));
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    stillSource = img;
+    sizeCanvases(img.naturalWidth, img.naturalHeight);
+    liveLabel.textContent = 'Image';
+    hideOverlay();
+    if (!running){ running = true; loop(); }
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+function grabFrame(){
+  sctx.save();
+  if (mirror){ sctx.translate(W, 0); sctx.scale(-1, 1); }
+  if (stillSource){
+    const ar = stillSource.naturalWidth / stillSource.naturalHeight, tar = W / H;
+    let dw = W, dh = H, dx = 0, dy = 0;
+    if (ar > tar){ dh = H; dw = H * ar; dx = (W - dw) / 2; } else { dw = W; dh = W / ar; dy = (H - dh) / 2; }
+    sctx.drawImage(stillSource, dx, dy, dw, dh);
+  } else {
+    sctx.drawImage(video, 0, 0, W, H);
+  }
+  sctx.restore();
+}
+
+// ---------- render loop ----------
+function loop(){
+  rafId = requestAnimationFrame(loop);
+  if (!stillSource && video.readyState < 2) return;
+  grabFrame();
+  render(performance.now() / 1000);
+}
+
+function render(t){
+  switch (current.id){
+    case 'none':    octx.drawImage(s,0,0); break;
+    case 'gray':    fxGray(); break;
+    case 'thermal': fxThermal(); break;
+    case 'neon':    fxNeon(t); break;
+    case 'glitch':  fxGlitch(t); break;
+    case 'vhs':     fxVHS(t); break;
+    case 'kaleido': fxKaleido(t); break;
+    case 'wave':    fxWave(t); break;
+    case 'pixel':   fxPixel(); break;
+    case 'poster':  fxPoster(); break;
+    case 'night':   fxNight(t); break;
+    case 'dream':   fxDream(); break;
+    case 'xray':    fxXray(); break;
+    case 'rainbow': fxRainbow(t); break;
+  }
+  dctx.drawImage(o, 0, 0);
+}
+
+// ---------- pixel helpers ----------
+function srcData(){ return sctx.getImageData(0, 0, W, H); }
+function put(d){ octx.putImageData(d, 0, 0); }
+
+function fxGray(){
+  const d = srcData(), p = d.data, amt = intensity * 2 - .5; // allow partial color
+  for (let i = 0; i < p.length; i += 4){
+    const l = (p[i]*.299 + p[i+1]*.587 + p[i+2]*.114)|0;
+    if (amt >= .5){ p[i]=p[i+1]=p[i+2]=l; }
+    else { const a = Math.max(0, amt*2);
+      p[i]   = p[i]   + (l - p[i])   * a;
+      p[i+1] = p[i+1] + (l - p[i+1]) * a;
+      p[i+2] = p[i+2] + (l - p[i+2]) * a; }
+  }
+  put(d);
+}
+
+// thermal LUT
+const LUT = new Uint8Array(256*3);
+{
+  const stops = [[0,0,10,40],[64,40,10,120],[128,200,30,60],[192,255,160,20],[255,255,255,240]];
+  for (let v = 0; v < 256; v++){
+    let a = stops[0], b = stops[stops.length-1];
+    for (let i = 0; i < stops.length-1; i++) if (v >= stops[i][0] && v <= stops[i+1][0]){ a = stops[i]; b = stops[i+1]; break; }
+    const f = (v - a[0]) / Math.max(1, b[0] - a[0]);
+    LUT[v*3]   = a[1] + (b[1]-a[1])*f;
+    LUT[v*3+1] = a[2] + (b[2]-a[2])*f;
+    LUT[v*3+2] = a[3] + (b[3]-a[3])*f;
+  }
+}
+function fxThermal(){
+  const d = srcData(), p = d.data;
+  const boost = 1 + intensity * 1.5;
+  for (let i = 0; i < p.length; i += 4){
+    let l = ((p[i]*.299 + p[i+1]*.587 + p[i+2]*.114) * boost)|0;
+    if (l > 255) l = 255;
+    p[i] = LUT[l*3]; p[i+1] = LUT[l*3+1]; p[i+2] = LUT[l*3+2];
+  }
+  put(d);
+}
+
+function sobel(d, out){ // writes edge magnitude into out (0-255 per pixel)
+  const p = d.data, n = out.length;
+  for (let y = 1; y < H-1; y++) for (let x = 1; x < W-1; x++){
+    const i = (y*W + x);
+    const g = j => p[j*4]*.299 + p[j*4+1]*.587 + p[j*4+2]*.114;
+    const tl=g(i-W-1), tc=g(i-W), tr=g(i-W+1), ml=g(i-1), mr=g(i+1), bl=g(i+W-1), bc=g(i+W), br=g(i+W+1);
+    const gx = (tr + 2*mr + br) - (tl + 2*ml + bl);
+    const gy = (bl + 2*bc + br) - (tl + 2*tc + tr);
+    const m = Math.sqrt(gx*gx + gy*gy)|0;
+    out[i] = m > 255 ? 255 : m;
+  }
+}
+let edgeBuf = new Uint8Array(W*H);
+
+function fxNeon(t){
+  const d = srcData();
+  if (edgeBuf.length !== W*H) edgeBuf = new Uint8Array(W*H);
+  sobel(d, edgeBuf);
+  const p = d.data;
+  const thresh = 120 - intensity * 100;
+  const hueBase = (t * 40) % 360;
+  for (let i = 0; i < p.length; i += 4){
+    const px = i >> 2, e = edgeBuf[px];
+    if (e > thresh){
+      const [r,g,b] = hsl((hueBase + px % W * .3 + e * .5) % 360, 1, Math.min(.85, .35 + e/400));
+      p[i]=r; p[i+1]=g; p[i+2]=b;
+    } else {
+      p[i]*=.08; p[i+1]*=.08; p[i+2]*=.08;
+    }
+  }
+  put(d);
+}
+function hsl(h,s_,l){
+  const f = n => { const k = (n + h/30) % 12; return (l - s_*Math.min(l,1-l) * Math.max(-1, Math.min(k-3, 9-k, 1)))*255|0; };
+  return [f(0), f(8), f(4)];
+}
+
+function fxGlitch(t){
+  const d = srcData(), p = d.data;
+  const out = octx.createImageData(W, H);
+  const q = out.data;
+  const shift = Math.round(2 + intensity * 22);
+  const seed = Math.floor(t * 12);
+  for (let y = 0; y < H; y++){
+    // random slice displacement
+    const r = pseudo(y * 7 + seed * 131);
+    const slice = r < .05 + intensity * .12 ? Math.round((pseudo(y*13+seed) - .5) * intensity * 90) : 0;
+    for (let x = 0; x < W; x++){
+      const i = (y*W + x) * 4;
+      const xr = x + shift + slice, xb = x - shift + slice;
+      q[i]   = p[(clamp(xr,0,W-1) + y*W)*4];
+      q[i+1] = p[(clamp(x,0,W-1)  + y*W)*4+1];
+      q[i+2] = p[(clamp(xb,0,W-1) + y*W)*4+2];
+      q[i+3] = 255;
+    }
+  }
+  // occasional white noise bands
+  if (pseudo(seed) < .4){
+    const by = Math.floor(pseudo(seed*3) * H), bh = 2 + Math.floor(pseudo(seed*5)*8);
+    for (let y = by; y < Math.min(H, by+bh); y++) for (let x = 0; x < W; x++){
+      const i = (y*W+x)*4, v = pseudo(x*3+y*11+seed)*255|0;
+      q[i]=v; q[i+1]=v; q[i+2]=v;
+    }
+  }
+  put(out);
+}
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const pseudo = n => { const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
+
+function fxVHS(t){
+  const d = srcData(), p = d.data;
+  const wob = intensity * 30;
+  const time = Math.floor(t * 8);
+  for (let y = 0; y < H; y++){
+    const scan = (y % 3 === 0) ? 1 - .35 - intensity*.2 : 1;
+    const roll = Math.sin(y * .08 + time) * wob;
+    const yoff = Math.abs(roll) > wob*.8 ? Math.round(roll*.3) : 0;
+    for (let x = 0; x < W; x++){
+      const i = (y*W + x)*4;
+      const j = (clamp(y+yoff,0,H-1)*W + x)*4;
+      let r = p[j], g = p[j+1], b = p[j+2];
+      const l = (r*.299 + g*.587 + b*.114);
+      r = l + (r-l)*.6; g = l*1.05 + (g-l)*.4; b = l*.9 + (b-l)*.5; // washed warm tint
+      const n = (pseudo(x + y*W + time*997) - .5) * (28 + intensity*60);
+      p[i]   = clamp(r*scan + n, 0, 255);
+      p[i+1] = clamp(g*scan + n, 0, 255);
+      p[i+2] = clamp(b*scan + n, 0, 255);
+    }
+  }
+  put(d);
+}
+
+function fxKaleido(t){
+  const seg = 6 + Math.round(intensity * 6); // even number of mirror segments
+  const segs = seg % 2 ? seg + 1 : seg;
+  octx.fillStyle = '#000'; octx.fillRect(0,0,W,H);
+  const cx = W/2, cy = H/2, R = Math.hypot(cx, cy);
+  const ang = Math.PI*2/segs;
+  const rot = t * .15;
+  for (let i = 0; i < segs; i++){
+    octx.save();
+    octx.translate(cx, cy);
+    octx.rotate(rot + i * ang);
+    if (i % 2) octx.scale(1, -1);
+    octx.beginPath();
+    octx.moveTo(0,0);
+    octx.lineTo(R, 0);
+    octx.lineTo(R * Math.cos(ang), R * Math.sin(ang));
+    octx.closePath();
+    octx.clip();
+    octx.drawImage(s, -W/2, -H/2);
+    octx.restore();
+  }
+}
+
+function fxWave(t){
+  const amp = 2 + intensity * 26;
+  const freq = .015 + intensity * .045;
+  octx.fillStyle='#000'; octx.fillRect(0,0,W,H);
+  const band = 3;
+  for (let y = 0; y < H; y += band){
+    const dx = Math.sin(y * freq + t * 3.2) * amp;
+    const dy = Math.cos(y * freq * 1.3 + t * 2.1) * amp * .35;
+    octx.drawImage(s, 0, y, W, band, dx, y + dy, W, band);
+  }
+}
+
+function fxPixel(){
+  const bs = Math.max(2, Math.round(2 + intensity * 46));
+  octx.imageSmoothingEnabled = false;
+  const sw = Math.max(1, Math.ceil(W/bs)), sh = Math.max(1, Math.ceil(H/bs));
+  octx.drawImage(s, 0, 0, W, H, 0, 0, sw, sh);
+  octx.drawImage(o, 0, 0, sw, sh, 0, 0, W, H);
+  octx.imageSmoothingEnabled = true;
+}
+
+function fxPoster(){
+  const d = srcData(), p = d.data;
+  const levels = Math.max(2, Math.round(2 + intensity * 8));
+  const step = 255 / (levels - 1);
+  for (let i = 0; i < p.length; i += 4){
+    p[i]   = Math.round(p[i]/step)*step;
+    p[i+1] = Math.round(p[i+1]/step)*step;
+    p[i+2] = Math.round(p[i+2]/step)*step;
+  }
+  put(d);
+}
+
+function fxNight(t){
+  const d = srcData(), p = d.data;
+  const gain = 1 + intensity * 2.2;
+  const time = Math.floor(t*15);
+  for (let i = 0, px = 0; i < p.length; i += 4, px++){
+    const y = (px / W)|0, x = px % W;
+    let l = (p[i]*.299 + p[i+1]*.587 + p[i+2]*.114) * gain;
+    l += (pseudo(x*1.7 + y*3.1 + time) - .5) * 60 * intensity;
+    // scan sweep
+    const sweep = Math.abs(((t*160) % (H+240)) - y - 120);
+    if (sweep < 60) l += (60 - sweep) * .9;
+    // vignette
+    const vx = (x - W/2)/(W/2), vy = (y - H/2)/(H/2);
+    l *= 1 - (vx*vx + vy*vy) * .35;
+    l = clamp(l, 0, 255);
+    p[i] = l*.15; p[i+1] = l; p[i+2] = l*.25;
+  }
+  put(d);
+}
+
+function fxDream(){
+  octx.clearRect(0,0,W,H);
+  const blur = 1 + intensity * 9;
+  octx.filter = `blur(${blur}px) brightness(${1 + intensity*.25}) saturate(${1 + intensity*.6})`;
+  octx.drawImage(s, 0, 0);
+  octx.filter = 'none';
+  octx.globalAlpha = .45;
+  octx.globalCompositeOperation = 'lighter';
+  octx.filter = `blur(${blur*2.5}px)`;
+  octx.drawImage(s, 0, 0);
+  octx.filter = 'none';
+  octx.globalCompositeOperation = 'source-over';
+  octx.globalAlpha = 1;
+}
+
+function fxXray(){
+  const d = srcData(), p = d.data;
+  const k = 1 + intensity * 3;
+  for (let i = 0; i < p.length; i += 4){
+    const inv = 255 - (p[i]*.299 + p[i+1]*.587 + p[i+2]*.114);
+    const v = clamp((inv - 128) * k + 128, 0, 255);
+    p[i]   = 60 + v * .15;
+    p[i+1] = 90 + v * .35;
+    p[i+2] = 120 + v * .55;
+  }
+  put(d);
+}
+
+function fxRainbow(t){
+  const d = srcData(), p = d.data;
+  const speed = 30 + intensity * 220;
+  for (let i = 0, px = 0; i < p.length; i += 4, px++){
+    const y = (px / W)|0, x = px % W;
+    const l = (p[i]*.299 + p[i+1]*.587 + p[i+2]*.114)|0;
+    const hue = (x * .8 + y * .4 + t * speed) % 360;
+    const [r,g,b] = hsl(hue, 1, .5);
+    const m = l / 255;
+    p[i]   = r*m + l*(1-m)*0;
+    p[i+1] = g*m + l*(1-m)*0;
+    p[i+2] = b*m + l*(1-m)*0;
+  }
+  put(d);
+}
+
+// ---------- snapshots ----------
+const shots = [];
+function snapshot(){
+  if (!running) return;
+  const c = document.createElement('canvas');
+  // upscale snapshot to at least 1280 wide for a nicer save
+  const sc = Math.max(1, Math.round(1280 / W * 2) / 2);
+  c.width = Math.round(W * sc); c.height = Math.round(H * sc);
+  const cc = c.getContext('2d');
+  cc.imageSmoothingEnabled = !(current.id === 'pixel');
+  cc.drawImage(o, 0, 0, c.width, c.height);
+  const url = c.toDataURL('image/png');
+  shots.unshift({url, name: current.id});
+  if (shots.length > 12) shots.pop();
+  renderShots();
+  flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go');
+}
+
+function renderShots(){
+  shotsEl.innerHTML = '';
+  if (!shots.length){
+    shotsEl.innerHTML = '<div class="empty">Click 📷 Snap or press Space.<br>Click a thumbnail to download.</div>';
+    shotCountEl.textContent = '';
+    return;
+  }
+  shotCountEl.textContent = shots.length + (shots.length >= 12 ? ' / 12' : '');
+  shots.forEach((sh, i) => {
+    const div = document.createElement('div');
+    div.className = 'shot';
+    div.title = 'Click to download';
+    div.innerHTML = `<img src="${sh.url}" alt="snapshot"><span class="x">✕</span>`;
+    div.onclick = e => {
+      if (e.target.classList.contains('x')){ shots.splice(i,1); renderShots(); return; }
+      const a = document.createElement('a');
+      a.href = sh.url;
+      a.download = `webcam-${sh.name}-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.png`;
+      a.click();
+    };
+    shotsEl.appendChild(div);
+  });
+}
+
+// ---------- boot ----------
+selectEffect(effects[0]);
+// Safari/Chrome require a gesture in some contexts; try immediately, fall back to button.
+startCamera();
+})();
+</script>
+</body>
+</html>
