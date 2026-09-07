@@ -10,6 +10,7 @@ export const MAX_OUTPUT_TOKENS = {
 
 export interface HarnessCommandOptions {
   interactive: boolean;
+  codexLauncher?: string;
   anthropicProxyEnv?: EnvOverrides;
   openRouterApiKey?: string;
 }
@@ -203,15 +204,27 @@ export function buildHarnessCommand(
     }
 
     case "codex":
+      if (!options.codexLauncher) {
+        throw new Error("A verified Codex launcher is required; resolve the latest release first.");
+      }
       return {
-        cmd: "codex",
+        cmd: process.execPath,
         args: [
+          options.codexLauncher,
           "exec",
+          "--json",
           "--model",
           model.model,
-          "--full-auto",
+          "--dangerously-bypass-approvals-and-sandbox",
+          "-c",
+          'approval_policy="never"',
+          "-c",
+          'model_provider="openai"',
+          "-c",
+          'service_tier="default"',
           "-c",
           `model_max_output_tokens=${MAX_OUTPUT_TOKENS.codex}`,
+          ...(model.variant ? ["-c", `model_reasoning_effort=${JSON.stringify(model.variant)}`] : []),
           prompt,
         ],
       };

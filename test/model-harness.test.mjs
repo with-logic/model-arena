@@ -75,14 +75,22 @@ test("preserves exact harness commands and provider environments", () => {
     {
       name: "Codex",
       modelId: "gpt-5",
-      options: { interactive: false },
+      options: { interactive: false, codexLauncher: "/verified/codex.js" },
       expected: {
-        cmd: "codex",
+        cmd: process.execPath,
         args: [
+          "/verified/codex.js",
           "exec",
+          "--json",
           "--model",
           "gpt-5",
-          "--full-auto",
+          "--dangerously-bypass-approvals-and-sandbox",
+          "-c",
+          'approval_policy="never"',
+          "-c",
+          'model_provider="openai"',
+          "-c",
+          'service_tier="default"',
           "-c",
           "model_max_output_tokens=100000",
           prompt,
@@ -194,6 +202,19 @@ test("preserves exact harness commands and provider environments", () => {
       testCase.name
     );
   }
+});
+
+test("Astra uses xhigh reasoning and requires a verified Codex launcher", () => {
+  const model = getModel("gpt-6-astra");
+  assert.ok(model);
+  assert.equal(model.model, "gpt-6-astra");
+  assert.equal(model.variant, "xhigh");
+  assert.ok(publishedModels.some((entry) => entry.id === model.id));
+  assert.throws(() => buildHarnessCommand(model, "Build", { interactive: false }), /verified Codex/);
+  const command = buildHarnessCommand(model, "Build", {
+    interactive: false, codexLauncher: "/verified/codex.js",
+  });
+  assert.ok(command.args.includes('model_reasoning_effort="xhigh"'));
 });
 
 test("rejects missing credentials for Claude through OpenRouter", () => {

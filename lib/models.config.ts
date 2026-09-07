@@ -60,6 +60,17 @@ export interface ModelConfig {
 
 export const models: ModelConfig[] = [
   {
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    harness: "codex",
+    host: "openai",
+    model: "gpt-6-astra",
+    variant: "xhigh",
+    color: "bg-emerald-700",
+    provider: "openai",
+    published: true,
+  },
+  {
     id: "gpt-5",
     name: "GPT-5",
     harness: "codex",

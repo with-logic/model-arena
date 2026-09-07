@@ -1,4 +1,4 @@
-import { execSync, spawn } from "child_process";
+import { execSync, spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -13,6 +13,8 @@ import {
   buildHarnessSpawnEnv,
   type EnvOverrides,
 } from "../lib/harness-command";
+import { prepareCodex } from "./codex-runtime";
+import { CodexCostTracker, CodexUsageMonitor } from "./codex-cost";
 
 // Set Claude max output tokens globally to avoid truncation errors
 process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS = "128000";
@@ -85,6 +87,61 @@ interface SandboxRunOptions {
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const EXAMPLES_DIR = path.join(REPO_ROOT, "examples");
+let codexLauncher: string | undefined;
+let stopping = false;
+const activeChildren = new Set<ChildProcess>();
+const costAttempts: Array<{ label: string; tracker: CodexCostTracker; finished: boolean }> = [];
+let costLogPath: string | undefined;
+
+function costLog(message: string): void {
+  const line = `[cost ${new Date().toISOString()}] ${message}`;
+  console.log(line);
+  if (costLogPath) fs.appendFileSync(costLogPath, `${line}\n`);
+}
+
+function reportCost(label: string): void {
+  if (!costLogPath) return;
+  const observed = costAttempts.filter((attempt) => attempt.tracker.observed);
+  const total = observed.reduce((sum, attempt) => sum + attempt.tracker.usd, 0);
+  const missing = costAttempts.length - observed.length;
+  const active = costAttempts.filter((attempt) => !attempt.finished).length;
+  costLog(`${label}: Astra API-equivalent estimate $${total.toFixed(4)} USD; ` +
+    `${observed.reduce((sum, a) => sum + a.tracker.inputTokens, 0).toLocaleString()} input / ` +
+    `${observed.reduce((sum, a) => sum + a.tracker.outputTokens, 0).toLocaleString()} output tokens; ` +
+    `${active} active, ${missing} attempt(s) with usage unavailable. ` +
+    "Observed usage only; in-flight requests may not be reported yet." +
+    (observed.some((a) => a.tracker.approximate) ? " Some request pricing boundaries unavailable; standard-rate approximation included." : ""));
+}
+
+function signalChild(proc: ChildProcess, signal: NodeJS.Signals): void {
+  if (!proc.pid) return;
+  try {
+    if (process.platform !== "win32" && !process.argv.includes("--interactive")) process.kill(-proc.pid, signal);
+    else proc.kill(signal);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ESRCH") console.error(`Failed to stop generator: ${error}`);
+  }
+}
+
+function stopGeneration(signal: NodeJS.Signals): void {
+  if (stopping) {
+    for (const proc of activeChildren) signalChild(proc, "SIGKILL");
+    return;
+  }
+  stopping = true;
+  process.exitCode = signal === "SIGINT" ? 130 : 143;
+  console.log(`\n${signal}: stopping active generators and queued tasks...`);
+  for (const proc of activeChildren) signalChild(proc, "SIGTERM");
+  reportCost("Stopping (partial)");
+  const killTimer = setTimeout(() => {
+    for (const proc of activeChildren) signalChild(proc, "SIGKILL");
+  }, 5000);
+  killTimer.unref();
+}
+
+function checkStopped(): void {
+  if (stopping) throw new Error("Generation interrupted");
+}
 
 // ============================================================================
 // Helpers
@@ -321,8 +378,10 @@ async function runCliOnce(
   logPrefix: string,
   interactive: boolean
 ): Promise<void> {
+  checkStopped();
   const { cmd, args, env } = buildHarnessCommand(model, prompt, {
     interactive,
+    codexLauncher,
     anthropicProxyEnv:
       model.host === "fireworks" ? buildAnthropicProxyEnv(model) : undefined,
     openRouterApiKey:
@@ -331,36 +390,67 @@ async function runCliOnce(
 
   const spawnEnv = buildHarnessSpawnEnv(model, env);
 
-  await new Promise<void>((resolve, reject) => {
-    console.log(`${logPrefix} Running in sandbox: ${tempDir}`);
-    // Log the exact --model flag actually passed to the CLI so a run can be
-    // audited against the intended model (guards against silent CLI fallbacks).
-    const modelFlagIdx = args.indexOf("--model");
-    const invokedModel = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : "(no --model flag)";
-    const invocationMode = interactive ? "(interactive)" : "(non-interactive)";
-    console.log(`${logPrefix} Command: ${cmd} ${invocationMode} --model ${invokedModel} ...`);
-    if (interactive) {
-      console.log(`${logPrefix} Exit the harness when it finishes to continue validation (do not press Ctrl+C).`);
-    }
+  const attempt = model.model === "gpt-6-astra"
+    ? { label: logPrefix, tracker: new CodexCostTracker(), finished: false }
+    : undefined;
+  if (attempt) costAttempts.push(attempt);
+  const monitor = model.harness === "codex" ? new CodexUsageMonitor(
+    path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "sessions"),
+    attempt?.tracker,
+    (message) => console.log(`${logPrefix} ${message}`),
+    () => {
+      if (!attempt) return;
+      const appTotal = costAttempts.filter((a) => a.label === logPrefix).reduce((sum, a) => sum + a.tracker.usd, 0);
+      costLog(`${logPrefix} app so far: $${appTotal.toFixed(4)} USD (including repair attempts)`);
+      reportCost("Run so far");
+    },
+  ) : undefined;
 
-    const proc = spawn(cmd, args, {
-      stdio: "inherit",
-      cwd: tempDir,
-      env: spawnEnv,
-    });
-
-    proc.on("close", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`CLI exited with code ${code}`));
+  try {
+    await new Promise<void>((resolve, reject) => {
+      console.log(`${logPrefix} Running in sandbox: ${tempDir}`);
+      // Log the exact --model flag actually passed to the CLI so a run can be
+      // audited against the intended model (guards against silent CLI fallbacks).
+      const modelFlagIdx = args.indexOf("--model");
+      const invokedModel = modelFlagIdx !== -1 ? args[modelFlagIdx + 1] : "(no --model flag)";
+      const invocationMode = interactive ? "(interactive)" : "(non-interactive)";
+      console.log(`${logPrefix} Command: ${cmd} ${invocationMode} --model ${invokedModel} ...`);
+      if (model.variant) console.log(`${logPrefix} Reasoning/variant: ${model.variant}`);
+      if (interactive) {
+        console.log(`${logPrefix} Exit the harness when it finishes to continue validation (do not press Ctrl+C).`);
       }
-    });
 
-    proc.on("error", (err) => {
-      reject(err);
+      const proc = spawn(cmd, args, {
+        stdio: monitor ? ["ignore", "pipe", "inherit"] : "inherit",
+        cwd: tempDir,
+        env: spawnEnv,
+        detached: !interactive && process.platform !== "win32",
+      });
+      activeChildren.add(proc);
+      proc.stdout?.on("data", (chunk: Buffer) => monitor?.push(chunk));
+
+      proc.on("close", (code, signal) => {
+        activeChildren.delete(proc);
+        if (code === 0) {
+          resolve();
+        } else {
+          reject(new Error(`CLI exited with ${signal || `code ${code}`}`));
+        }
+      });
+
+      proc.on("error", (err) => {
+        activeChildren.delete(proc);
+        reject(err);
+      });
     });
-  });
+  } finally {
+    monitor?.finish();
+    if (attempt) {
+      attempt.finished = true;
+      costLog(`${logPrefix} attempt ended: ${attempt.tracker.observed ? `$${attempt.tracker.usd.toFixed(4)} USD estimated` : "usage unavailable"}`);
+    }
+  }
+  checkStopped();
 }
 
 async function runCliInSandbox(
@@ -388,6 +478,7 @@ async function runCliInSandbox(
 
     // Validate and retry if needed
     for (let attempt = 0; attempt < maxRetries; attempt++) {
+      checkStopped();
       const validation = await validateHtml(tempOutputFile);
 
       if (validation.success) {
@@ -409,6 +500,7 @@ async function runCliInSandbox(
     }
 
     // Copy the output file to the final destination
+    checkStopped();
     ensureDir(destPath);
     fs.copyFileSync(tempOutputFile, destPath);
     console.log(`${logPrefix} Copied output to: ${destPath}`);
@@ -429,6 +521,7 @@ async function generateApp(
   const outputPath = getAppOutputPath(model.id, spec.id);
   const absoluteOutputPath = path.join(REPO_ROOT, outputPath);
   const logPrefix = `[${model.id}/${spec.id}]`;
+  if (stopping) return "skipped";
 
   // Check if app exists and should be skipped
   const forceRegenerate = options.forceAll || options.force.includes(spec.id);
@@ -577,66 +670,93 @@ async function main(): Promise<void> {
   console.log(`Harness mode: ${options.interactive ? "interactive" : "non-interactive"}`);
   console.log();
 
-  // Track stats
-  const stats = {
-    skipped: 0,
-    generated: 0,
-    failed: 0,
-  };
-
-  // Build list of tasks (filtered by --force if specified)
-  const tasks: Array<{ model: ModelConfig; spec: ExampleSpec }> = [];
-
-  for (const model of targetModels) {
-    for (const spec of targetExamples) {
-      tasks.push({ model, spec });
-    }
+  if (taskCount > 0 && targetModels.some((model) => model.harness === "codex")) {
+    codexLauncher = await prepareCodex(REPO_ROOT);
   }
-
-  // Process tasks with concurrency limit
-  const runTask = async (task: { model: ModelConfig; spec: ExampleSpec }) => {
-    const { model, spec } = task;
-    const logPrefix = `[${model.id}/${spec.id}]`;
-    console.log(`\n${logPrefix} ${spec.title}`);
-
-    const result = await generateApp(model, spec, options);
-    stats[result]++;
-
-    switch (result) {
-      case "skipped":
-        console.log(`${logPrefix} Skipped (already exists)`);
-        break;
-      case "generated":
-        console.log(`${logPrefix} ✓ Generated successfully`);
-        break;
-      case "failed":
-        console.log(`${logPrefix} ✗ FAILED`);
-        break;
-    }
-  };
-
-  // Simple concurrency pool
-  const pool: Promise<void>[] = [];
-  for (const task of tasks) {
-    const promise = runTask(task).then(() => {
-      pool.splice(pool.indexOf(promise), 1);
-    });
-    pool.push(promise);
-
-    if (pool.length >= options.concurrency) {
-      await Promise.race(pool);
-    }
+  const pricedModel = targetModels.find((model) => model.model === "gpt-6-astra");
+  if (taskCount > 0 && pricedModel) {
+    costLogPath = path.join(REPO_ROOT, "logs", `generate-${new Date().toISOString().replaceAll(":", "-")}-${process.pid}.log`);
+    ensureDir(costLogPath);
+    costLog(`Astra standard API rates per 1M tokens: input $10, cached input $1, cache writes $12.50, output $50. Long-context multipliers apply above 272K input per request. Subscription billing may differ. Other models are not priced.`);
+    costLog(`Codex launcher: ${codexLauncher}; model: ${pricedModel.model}; reasoning: ${pricedModel.variant || "default"}; service tier: default`);
+    console.log(`Local cost log: ${costLogPath}`);
   }
-  await Promise.all(pool);
+  const onInterrupt = () => stopGeneration("SIGINT");
+  const onTerminate = () => stopGeneration("SIGTERM");
+  process.on("SIGINT", onInterrupt);
+  process.on("SIGTERM", onTerminate);
+  const costTimer = setInterval(() => reportCost("Run so far"), 15_000);
+  costTimer.unref();
 
-  // Print summary
-  console.log(`\n${"=".repeat(60)}`);
-  console.log("SUMMARY");
-  console.log(`${"=".repeat(60)}`);
-  console.log(`  Generated: ${stats.generated}`);
-  console.log(`  Skipped:   ${stats.skipped}`);
-  console.log(`  Failed:    ${stats.failed}`);
-  console.log();
+  try {
+
+    // Track stats
+    const stats = {
+      skipped: 0,
+      generated: 0,
+      failed: 0,
+    };
+
+    // Build list of tasks (filtered by --force if specified)
+    const tasks: Array<{ model: ModelConfig; spec: ExampleSpec }> = [];
+
+    for (const model of targetModels) {
+      for (const spec of targetExamples) {
+        tasks.push({ model, spec });
+      }
+    }
+
+    // Process tasks with concurrency limit
+    const runTask = async (task: { model: ModelConfig; spec: ExampleSpec }) => {
+      const { model, spec } = task;
+      const logPrefix = `[${model.id}/${spec.id}]`;
+      console.log(`\n${logPrefix} ${spec.title}`);
+
+      const result = await generateApp(model, spec, options);
+      stats[result]++;
+
+      switch (result) {
+        case "skipped":
+          console.log(`${logPrefix} Skipped (already exists)`);
+          break;
+        case "generated":
+          console.log(`${logPrefix} ✓ Generated successfully`);
+          break;
+        case "failed":
+          console.log(`${logPrefix} ✗ FAILED`);
+          break;
+      }
+    };
+
+    // Simple concurrency pool
+    const pool: Promise<void>[] = [];
+    for (const task of tasks) {
+      if (stopping) break;
+      const promise = runTask(task).then(() => {
+        pool.splice(pool.indexOf(promise), 1);
+      });
+      pool.push(promise);
+
+      if (pool.length >= options.concurrency) {
+        await Promise.race(pool);
+      }
+    }
+    await Promise.all(pool);
+
+    // Print summary
+    console.log(`\n${"=".repeat(60)}`);
+    console.log("SUMMARY");
+    console.log(`${"=".repeat(60)}`);
+    console.log(`  Generated: ${stats.generated}`);
+    console.log(`  Skipped:   ${stats.skipped}`);
+    console.log(`  Failed:    ${stats.failed}`);
+    console.log();
+  } finally {
+    clearInterval(costTimer);
+    process.off("SIGINT", onInterrupt);
+    process.off("SIGTERM", onTerminate);
+    reportCost(stopping ? "Final (interrupted; partial)" : "Final");
+  }
 }
 
 main().catch((err) => {
