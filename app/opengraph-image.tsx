@@ -102,48 +102,26 @@ export default async function OpengraphImage() {
           style={{
             display: "flex",
             flexDirection: "column",
-            fontSize: 64,
+            fontSize: 56,
             lineHeight: 1.06,
-            letterSpacing: -3,
+            letterSpacing: -2,
           }}
         >
-          <span>Agentic Coding</span>
-          <span>Arena</span>
+          <span>Compare {apps.length} apps</span>
+          <span>implemented by {publishedModels.length} models</span>
         </div>
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            width: 360,
-            fontSize: 23,
+            width: 260,
+            fontSize: 21,
             lineHeight: 1.4,
             color: colors.muted,
           }}
         >
-          <span>Compare implementations,</span>
-          <span>generation time, and cost.</span>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 9,
-              marginTop: 18,
-              fontSize: 17,
-              color: colors.accent,
-            }}
-          >
-            <div
-              style={{
-                width: 7,
-                height: 7,
-                borderRadius: "50%",
-                background: colors.accent,
-              }}
-            />
-            <span>
-              {publishedModels.length} models / {apps.length} coding tasks
-            </span>
-          </div>
+          <span>Code, generation time,</span>
+          <span>token usage, and cost.</span>
         </div>
       </div>
 
