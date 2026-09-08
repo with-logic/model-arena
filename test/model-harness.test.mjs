@@ -82,6 +82,8 @@ test("preserves exact harness commands and provider environments", () => {
           "/verified/codex.js",
           "exec",
           "--json",
+          "--disable",
+          "multi_agent",
           "--model",
           "gpt-5",
           "--dangerously-bypass-approvals-and-sandbox",
@@ -93,7 +95,7 @@ test("preserves exact harness commands and provider environments", () => {
           'service_tier="default"',
           "-c",
           "model_max_output_tokens=100000",
-          prompt,
+          `${prompt}\n\nUse only this session's selected model to implement and review the app. Do not spawn subagents, invoke other AI or coding CLIs, or run multi-model review workflows.`,
         ],
       },
     },
@@ -215,6 +217,8 @@ test("Astra uses xhigh reasoning and requires a verified Codex launcher", () => 
     interactive: false, codexLauncher: "/verified/codex.js",
   });
   assert.ok(command.args.includes('model_reasoning_effort="xhigh"'));
+  assert.equal(command.args[command.args.indexOf("--disable") + 1], "multi_agent");
+  assert.match(command.args.at(-1), /Do not spawn subagents/);
 });
 
 test("rejects missing credentials for Claude through OpenRouter", () => {

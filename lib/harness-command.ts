@@ -213,6 +213,8 @@ export function buildHarnessCommand(
           options.codexLauncher,
           "exec",
           "--json",
+          "--disable",
+          "multi_agent",
           "--model",
           model.model,
           "--dangerously-bypass-approvals-and-sandbox",
@@ -225,7 +227,7 @@ export function buildHarnessCommand(
           "-c",
           `model_max_output_tokens=${MAX_OUTPUT_TOKENS.codex}`,
           ...(model.variant ? ["-c", `model_reasoning_effort=${JSON.stringify(model.variant)}`] : []),
-          prompt,
+          `${prompt}\n\nUse only this session's selected model to implement and review the app. Do not spawn subagents, invoke other AI or coding CLIs, or run multi-model review workflows.`,
         ],
       };
 

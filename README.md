@@ -58,6 +58,9 @@ Network access to npm is required. Codex reuses your existing login.
 Codex runs with approvals and sandbox restrictions disabled, matching the other
 arena harnesses' unattended tool permissions. Generated work starts in a temporary
 directory. It does not pause for a human to approve commands.
+Native subagents are disabled, and each Codex prompt requires implementation
+and review within the selected model's session. This prevents personal review
+workflows from silently adding other models or untracked usage to the comparison.
 
 Astra cost estimates appear in the terminal and an ignored `logs/generate-*.log`
 file. Updates arrive as Codex records each completed model request, with a status

@@ -361,7 +361,7 @@ export const models: ModelConfig[] = [
 ];
 
 /** Default models shown in the side-by-side comparison view */
-export const DEFAULT_COMPARISON_MODELS = ["opus-5", "kimi-k3", "qwen-3.8-27b"] as const;
+export const DEFAULT_COMPARISON_MODELS = ["opus-5", "gpt-6-astra", "qwen-3.8-27b"] as const;
 
 /** Configured models whose generated apps are ready for public comparison. */
 export const publishedModels = models.filter((model) => model.published !== false);
