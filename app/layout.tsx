@@ -21,24 +21,25 @@ const playfairDisplay = Playfair_Display({
   subsets: ["latin"],
 });
 
-const modelNames = MODELS.map(m => m.name).join(", ");
+const title = "Agentic Coding Arena by Logic";
+const description = `A coding benchmark for engineers and practitioners. Compare ${MODELS.length} AI models on identical tasks, with unedited implementations, generation time, token usage, and cost.`;
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://arena.logic.inc"),
-  title: "Agentic Coding Arena - Compare OpenAI, Anthropic, and Gemini models",
-  description: `Side-by-side comparison of ${MODELS.length} frontier AI models (${modelNames}) on identical coding challenges. See how each model approaches the same prompts.`,
+  title,
+  description,
   ...faviconMetadata,
   openGraph: {
-    title: "Agentic Coding Arena",
-    description: `Compare ${MODELS.length} frontier AI models on identical coding challenges`,
+    title,
+    description,
     type: "website",
     url: "https://arena.logic.inc",
     siteName: "Logic's Agentic Coding Arena",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Agentic Coding Arena",
-    description: `Compare ${modelNames} side-by-side`,
+    title,
+    description,
   },
 };
 
