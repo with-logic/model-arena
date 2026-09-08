@@ -463,6 +463,8 @@ export function AppCollection({
     column: number;
   }[] = [];
   collection.forEach((item, i) => {
+    // Same-origin frames can request devices even without an allow attribute.
+    const requiresDeviceAccess = item.camera || item.microphone;
     let distance = i - index;
     if (distance > collection.length / 2) distance -= collection.length;
     if (distance < -collection.length / 2) distance += collection.length;
@@ -477,7 +479,9 @@ export function AppCollection({
             model: id,
             distance,
             active,
-            live: location.content === "demo" || lastDemoApp === item.id,
+            live:
+              location.content === "demo" ||
+              (!requiresDeviceAccess && lastDemoApp === item.id),
             column,
           });
       });
@@ -487,7 +491,7 @@ export function AppCollection({
         model,
         distance,
         active: false,
-        live: !narrow && Math.abs(distance) === 1,
+        live: !requiresDeviceAccess && !narrow && Math.abs(distance) === 1,
         column: -1,
       });
     }

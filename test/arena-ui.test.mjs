@@ -90,8 +90,10 @@ beforeEach(() => {
 afterEach(async () => {
   await act(() => root.unmount());
 });
-async function render() {
-  await act(() => root.render(React.createElement(Arena, { apps })));
+async function render(collection = apps) {
+  await act(() =>
+    root.render(React.createElement(Arena, { apps: collection })),
+  );
 }
 function button(text) {
   const found = [...document.querySelectorAll("button")].find(
@@ -183,6 +185,82 @@ test("fresh visitors land in a live Astra app with a searchable collection index
   assert.equal(activeApp(), "new-app-without-stats");
   assert.equal(document.querySelector('[role="dialog"]'), null);
 });
+
+for (const permission of ["camera", "microphone"]) {
+  test(`${permission} apps do not preload or keep running when hidden`, async () => {
+    const deviceApp = {
+      ...apps[1],
+      id: "webcam-filter-playground",
+      title: "Webcam Filter Playground",
+      [permission]: true,
+    };
+    await render([...apps, deviceApp]);
+    const deviceFrames = () => [
+      ...document.querySelectorAll(
+        '[data-app="webcam-filter-playground"] iframe',
+      ),
+    ];
+    assert.equal(
+      deviceFrames().length,
+      0,
+      "wraparound neighbor must not start device access",
+    );
+    assert.ok(
+      document.querySelector('[data-app="webcam-filter-playground"] img'),
+    );
+    assert.equal(
+      document.querySelectorAll('[data-app="new-app-without-stats"] iframe')
+        .length,
+      1,
+      "ordinary neighboring apps still preload",
+    );
+
+    await click(
+      document.querySelector('[aria-label="Open Webcam Filter Playground"]'),
+    );
+    assert.equal(deviceFrames().length, 1);
+    assert.ok(
+      deviceFrames()[0].getAttribute("allow").split("; ").includes(permission),
+    );
+    const frame = deviceFrames()[0];
+    await click(document.querySelector('[aria-label="Fill screen"]'));
+    assert.equal(
+      deviceFrames()[0],
+      frame,
+      "expansion preserves the visible app",
+    );
+    await click(document.querySelector('[aria-label="Return to collection"]'));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
+    assert.equal(deviceFrames()[0], frame);
+
+    await click(document.querySelector('[aria-label="Compare side by side"]'));
+    assert.equal(
+      deviceFrames().length,
+      3,
+      "selected comparison models can start",
+    );
+    await click(document.querySelector('[aria-label="Focus on one model"]'));
+    await key("ArrowRight");
+    assert.equal(
+      deviceFrames().length,
+      0,
+      "leaving the app unloads device frames",
+    );
+    await key("ArrowLeft");
+    assert.equal(
+      deviceFrames().length,
+      1,
+      "returning starts the selected app again",
+    );
+
+    await option("Code stats");
+    assert.equal(
+      deviceFrames().length,
+      0,
+      "hidden statistics view must not keep device access running",
+    );
+  });
+}
 
 test("returning visitors open Astra instead of restoring their old Opus default", async () => {
   localStorage.setItem(
