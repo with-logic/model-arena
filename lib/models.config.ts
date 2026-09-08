@@ -60,6 +60,17 @@ export interface ModelConfig {
 
 export const models: ModelConfig[] = [
   {
+    id: "gpt-6-astra",
+    name: "GPT-6 Astra",
+    harness: "codex",
+    host: "openai",
+    model: "gpt-6-astra",
+    variant: "xhigh",
+    color: "bg-emerald-700",
+    provider: "openai",
+    published: true,
+  },
+  {
     id: "gpt-5",
     name: "GPT-5",
     harness: "codex",
@@ -350,7 +361,10 @@ export const models: ModelConfig[] = [
 ];
 
 /** Default models shown in the side-by-side comparison view */
-export const DEFAULT_COMPARISON_MODELS = ["opus-5", "kimi-k3", "qwen-3.8-27b"] as const;
+export const DEFAULT_COMPARISON_MODELS = ["opus-5", "gpt-6-astra", "qwen-3.8-27b"] as const;
+
+/** Model shown to first-time visitors in the live collection. */
+export const DEFAULT_EXPLORER_MODEL = "gpt-6-astra";
 
 /** Configured models whose generated apps are ready for public comparison. */
 export const publishedModels = models.filter((model) => model.published !== false);

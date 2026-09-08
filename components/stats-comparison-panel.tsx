@@ -1,288 +1,268 @@
 "use client";
 
-import { useMemo } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-} from "recharts";
-import { MODELS as BASE_MODELS } from "@/lib/models";
+import { MODELS } from "@/lib/models";
 import { getAppStats, formatBytes, formatNumber } from "@/lib/stats";
+import type { AppModelStats } from "@/lib/stats.types";
 import { getModelHex } from "./stats-mini-chart";
-
-const MODELS = BASE_MODELS.map((m) => ({
-  ...m,
-  hex: getModelHex(m.color),
-}));
 
 interface StatsComparisonPanelProps {
   appId: string;
   selectedModels: string[];
 }
 
+const SUMMARY_ROWS: {
+  label: string;
+  value: (stats: AppModelStats) => string;
+}[] = [
+  {
+    label: "Estimated lines",
+    value: (stats) => formatNumber(stats.lines.total),
+  },
+  { label: "File size", value: (stats) => formatBytes(stats.sizeBytes) },
+  { label: "Gzipped size", value: (stats) => formatBytes(stats.gzipBytes) },
+  {
+    label: "Gzip / original size",
+    value: (stats) => `${(stats.gzipRatio * 100).toFixed(1)}%`,
+  },
+  { label: "DOM tags", value: (stats) => formatNumber(stats.dom.tagCount) },
+  {
+    label: "Maximum nesting depth",
+    value: (stats) => formatNumber(stats.dom.maxNestingDepth),
+  },
+  {
+    label: "Unique HTML tags",
+    value: (stats) => formatNumber(stats.dom.uniqueTags),
+  },
+  { label: "Comments", value: (stats) => formatNumber(stats.comments.total) },
+  {
+    label: "External dependencies",
+    value: (stats) => formatNumber(stats.externalDeps.total),
+  },
+  {
+    label: "CSS variables",
+    value: (stats) => formatNumber(stats.extras.cssVariables),
+  },
+  {
+    label: "Animations",
+    value: (stats) => formatNumber(stats.extras.animations),
+  },
+  {
+    label: "Unique colors",
+    value: (stats) => formatNumber(stats.extras.uniqueColors),
+  },
+];
+
+const LANGUAGES = [
+  { key: "html", label: "HTML", color: "#8395b5" },
+  { key: "css", label: "CSS", color: "#345fe9" },
+  { key: "js", label: "JavaScript", color: "#d69a35" },
+] as const;
+
 export function StatsComparisonPanel({
   appId,
   selectedModels,
 }: StatsComparisonPanelProps) {
-  const appStats = useMemo(() => getAppStats(appId), [appId]);
-
-  const activeModels = useMemo(
-    () => MODELS.filter((m) => selectedModels.includes(m.id)),
-    [selectedModels]
+  const appStats = getAppStats(appId);
+  const activeModels = selectedModels.flatMap((id) => {
+    const model = MODELS.find((item) => item.id === id);
+    return model ? [model] : [];
+  });
+  const maxLines = Math.max(
+    0,
+    ...activeModels.map(
+      (model) => appStats?.models[model.id]?.lines.total ?? 0,
+    ),
   );
 
-  if (!appStats) {
+  if (activeModels.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-neutral-400">
-        No stats available
+      <div className="flex h-full items-center justify-center p-8 text-center text-sm text-[var(--arena-muted)]">
+        Choose models to compare their generated code.
       </div>
     );
   }
 
-  const linesData = activeModels
-    .filter((m) => appStats.models[m.id])
-    .map((m) => {
-      const s = appStats.models[m.id];
-      return {
-        name: m.name,
-        HTML: s.lines.html,
-        CSS: s.lines.css,
-        JS: s.lines.js,
-      };
-    });
-
-  const sizeData = activeModels
-    .filter((m) => appStats.models[m.id])
-    .map((m) => {
-      const s = appStats.models[m.id];
-      return {
-        name: m.name,
-        Raw: Math.round(s.sizeBytes / 1024),
-        Gzip: Math.round(s.gzipBytes / 1024),
-      };
-    });
-
-  const radarMetrics = [
-    "Nesting",
-    "Tags",
-    "CSS Vars",
-    "Animations",
-    "Colors",
-  ];
-  const radarData = radarMetrics.map((metric) => {
-    const row: Record<string, string | number> = { metric };
-    const values = activeModels
-      .filter((m) => appStats.models[m.id])
-      .map((m) => {
-        const s = appStats.models[m.id];
-        switch (metric) {
-          case "Nesting":
-            return s.dom.maxNestingDepth;
-          case "Tags":
-            return s.dom.tagCount;
-          case "CSS Vars":
-            return s.extras.cssVariables;
-          case "Animations":
-            return s.extras.animations;
-          case "Colors":
-            return s.extras.uniqueColors;
-          default:
-            return 0;
-        }
-      });
-    const maxVal = Math.max(...values, 1);
-    activeModels
-      .filter((m) => appStats.models[m.id])
-      .forEach((m, i) => {
-        row[m.id] = Math.round((values[i] / maxVal) * 100);
-      });
-    return row;
-  });
-
-  const tooltipStyle = {
-    fontSize: 11,
-    background: "#fff",
-    border: "1px solid #e5e5e5",
-    borderRadius: 0,
-    padding: "6px 8px",
-  };
-
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
-        {/* Lines of Code */}
-        <section>
-          <h3 className="text-xs font-medium text-neutral-900 mb-3">
-            Lines of Code
-          </h3>
-          <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={linesData}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: number, n: string) => [
-                    `${formatNumber(v)} lines`,
-                    n,
-                  ]}
-                />
-                <Bar dataKey="HTML" stackId="lines" fill="#a3a3a3" />
-                <Bar dataKey="CSS" stackId="lines" fill="#6366f1" />
-                <Bar
-                  dataKey="JS"
-                  stackId="lines"
-                  fill="#f59e0b"
-                  radius={[2, 2, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        {/* File Size */}
-        <section>
-          <h3 className="text-xs font-medium text-neutral-900 mb-3">
-            File Size (KB)
-          </h3>
-          <div className="h-52">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={sizeData}>
-                <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                <YAxis tick={{ fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={tooltipStyle}
-                  formatter={(v: number, n: string) => [`${v} KB`, n]}
-                />
-                <Bar dataKey="Raw" fill="#a3a3a3" />
-                <Bar dataKey="Gzip" fill="#3b82f6" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </section>
-
-        {/* Complexity Radar */}
-        {activeModels.length >= 2 && (
-          <section>
-            <h3 className="text-xs font-medium text-neutral-900 mb-3">
-              Complexity Radar
-            </h3>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <RadarChart data={radarData}>
-                  <PolarGrid stroke="#e5e5e5" />
-                  <PolarAngleAxis dataKey="metric" tick={{ fontSize: 10 }} />
-                  <PolarRadiusAxis
-                    tick={false}
-                    axisLine={false}
-                    domain={[0, 100]}
-                  />
-                  {activeModels
-                    .filter((m) => appStats.models[m.id])
-                    .map((m) => (
-                      <Radar
-                        key={m.id}
-                        name={m.name}
-                        dataKey={m.id}
-                        stroke={m.hex}
-                        fill={m.hex}
-                        fillOpacity={0.15}
-                      />
-                    ))}
-                  <Tooltip contentStyle={tooltipStyle} />
-                </RadarChart>
-              </ResponsiveContainer>
-            </div>
-          </section>
+    <div className="h-full overflow-y-auto bg-[var(--arena-bg)] text-[var(--arena-ink)]">
+      <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8 sm:py-8">
+        <div>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--arena-accent)]">
+            App metrics
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            Implementation metrics
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--arena-muted)]">
+            Code size and structure for your selected models. These are
+            measurements of the generated files, not scores for design,
+            functionality, or quality.
+          </p>
+        </div>
+        {!appStats && (
+          <p
+            role="status"
+            className="rounded-none border border-[var(--arena-line)] bg-[var(--arena-panel)] p-4 text-sm text-[var(--arena-muted)]"
+          >
+            Measurements are not available for this app yet.
+          </p>
         )}
-
-        {/* Quick stats table */}
-        <section>
-          <h3 className="text-xs font-medium text-neutral-900 mb-3">
-            Summary
-          </h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-neutral-200">
-                  <th className="text-left py-2 pr-4 font-medium text-neutral-500">
-                    Metric
-                  </th>
-                  {activeModels
-                    .filter((m) => appStats.models[m.id])
-                    .map((m) => (
-                      <th
-                        key={m.id}
-                        className="text-right py-2 px-2 font-medium text-neutral-500"
+        <section
+          className="rounded-none border border-[var(--arena-line)] bg-[var(--arena-panel)] p-5 sm:p-6"
+          aria-label="Code composition by model"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="font-semibold">Code composition</h3>
+              <p className="mt-1 text-xs text-[var(--arena-muted)]">
+                Estimated lines · same scale across models
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-4 text-xs text-[var(--arena-muted)]">
+              {LANGUAGES.map((language) => (
+                <span
+                  key={language.key}
+                  className="inline-flex items-center gap-1.5"
+                >
+                  <span
+                    className="h-2 w-2 rounded-none"
+                    style={{ backgroundColor: language.color }}
+                    aria-hidden="true"
+                  />
+                  {language.label}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className="mt-6 space-y-6">
+            {activeModels.map((model) => {
+              const measured = appStats?.models[model.id];
+              return (
+                <div
+                  key={model.id}
+                  className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-6"
+                >
+                  <div className="flex items-start gap-2 text-sm font-medium">
+                    <span
+                      className="mt-1.5 h-2 w-2 shrink-0 rounded-none"
+                      style={{ backgroundColor: getModelHex(model.color) }}
+                      aria-hidden="true"
+                    />
+                    {model.name}
+                  </div>
+                  {measured ? (
+                    <div>
+                      <div
+                        className="flex h-3 overflow-hidden rounded-none bg-[var(--arena-raised)]"
+                        aria-hidden="true"
                       >
-                        {m.name}
-                      </th>
-                    ))}
+                        {LANGUAGES.map((language) => (
+                          <span
+                            key={language.key}
+                            style={{
+                              backgroundColor: language.color,
+                              width: `${maxLines > 0 ? (measured.lines[language.key] / maxLines) * 100 : 0}%`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center justify-between gap-x-5 gap-y-1 text-xs tabular-nums text-[var(--arena-muted)]">
+                        <span className="font-medium text-[var(--arena-ink)]">
+                          {formatNumber(measured.lines.total)} total
+                        </span>
+                        <span>
+                          {LANGUAGES.map(
+                            (language) =>
+                              `${language.label} ${formatNumber(measured.lines[language.key])}`,
+                          ).join(" · ")}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-[var(--arena-muted)]">
+                      Measurements unavailable
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <section
+          className="overflow-hidden rounded-none border border-[var(--arena-line)] bg-[var(--arena-panel)]"
+          aria-label="Detailed app measurements"
+        >
+          <div className="border-b border-[var(--arena-line)] px-5 py-4 sm:px-6">
+            <h3 className="font-semibold">Measurements</h3>
+          </div>
+          <div
+            className="overflow-x-auto"
+            role="region"
+            aria-label="App measurements, scroll horizontally for more models"
+            tabIndex={0}
+          >
+            <table className="w-full border-collapse text-sm">
+              <caption className="sr-only">
+                Generated code measurements for the selected models. Missing
+                measurements are labeled unavailable.
+              </caption>
+              <thead className="bg-[var(--arena-bg)]">
+                <tr>
+                  <th
+                    scope="col"
+                    className="min-w-48 px-5 py-4 text-left text-xs font-medium text-[var(--arena-muted)] sm:pl-6"
+                  >
+                    Measurement
+                  </th>
+                  {activeModels.map((model) => (
+                    <th
+                      key={model.id}
+                      scope="col"
+                      className="min-w-40 px-5 py-4 text-right text-xs font-semibold"
+                    >
+                      {model.name}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {[
-                  {
-                    label: "Total Lines",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatNumber(s.lines.total),
-                  },
-                  {
-                    label: "File Size",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatBytes(s.sizeBytes),
-                  },
-                  {
-                    label: "Gzipped",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatBytes(s.gzipBytes),
-                  },
-                  {
-                    label: "DOM Tags",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatNumber(s.dom.tagCount),
-                  },
-                  {
-                    label: "Comments",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatNumber(s.comments.total),
-                  },
-                  {
-                    label: "Ext. Deps",
-                    fn: (s: typeof appStats.models[string]) =>
-                      formatNumber(s.externalDeps.total),
-                  },
-                ].map((row) => (
+                {SUMMARY_ROWS.map((row) => (
                   <tr
                     key={row.label}
-                    className="border-b border-neutral-100"
+                    className="border-t border-[var(--arena-line)] hover:bg-[var(--arena-raised)]"
                   >
-                    <td className="py-1.5 pr-4 text-neutral-700">
+                    <th
+                      scope="row"
+                      className="px-5 py-3 text-left font-normal text-[var(--arena-muted)] sm:pl-6"
+                    >
                       {row.label}
-                    </td>
-                    {activeModels
-                      .filter((m) => appStats.models[m.id])
-                      .map((m) => (
+                    </th>
+                    {activeModels.map((model) => {
+                      const measured = appStats?.models[model.id];
+                      return (
                         <td
-                          key={m.id}
-                          className="py-1.5 px-2 text-right text-neutral-600 tabular-nums"
+                          key={model.id}
+                          className="px-5 py-3 text-right tabular-nums"
                         >
-                          {row.fn(appStats.models[m.id])}
+                          {measured ? (
+                            row.value(measured)
+                          ) : (
+                            <span className="text-xs text-[var(--arena-muted)]">
+                              Unavailable
+                            </span>
+                          )}
                         </td>
-                      ))}
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <p className="border-t border-[var(--arena-line)] bg-[var(--arena-bg)] px-5 py-4 text-xs leading-5 text-[var(--arena-muted)] sm:px-6">
+            Estimated lines account for both formatting and logical code
+            boundaries. Gzipped size measures compression of the generated file;
+            it does not include external assets or dependencies.
+          </p>
         </section>
       </div>
     </div>
