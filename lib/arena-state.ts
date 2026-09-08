@@ -34,7 +34,7 @@ export function normalizeModels(value: unknown): string[] {
 export const DEFAULT_LOCATION: ArenaLocation = {
   page: "explore",
   expanded: false,
-  models: [DEFAULT_EXPLORER_MODEL],
+  models: [...DEFAULT_COMPARISON_MODELS],
   view: "tabs",
   tab: DEFAULT_EXPLORER_MODEL,
   content: "demo",
@@ -49,12 +49,14 @@ export function parseArenaLocation(
   const params = new URLSearchParams(search);
   const match = pathname.match(/^\/compare\/([^/]+)\/?$/);
   const page = params.get("page");
-  const defaultModels =
-    match || page === "models" || page === "stats"
-      ? (remembered ?? (match ? undefined : [DEFAULT_EXPLORER_MODEL]))
-      : [DEFAULT_EXPLORER_MODEL];
+  const useExplorerDefaults =
+    !match && page !== "models" && page !== "stats" && !params.has("models");
   const models = normalizeModels(
-    params.has("models") ? params.get("models")!.split(",") : defaultModels,
+    params.has("models")
+      ? params.get("models")!.split(",")
+      : useExplorerDefaults
+        ? DEFAULT_COMPARISON_MODELS
+        : remembered,
   );
   let appId: string | undefined = params.get("app") || undefined;
   try {

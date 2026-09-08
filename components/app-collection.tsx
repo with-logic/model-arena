@@ -49,8 +49,8 @@ const categories: Record<string, string> = {
 };
 const modelName = (id: string) =>
   MODELS.find((model) => model.id === id)?.name ?? id;
-const appUrl = (app: CodeExample, model: string) =>
-  `/apps/${model}/${app.id}/index.html`;
+// Vercel serves exported index pages at directory URLs, not /index.html.
+const appUrl = (app: CodeExample, model: string) => `/apps/${model}/${app.id}/`;
 
 function Preview({
   app,
