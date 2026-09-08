@@ -55,6 +55,7 @@ window.matchMedia = () => ({
 const { createRoot } = await import("react-dom/client");
 const { Arena } = await import("../components/arena.tsx");
 const { SELECTION_STORAGE_KEY } = await import("../lib/arena-state.ts");
+const { DEFAULT_COMPARISON_MODELS } = await import("../lib/models.config.ts");
 const apps = [
   {
     id: "ocean-wave-simulation",
@@ -157,8 +158,17 @@ async function history(direction) {
 test("fresh visitors land in a live Astra app with a searchable collection index", async () => {
   await render();
   assert.equal(activeFrames().length, 1);
-  assert.match(activeFrames()[0].src, /gpt-6-astra\/ocean-wave-simulation/);
+  assert.equal(
+    new URL(activeFrames()[0].src).pathname,
+    "/apps/gpt-6-astra/ocean-wave-simulation/",
+  );
   assert.equal(document.querySelectorAll(".thumb").length, apps.length);
+  assert.equal(
+    document
+      .querySelector('.live-options a[target="_blank"]')
+      .getAttribute("href"),
+    "/apps/gpt-6-astra/ocean-wave-simulation/",
+  );
   assert.equal(
     document.querySelector(".arena-live").classList.contains("expanded"),
     false,
@@ -183,7 +193,7 @@ test("returning visitors open Astra instead of restoring their old Opus default"
   assert.equal(activeFrames().length, 1);
   assert.match(activeFrames()[0].src, /gpt-6-astra\/ocean-wave-simulation/);
   assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
-    "gpt-6-astra",
+    ...DEFAULT_COMPARISON_MODELS,
   ]);
 });
 
@@ -250,24 +260,32 @@ test("repeated Return requests wait for the pending history traversal", async ()
   assert.match(window.location.pathname, /^\/compare\//);
 });
 
-test("compare is opt-in and clicking a focused model again restores split view", async () => {
+test("compare uses the default three models and clicking a focused model again restores split view", async () => {
   await render();
   const frame = activeFrames()[0];
+  assert.match(frame.src, /gpt-6-astra/);
   await click(document.querySelector('[aria-label="Compare side by side"]'));
-  assert.equal(activeFrames().length, 2);
+  assert.deepEqual(
+    activeFrames().map((frame) => new URL(frame.src).pathname),
+    [
+      "/apps/gpt-6-astra/ocean-wave-simulation/",
+      "/apps/opus-5/ocean-wave-simulation/",
+      "/apps/qwen-3.8-27b/ocean-wave-simulation/",
+    ],
+  );
   assert.equal(activeFrames()[0], frame);
   const tabs = () => document.querySelectorAll(".model-tabs button");
   await click(tabs()[0]);
   assert.equal(activeFrames().length, 1);
   assert.equal(activeFrames()[0], frame);
   await click(tabs()[0]);
-  assert.equal(activeFrames().length, 2);
+  assert.equal(activeFrames().length, 3);
   await click(tabs()[0]);
   await click(tabs()[1]);
   assert.equal(activeFrames().length, 1);
   assert.match(activeFrames()[0].src, /opus-5/);
   await click(tabs()[1]);
-  assert.equal(activeFrames().length, 2);
+  assert.equal(activeFrames().length, 3);
 });
 
 test("legacy comparison links retain model order and mobile displays the chosen model", async () => {
@@ -296,6 +314,7 @@ test("legacy comparison links retain model order and mobile displays the chosen 
 });
 
 test("single model picker replaces the live model and keeps Astra thumbnail fallbacks", async () => {
+  window.history.replaceState({}, "", "/?models=gpt-6-astra");
   await render();
   await click(document.querySelector('[aria-label^="Change model"]'));
   await input(document.querySelector(".arena-model-dialog input"), "opus 5");
@@ -318,18 +337,17 @@ test("comparison picker searches all models and enforces the four-model limit", 
   await render();
   await click(document.querySelector('[aria-label="Compare side by side"]'));
   await click(
-    document.querySelector('[aria-label="Choose models, 2 selected"]'),
+    document.querySelector('[aria-label="Choose models, 3 selected"]'),
   );
   const search = document.querySelector(".arena-model-dialog input");
   await input(search, "astra");
   assert.equal(document.querySelectorAll(".arena-model-option").length, 1);
   await input(search, "");
-  for (let i = 0; i < 2; i++)
-    await click(
-      document.querySelector(
-        '.arena-model-option[aria-pressed="false"]:not(:disabled)',
-      ),
-    );
+  await click(
+    document.querySelector(
+      '.arena-model-option[aria-pressed="false"]:not(:disabled)',
+    ),
+  );
   assert.equal(
     document.querySelectorAll('.arena-model-option[aria-pressed="true"]')
       .length,
@@ -349,7 +367,7 @@ test("stats retains the shortlist and exposes searchable measurements for all mo
   await click(
     document.querySelector('.collection-links a[href*="page=stats"]'),
   );
-  assert.equal(document.querySelectorAll("tbody tr").length, 1);
+  assert.equal(document.querySelectorAll("tbody tr").length, 3);
   await click(
     [...document.querySelectorAll("button")].find((el) =>
       el.textContent.startsWith("All models ·"),
@@ -449,7 +467,7 @@ test("model directory filters providers and edits the shared shortlist", async (
   assert.equal(document.querySelectorAll(".arena-directory-row").length, 1);
   await click(document.querySelector(".arena-add-model"));
   assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
-    "gpt-6-astra",
+    ...DEFAULT_COMPARISON_MODELS,
     "gpt-5.1",
   ]);
 });
