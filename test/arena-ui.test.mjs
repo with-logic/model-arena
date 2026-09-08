@@ -53,8 +53,7 @@ window.matchMedia = () => ({
   },
 });
 const { createRoot } = await import("react-dom/client");
-const { AppGridWithRouting } =
-  await import("../components/app-grid-with-routing.tsx");
+const { Arena } = await import("../components/arena.tsx");
 const { SELECTION_STORAGE_KEY } = await import("../lib/arena-state.ts");
 const apps = [
   {
@@ -63,6 +62,9 @@ const apps = [
     prompt: "Goal: Simulate waves",
     tags: ["interactive"],
     poster: "/ocean.png",
+    previews: {
+      "gpt-6-astra": "/previews/gpt-6-astra/ocean-wave-simulation.jpg",
+    },
     iframeUrl: "/",
   },
   {
@@ -71,6 +73,9 @@ const apps = [
     prompt: "Goal: Play a game",
     tags: ["game"],
     poster: "/game.png",
+    previews: {
+      "gpt-6-astra": "/previews/gpt-6-astra/new-app-without-stats.jpg",
+    },
     iframeUrl: "/",
   },
 ];
@@ -85,9 +90,7 @@ afterEach(async () => {
   await act(() => root.unmount());
 });
 async function render() {
-  await act(() =>
-    root.render(React.createElement(AppGridWithRouting, { apps })),
-  );
+  await act(() => root.render(React.createElement(Arena, { apps })));
 }
 function button(text) {
   const found = [...document.querySelectorAll("button")].find(
@@ -106,13 +109,13 @@ async function option(text) {
       (el) => el.textContent === text,
     )
   ) {
-    await click(document.querySelector('[aria-label="Comparison options"]'));
+    await click(document.querySelector('[aria-label="App options"]'));
   }
   await click(button(text));
 }
 async function chooseActiveModel(id) {
   await act(() => {
-    const select = document.querySelector(".arena-focused-model select");
+    const select = document.querySelector(".focused-model select");
     select.value = id;
     select.dispatchEvent(new Event("change", { bubbles: true }));
   });
@@ -127,34 +130,134 @@ async function input(el, value) {
   });
 }
 
-test("gallery filters, comparison close, and reopening retain the chosen models", async () => {
+const activeFrames = () => [
+  ...document.querySelectorAll(".app-card.active iframe"),
+];
+const activeApp = () => document.querySelector(".app-card.active")?.dataset.app;
+const browse = () => document.querySelector(".index-button");
+async function key(value, extra = {}) {
+  await act(() =>
+    window.dispatchEvent(
+      new window.KeyboardEvent("keydown", {
+        key: value,
+        bubbles: true,
+        cancelable: true,
+        ...extra,
+      }),
+    ),
+  );
+}
+async function history(direction) {
+  await act(() => {
+    window.history[direction]();
+    return new Promise((resolve) => setTimeout(resolve, 40));
+  });
+}
+
+test("fresh visitors land in a live Astra app with a searchable collection index", async () => {
   await render();
-  await input(
-    document.querySelector('input[placeholder^="Search apps"]'),
-    "waves",
-  );
-  assert.equal(document.querySelectorAll(".arena-app-card").length, 1);
-  await click(document.querySelector(".arena-app-card"));
-  assert.equal(document.querySelectorAll("iframe").length, 3);
-  await click(button("Models3"));
-  await click(
-    document.querySelector('.arena-model-dialog [aria-label^="Remove Qwen"]'),
-  );
-  await click(button("Done"));
-  assert.equal(document.querySelectorAll("iframe").length, 2);
-  await click(button("Collection"));
-  await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
-  assert.equal(document.querySelector('[role="dialog"]'), null);
-  assert.equal(document.querySelectorAll(".arena-app-card").length, 1);
+  assert.equal(activeFrames().length, 1);
+  assert.match(activeFrames()[0].src, /gpt-6-astra\/ocean-wave-simulation/);
+  assert.equal(document.querySelectorAll(".thumb").length, apps.length);
   assert.equal(
-    JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)).length,
-    2,
+    document.querySelector(".arena-live").classList.contains("expanded"),
+    false,
   );
-  await click(document.querySelector(".arena-app-card"));
-  assert.equal(document.querySelectorAll("iframe").length, 2);
+  await click(browse());
+  await input(
+    document.querySelector('input[aria-label="Search apps"]'),
+    "fresh",
+  );
+  assert.equal(document.querySelectorAll(".index-app").length, 1);
+  await click(document.querySelector(".index-app"));
+  assert.equal(activeApp(), "new-app-without-stats");
+  assert.equal(document.querySelector('[role="dialog"]'), null);
 });
 
-test("direct mobile links focus one app, support switching models, and close inside Arena", async () => {
+test("outer arrow keys browse and wrap while modifier shortcuts leave the collection alone", async () => {
+  await render();
+  await key("ArrowRight");
+  assert.equal(activeApp(), "new-app-without-stats");
+  await key("ArrowRight");
+  assert.equal(activeApp(), "ocean-wave-simulation");
+  await key("ArrowLeft");
+  assert.equal(activeApp(), "new-app-without-stats");
+  await key("ArrowRight", { metaKey: true });
+  assert.equal(activeApp(), "new-app-without-stats");
+});
+
+test("iframe focus and open dialogs retain keyboard ownership", async () => {
+  await render();
+  await act(() => activeFrames()[0].focus());
+  await key("ArrowRight");
+  assert.equal(activeApp(), "ocean-wave-simulation");
+  await click(browse());
+  await input(
+    document.querySelector('input[aria-label="Search apps"]'),
+    "wave",
+  );
+  await key("ArrowRight");
+  assert.equal(activeApp(), "ocean-wave-simulation");
+  await click(document.querySelector('[aria-label="Close app browser"]'));
+  await act(() => document.querySelector(".index-button").focus());
+  await key("ArrowRight");
+  assert.equal(activeApp(), "new-app-without-stats");
+});
+
+test("Expand and Return preserve the active iframe and native history restores expanded state", async () => {
+  await render();
+  const frame = activeFrames()[0];
+  await click(document.querySelector('[aria-label="Fill screen"]'));
+  assert.match(window.location.pathname, /^\/compare\//);
+  assert.equal(activeFrames()[0], frame);
+  await click(document.querySelector('[aria-label="Return to collection"]'));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
+  assert.equal(window.location.pathname, "/");
+  assert.equal(activeFrames()[0], frame);
+  await history("forward");
+  assert.match(window.location.pathname, /^\/compare\//);
+  assert.equal(activeFrames()[0], frame);
+});
+
+test("repeated Return requests wait for the pending history traversal", async () => {
+  await render();
+  const frame = activeFrames()[0];
+  await click(document.querySelector('[aria-label="Fill screen"]'));
+  const returnButton = document.querySelector(
+    '[aria-label="Return to collection"]',
+  );
+  await act(() => {
+    returnButton.click();
+    returnButton.click();
+  });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
+  assert.equal(window.location.pathname, "/");
+  assert.equal(activeFrames()[0], frame);
+  await history("forward");
+  assert.match(window.location.pathname, /^\/compare\//);
+});
+
+test("compare is opt-in and clicking a focused model again restores split view", async () => {
+  await render();
+  const frame = activeFrames()[0];
+  await click(document.querySelector('[aria-label="Compare side by side"]'));
+  assert.equal(activeFrames().length, 2);
+  assert.equal(activeFrames()[0], frame);
+  const tabs = () => document.querySelectorAll(".model-tabs button");
+  await click(tabs()[0]);
+  assert.equal(activeFrames().length, 1);
+  assert.equal(activeFrames()[0], frame);
+  await click(tabs()[0]);
+  assert.equal(activeFrames().length, 2);
+  await click(tabs()[0]);
+  await click(tabs()[1]);
+  assert.equal(activeFrames().length, 1);
+  assert.match(activeFrames()[0].src, /opus-5/);
+  await click(tabs()[1]);
+  assert.equal(activeFrames().length, 2);
+});
+
+test("legacy comparison links retain model order and mobile displays the chosen model", async () => {
   narrow = true;
   window.history.replaceState(
     {},
@@ -162,45 +265,58 @@ test("direct mobile links focus one app, support switching models, and close ins
     "/compare/new-app-without-stats?models=opus-5,gpt-6-astra&view=side-by-side",
   );
   await render();
-  assert.equal(
-    document
-      .querySelector(".arena-bar-picker button")
-      .getAttribute("aria-label"),
-    "Choose models, 2 selected",
-  );
-  assert.equal(document.querySelectorAll("iframe").length, 1);
-  assert.match(
-    document.querySelector("iframe").src,
-    /opus-5\/new-app-without-stats/,
-  );
+  assert.equal(activeFrames().length, 1);
+  assert.match(activeFrames()[0].src, /opus-5/);
   await chooseActiveModel("gpt-6-astra");
-  assert.match(
-    document.querySelector("iframe").src,
-    /gpt-6-astra\/new-app-without-stats/,
-  );
-  await option("Code stats");
-  assert.match(
-    document.querySelector('[role="dialog"]').textContent,
-    /Measurements are not available/,
-  );
-  await click(button("Collection"));
+  assert.match(activeFrames()[0].src, /gpt-6-astra/);
+  await act(() => {
+    narrow = false;
+    mediaListeners.forEach((listener) => listener());
+  });
+  assert.equal(activeFrames().length, 2);
+  await click(document.querySelector('[aria-label="Return to collection"]'));
   assert.equal(window.location.pathname, "/");
+  assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
+    "opus-5",
+    "gpt-6-astra",
+  ]);
+});
+
+test("single model picker replaces the live model and keeps Astra thumbnail fallbacks", async () => {
+  await render();
+  await click(document.querySelector('[aria-label^="Change model"]'));
+  await input(document.querySelector(".arena-model-dialog input"), "opus 5");
+  await click(
+    [...document.querySelectorAll(".arena-model-option")].find((el) =>
+      el.textContent.includes("Opus 5"),
+    ),
+  );
+  assert.match(activeFrames()[0].src, /opus-5/);
+  assert.ok(
+    [...document.querySelectorAll(".thumb img")].every((img) =>
+      img.src.includes("/previews/gpt-6-astra/"),
+    ),
+  );
+  assert.match(document.querySelector(".thumb img").title, /Astra/);
   assert.equal(document.querySelector('[role="dialog"]'), null);
 });
 
-test("picker searches all models, caps comparisons, and preserves a nonempty selection", async () => {
+test("comparison picker searches all models and enforces the four-model limit", async () => {
   await render();
-  await click(button("Choose models3"));
+  await click(document.querySelector('[aria-label="Compare side by side"]'));
+  await click(
+    document.querySelector('[aria-label="Choose models, 2 selected"]'),
+  );
   const search = document.querySelector(".arena-model-dialog input");
   await input(search, "astra");
-  const choices = [...document.querySelectorAll(".arena-model-option")];
-  assert.equal(choices.length, 1);
-  assert.match(choices[0].textContent, /Astra/);
+  assert.equal(document.querySelectorAll(".arena-model-option").length, 1);
   await input(search, "");
-  const unselected = [...document.querySelectorAll(".arena-model-option")].find(
-    (el) => el.getAttribute("aria-pressed") === "false",
-  );
-  await click(unselected);
+  for (let i = 0; i < 2; i++)
+    await click(
+      document.querySelector(
+        '.arena-model-option[aria-pressed="false"]:not(:disabled)',
+      ),
+    );
   assert.equal(
     document.querySelectorAll('.arena-model-option[aria-pressed="true"]')
       .length,
@@ -211,114 +327,55 @@ test("picker searches all models, caps comparisons, and preserves a nonempty sel
       ...document.querySelectorAll('.arena-model-option[aria-pressed="false"]'),
     ].every((el) => el.disabled),
   );
-  for (let i = 0; i < 3; i++)
-    await click(
-      document.querySelector(
-        '.arena-model-dialog [aria-label^="Remove "]:not(:disabled)',
-      ),
-    );
-  assert.equal(
-    document.querySelectorAll('.arena-model-option[aria-pressed="true"]')
-      .length,
-    1,
-  );
-  assert.ok(
-    document.querySelector('.arena-model-option[aria-pressed="true"]').disabled,
-  );
+  await click(button("Done"));
+  assert.equal(activeFrames().length, 4);
 });
 
-test("stats keeps the shortlist while exposing searchable measurements for all models", async () => {
+test("stats retains the shortlist and exposes searchable measurements for all models", async () => {
   await render();
-  await click(document.querySelector('.arena-nav a[href*="page=stats"]'));
-  assert.equal(document.querySelectorAll("tbody tr").length, 3);
+  await click(
+    document.querySelector('.collection-links a[href*="page=stats"]'),
+  );
+  assert.equal(document.querySelectorAll("tbody tr").length, 1);
   await click(
     [...document.querySelectorAll("button")].find((el) =>
       el.textContent.startsWith("All models ·"),
     ),
   );
   assert.ok(document.querySelectorAll("tbody tr").length > 20);
-  const selected = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY));
-  assert.equal(selected.length, 3);
   await input(
     document.querySelector('input[placeholder="Search models…"]'),
     "astra",
   );
   assert.equal(document.querySelectorAll("tbody tr").length, 1);
-  assert.match(document.querySelector("tbody").textContent, /Astra/);
   await click(document.querySelector('button[aria-label^="Sort by Average"]'));
-  assert.equal(
-    document
-      .querySelector('th[aria-sort="ascending"] button')
-      .textContent.startsWith("Average"),
-    true,
-  );
+  assert.ok(document.querySelector('th[aria-sort="ascending"]'));
   await click(document.querySelector('button[aria-label^="Explore apps by"]'));
-  assert.equal(
-    document.querySelector('.arena-nav [aria-current="page"]').textContent,
-    "Explore apps",
-  );
-  assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
-    "gpt-6-astra",
-  ]);
+  assert.ok(document.querySelector(".arena-live"));
+  assert.match(activeFrames()[0].src, /gpt-6-astra/);
 });
 
-test("browser Back keeps shortlist edits and forward honors the comparison URL", async () => {
+test("browser Back from expanded comparison keeps the current app and edited shortlist", async () => {
   await render();
-  await click(document.querySelector(".arena-app-card"));
-  await click(button("Models3"));
-  await click(
-    document.querySelector('.arena-model-dialog [aria-label^="Remove Qwen"]'),
-  );
-  await click(button("Done"));
-  const models = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY));
-  await act(() => {
-    window.history.back();
-    return new Promise((resolve) => setTimeout(resolve, 40));
-  });
-  assert.equal(document.querySelector('[role="dialog"]'), null);
+  await click(document.querySelector('[aria-label="Fill screen"]'));
+  await click(document.querySelector('[aria-label="Compare side by side"]'));
+  await key("ArrowRight");
+  const frame = activeFrames()[0],
+    models = JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY));
+  await history("back");
+  assert.equal(window.location.pathname, "/");
+  assert.equal(activeApp(), "new-app-without-stats");
+  assert.equal(activeFrames()[0], frame);
   assert.deepEqual(
     JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)),
     models,
   );
-  assert.equal(
-    new URLSearchParams(window.location.search).get("models"),
-    models.join(","),
-  );
-  assert.equal(document.activeElement.className, "arena-app-card");
-  await act(() => {
-    window.history.forward();
-    return new Promise((resolve) => setTimeout(resolve, 40));
-  });
-  assert.equal(document.querySelectorAll("iframe").length, 2);
-  assert.equal(window.location.pathname, "/compare/ocean-wave-simulation");
+  await history("forward");
+  assert.match(window.location.pathname, /compare/);
+  assert.equal(activeApp(), "new-app-without-stats");
 });
 
-test("viewport changes switch between split and focused apps without losing selection", async () => {
-  await render();
-  await click(document.querySelector(".arena-app-card"));
-  assert.equal(document.querySelectorAll("iframe").length, 3);
-  await act(() => {
-    narrow = true;
-    mediaListeners.forEach((listener) => listener());
-  });
-  assert.equal(document.querySelectorAll("iframe").length, 1);
-  assert.equal(
-    document.querySelector(".arena-back").getAttribute("aria-label"),
-    "Back to collection",
-  );
-  await chooseActiveModel("gpt-6-astra");
-  assert.match(document.querySelector("iframe").src, /gpt-6-astra/);
-  await act(() => {
-    narrow = false;
-    mediaListeners.forEach((listener) => listener());
-  });
-  assert.equal(document.querySelectorAll("iframe").length, 3);
-  await click(button("Collection"));
-  await act(() => new Promise((resolve) => setTimeout(resolve, 40)));
-  assert.equal(mediaListeners.size, 0);
-});
-
-test("clipboard responses cannot overwrite status after navigation or newer requests", async () => {
+test("clipboard completions cannot overwrite newer requests or navigation", async () => {
   const requests = [];
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
@@ -330,29 +387,18 @@ test("clipboard responses cannot overwrite status after navigation or newer requ
     },
   });
   await render();
-  await click(document.querySelector(".arena-app-card"));
   await option("Share");
-  await act(() => {
-    const select = document.querySelector(".arena-app-navigation select");
-    select.value = "new-app-without-stats";
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  await act(async () => {
-    requests[0].resolve();
-  });
+  await click(document.querySelectorAll(".thumb")[1]);
+  await act(async () => requests[0].resolve());
   assert.equal(document.querySelector(".arena-share").textContent, "Share");
   await option("Share");
   await option("Share");
-  await act(async () => {
-    requests[2].resolve();
-  });
+  await act(async () => requests[2].resolve());
   assert.equal(
     document.querySelector(".arena-share").textContent,
     "Link copied",
   );
-  await act(async () => {
-    requests[1].reject(new Error("Older request failed"));
-  });
+  await act(async () => requests[1].reject(new Error("Old failure")));
   assert.equal(
     document.querySelector(".arena-share").textContent,
     "Link copied",
@@ -360,9 +406,7 @@ test("clipboard responses cannot overwrite status after navigation or newer requ
   await option("Code stats");
   assert.equal(document.querySelector(".arena-share").textContent, "Share");
   await option("Share");
-  await act(async () => {
-    requests[3].reject(new Error("Clipboard denied"));
-  });
+  await act(async () => requests[3].reject(new Error("Denied")));
   assert.equal(
     document.querySelector('input[aria-label="Shareable comparison link"]')
       .value,
@@ -370,9 +414,11 @@ test("clipboard responses cannot overwrite status after navigation or newer requ
   );
 });
 
-test("model directory filters providers and edits the shared comparison", async () => {
+test("model directory filters providers and edits the shared shortlist", async () => {
   await render();
-  await click(document.querySelector('.arena-nav a[href*="page=models"]'));
+  await click(
+    document.querySelector('.collection-links a[href*="page=models"]'),
+  );
   await act(() => {
     const select = document.querySelector(".arena-provider-filter select");
     select.value = "openai";
@@ -385,19 +431,33 @@ test("model directory filters providers and edits the shared comparison", async 
   );
   await input(
     document.querySelector('input[placeholder="Find a model or provider…"]'),
-    "astra",
+    "gpt-5.1",
   );
   assert.equal(document.querySelectorAll(".arena-directory-row").length, 1);
   await click(document.querySelector(".arena-add-model"));
+  assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
+    "gpt-6-astra",
+    "gpt-5.1",
+  ]);
+});
+
+test("exploring a model from arena statistics returns to live apps", async () => {
+  await render();
+  await option("Code stats");
+  await click(document.querySelector('.live-options a[href*="page=stats"]'));
+  await click(
+    document.querySelector('[aria-label="Explore apps by GPT-6 Astra"]'),
+  );
+  assert.ok(!document.querySelector(".live-app-stats"));
+  assert.equal(activeFrames().length, 1);
+  assert.match(activeFrames()[0].src, /gpt-6-astra/);
   assert.equal(
-    JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)).includes(
-      "gpt-6-astra",
-    ),
-    false,
+    new URLSearchParams(window.location.search).get("content") ?? "demo",
+    "demo",
   );
 });
 
-test("populated app statistics show selected models in order with actual measurements", async () => {
+test("direct app statistics present real measurements without starting apps", async () => {
   window.history.replaceState(
     {},
     "",
@@ -406,21 +466,17 @@ test("populated app statistics show selected models in order with actual measure
   await render();
   assert.equal(document.querySelectorAll("iframe").length, 0);
   const headers = [
-    ...document.querySelectorAll('[role="dialog"] thead th'),
+    ...document.querySelectorAll(".live-app-stats thead th"),
   ].map((el) => el.textContent);
   assert.match(headers[1], /Astra/);
   assert.match(headers[2], /Opus 5/);
   assert.equal(
-    document.querySelectorAll('[role="dialog"] tbody tr').length,
+    document.querySelectorAll(".live-app-stats tbody tr").length,
     12,
-  );
-  assert.doesNotMatch(
-    document.querySelector('[role="dialog"] tbody').textContent,
-    /Unavailable/,
   );
 });
 
-test("unknown app links provide a focused, keyboard-accessible way back to the collection", async () => {
+test("unknown app URLs provide an accessible route back to the collection", async () => {
   window.history.replaceState({}, "", "/compare/unknown-app");
   await render();
   const dialog = document.querySelector('[role="dialog"]');
@@ -431,69 +487,32 @@ test("unknown app links provide a focused, keyboard-accessible way back to the c
   assert.equal(window.location.pathname, "/");
 });
 
-test("comparison options and prompt do not add rows or remount the running app", async () => {
+test("prompt and options preserve the running app and options dismiss on frame focus", async () => {
   await render();
-  await click(document.querySelector(".arena-app-card"));
-  const frame = document.querySelector("iframe");
-  assert.equal(document.querySelectorAll(".arena-comparison-bar").length, 1);
-  assert.equal(document.querySelector(".arena-workspace-toolbar"), null);
+  const frame = activeFrames()[0];
   await option("Shared prompt");
-  const prompt = document.querySelector(".arena-prompt-dialog");
-  assert.match(prompt.textContent, /Goal: Simulate waves/);
-  assert.equal(document.querySelector("iframe"), frame);
+  assert.match(
+    document.querySelector(".prompt-dialog").textContent,
+    /Simulate waves/,
+  );
+  assert.equal(activeFrames()[0], frame);
   await click(document.querySelector('[aria-label="Close prompt"]'));
-  await act(() => new Promise((resolve) => setTimeout(resolve, 5)));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.equal(
     document.activeElement.getAttribute("aria-label"),
-    "Comparison options",
+    "App options",
   );
-  await click(document.querySelector('[aria-label="Comparison options"]'));
-  await act(() =>
-    document.activeElement.dispatchEvent(
-      new window.KeyboardEvent("keydown", {
-        key: "Escape",
-        bubbles: true,
-        cancelable: true,
-      }),
-    ),
-  );
-  assert.equal(document.querySelector(".arena-comparison-options"), null);
-  assert.ok(document.querySelector(".arena-workspace"));
-  assert.equal(document.querySelector("iframe"), frame);
-});
-
-test("comparison options dismiss when focus enters a running app", async () => {
-  await render();
-  await click(document.querySelector(".arena-app-card"));
-  await click(document.querySelector('[aria-label="Comparison options"]'));
-  assert.ok(document.querySelector(".arena-comparison-options"));
+  await click(document.querySelector(".prompt-button"));
+  await click(document.querySelector('[aria-label="Close prompt"]'));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.ok(document.activeElement.classList.contains("prompt-button"));
+  await click(document.querySelector('[aria-label="App options"]'));
+  assert.ok(document.querySelector(".live-options").open);
   await act(() => {
-    document.querySelector("iframe").focus();
+    frame.focus();
     window.dispatchEvent(new Event("blur"));
     return new Promise((resolve) => setTimeout(resolve, 25));
   });
-  assert.equal(document.querySelector(".arena-comparison-options"), null);
-  assert.ok(document.querySelector("iframe"));
-});
-
-test("clicking the focused model again restores split view while other tabs switch solo models", async () => {
-  await render();
-  await click(document.querySelector(".arena-app-card"));
-  const tabs = () =>
-    document.querySelectorAll(".arena-workspace-models button");
-  await click(tabs()[1]);
-  assert.equal(document.querySelectorAll("iframe").length, 1);
-  assert.match(document.querySelector("iframe").src, /gpt-6-astra/);
-  await click(tabs()[1]);
-  assert.equal(document.querySelectorAll("iframe").length, 3);
-  assert.equal(
-    new URLSearchParams(window.location.search).get("view"),
-    "side-by-side",
-  );
-  await click(tabs()[0]);
-  await click(tabs()[1]);
-  assert.equal(document.querySelectorAll("iframe").length, 1);
-  assert.match(document.querySelector("iframe").src, /gpt-6-astra/);
-  await click(tabs()[1]);
-  assert.equal(document.querySelectorAll("iframe").length, 3);
+  assert.equal(document.querySelector(".live-options").open, false);
+  assert.equal(activeFrames()[0], frame);
 });

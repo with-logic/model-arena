@@ -1,4 +1,7 @@
-import { DEFAULT_COMPARISON_MODELS } from "./models.config";
+import {
+  DEFAULT_COMPARISON_MODELS,
+  DEFAULT_EXPLORER_MODEL,
+} from "./models.config";
 import { MODEL_IDS } from "./models";
 
 export const MAX_COMPARISON_MODELS = 4;
@@ -8,6 +11,7 @@ export type ArenaPage = "explore" | "models" | "stats";
 export interface ArenaLocation {
   page: ArenaPage;
   appId?: string;
+  expanded: boolean;
   models: string[];
   view: "side-by-side" | "tabs";
   tab: string;
@@ -29,9 +33,10 @@ export function normalizeModels(value: unknown): string[] {
 }
 export const DEFAULT_LOCATION: ArenaLocation = {
   page: "explore",
-  models: [...DEFAULT_COMPARISON_MODELS],
-  view: "side-by-side",
-  tab: DEFAULT_COMPARISON_MODELS[0],
+  expanded: false,
+  models: [DEFAULT_EXPLORER_MODEL],
+  view: "tabs",
+  tab: DEFAULT_EXPLORER_MODEL,
   content: "demo",
   q: "",
   category: "all",
@@ -42,11 +47,13 @@ export function parseArenaLocation(
   remembered?: string[],
 ): ArenaLocation {
   const params = new URLSearchParams(search);
-  const models = normalizeModels(
-    params.has("models") ? params.get("models")!.split(",") : remembered,
-  );
   const match = pathname.match(/^\/compare\/([^/]+)\/?$/);
-  let appId: string | undefined;
+  const models = normalizeModels(
+    params.has("models")
+      ? params.get("models")!.split(",")
+      : (remembered ?? (match ? undefined : [DEFAULT_EXPLORER_MODEL])),
+  );
+  let appId: string | undefined = params.get("app") || undefined;
   try {
     if (match) appId = decodeURIComponent(match[1]);
   } catch {
@@ -57,8 +64,16 @@ export function parseArenaLocation(
   return {
     page: page === "models" || page === "stats" ? page : "explore",
     ...(appId ? { appId } : {}),
+    expanded: Boolean(match),
     models,
-    view: params.get("view") === "tabs" ? "tabs" : "side-by-side",
+    view:
+      params.get("view") === "side-by-side"
+        ? "side-by-side"
+        : params.get("view") === "tabs"
+          ? "tabs"
+          : match
+            ? "side-by-side"
+            : "tabs",
     tab: tab && models.includes(tab) ? tab : models[0],
     content: params.get("content") === "stats" ? "stats" : "demo",
     q: params.get("q") || "",
@@ -67,6 +82,7 @@ export function parseArenaLocation(
 }
 export function buildArenaUrl(location: ArenaLocation): string {
   const p = new URLSearchParams();
+  if (location.appId && !location.expanded) p.set("app", location.appId);
   p.set("models", location.models.join(","));
   if (location.page !== "explore") p.set("page", location.page);
   p.set("view", location.view);
@@ -75,5 +91,5 @@ export function buildArenaUrl(location: ArenaLocation): string {
   if (location.content === "stats") p.set("content", location.content);
   if (location.q) p.set("q", location.q);
   if (location.category !== "all") p.set("category", location.category);
-  return `${location.appId ? `/compare/${encodeURIComponent(location.appId)}` : "/"}?${p}`;
+  return `${location.appId && location.expanded ? `/compare/${encodeURIComponent(location.appId)}` : "/"}?${p}`;
 }

@@ -17,6 +17,8 @@ export interface CodeExample {
   title: string;
   prompt: string;
   poster: string;
+  /** Actual model renders, distinct from the prompt's reference poster. */
+  previews?: Record<string, string>;
   iframeUrl: string;
   tags: string[];
   camera?: boolean;
@@ -43,7 +45,7 @@ function toCodeExample(
     tags?: string[];
     camera?: boolean;
     microphone?: boolean;
-  }
+  },
 ): CodeExample {
   return {
     id,
@@ -61,6 +63,7 @@ export async function loadApps(): Promise<CodeExample[]> {
   // Runs on the server; YAML files are in the examples/ directory at repo root
   const examplesDir = path.join(process.cwd(), "examples");
   const entries = await fs.readdir(examplesDir);
+  const previews = await loadPreviews();
   const apps: CodeExample[] = [];
 
   for (const name of entries) {
@@ -79,15 +82,16 @@ export async function loadApps(): Promise<CodeExample[]> {
       const prompt = typeof obj.prompt === "string" ? obj.prompt : undefined;
       if (!title || !prompt) continue;
 
-      apps.push(
-        toCodeExample(slug, {
+      apps.push({
+        ...toCodeExample(slug, {
           title,
           prompt,
           tags: toStringArray(obj.tags),
           camera: toBool(obj.camera),
           microphone: toBool(obj.microphone),
-        })
-      );
+        }),
+        previews: previews.get(slug),
+      });
     } catch {
       // ignore malformed files
     }
@@ -95,4 +99,33 @@ export async function loadApps(): Promise<CodeExample[]> {
 
   apps.sort((a, b) => a.title.localeCompare(b.title));
   return apps; // ✅ plain objects, safe to pass to Client Components
+}
+
+async function loadPreviews(): Promise<Map<string, Record<string, string>>> {
+  const previews = new Map<string, Record<string, string>>();
+  const directory = path.join(process.cwd(), "public", "previews");
+  const models = await fs
+    .readdir(directory, { withFileTypes: true })
+    .catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+
+  // Read each available model directory once, rather than stat every app/model pair.
+  for (const model of models) {
+    if (!model.isDirectory() || !/^[a-z0-9][a-z0-9.-]*$/.test(model.name))
+      continue;
+    const files = await fs.readdir(path.join(directory, model.name), {
+      withFileTypes: true,
+    });
+    for (const file of files) {
+      if (!file.isFile() || !/^[a-z0-9][a-z0-9-]*\.jpg$/.test(file.name))
+        continue;
+      const appId = file.name.slice(0, -4);
+      const appPreviews = previews.get(appId) ?? {};
+      appPreviews[model.name] = `/previews/${model.name}/${file.name}`;
+      previews.set(appId, appPreviews);
+    }
+  }
+  return previews;
 }

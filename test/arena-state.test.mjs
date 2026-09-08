@@ -54,7 +54,7 @@ test("navigation round trips filters, shortlist and display state", () => {
 test("a bare URL resets view/content while remembering the shortlist", () => {
   const s = parseArenaLocation("/", "", ["gpt-6-astra"]);
   assert.equal(s.content, "demo");
-  assert.equal(s.view, "side-by-side");
+  assert.equal(s.view, "tabs");
   assert.equal(s.page, "explore");
   assert.deepEqual(s.models, ["gpt-6-astra"]);
 });
@@ -62,4 +62,25 @@ test("untrusted model values and malformed paths do not crash navigation", () =>
   assert.deepEqual(normalizeModels(null), [...DEFAULT_COMPARISON_MODELS]);
   assert.deepEqual(normalizeModels([42, {}, "opus-5"]), ["opus-5"]);
   assert.doesNotThrow(() => parseArenaLocation("/compare/%ZZ", "?page=bogus"));
+});
+
+test("fresh collection opens Astra solo and round-trips the selected app without expanding", () => {
+  const initial = parseArenaLocation("/", "");
+  assert.deepEqual(initial.models, ["gpt-6-astra"]);
+  assert.equal(initial.view, "tabs");
+  assert.equal(initial.expanded, false);
+  const next = { ...initial, appId: "asteroid-game" };
+  const url = new URL(buildArenaUrl(next), "http://localhost");
+  assert.equal(url.pathname, "/");
+  assert.equal(url.searchParams.get("app"), "asteroid-game");
+  assert.deepEqual(parseArenaLocation(url.pathname, url.search), next);
+});
+test("existing comparison links stay expanded and split by default", () => {
+  const state = parseArenaLocation(
+    "/compare/asteroid-game",
+    "?models=opus-5,gpt-6-astra",
+  );
+  assert.equal(state.expanded, true);
+  assert.equal(state.view, "side-by-side");
+  assert.match(buildArenaUrl(state), /^\/compare\/asteroid-game\?/);
 });

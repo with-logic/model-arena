@@ -11,10 +11,12 @@ export function ModelPicker({
   selectedModels,
   onChange,
   compact = false,
+  single = false,
 }: {
   selectedModels: string[];
   onChange: (ids: string[]) => void;
   compact?: boolean;
+  single?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -30,6 +32,11 @@ export function ModelPicker({
     ),
   })).filter((group) => group.models.length);
   function toggle(id: string) {
+    if (single) {
+      onChange([id]);
+      setOpen(false);
+      return;
+    }
     if (selectedModels.includes(id)) {
       if (selectedModels.length > 1)
         onChange(selectedModels.filter((m) => m !== id));
@@ -40,13 +47,23 @@ export function ModelPicker({
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger
         className="arena-button arena-button-secondary"
-        aria-label={`Choose models, ${selectedModels.length} selected`}
+        aria-label={
+          single
+            ? `Change model, ${MODELS.find((model) => model.id === selectedModels[0])?.name}`
+            : `Choose models, ${selectedModels.length} selected`
+        }
       >
         <SlidersHorizontal size={15} aria-hidden="true" />
         <span className="arena-picker-trigger-label">
-          {compact ? "Models" : "Choose models"}
+          {single
+            ? MODELS.find((model) => model.id === selectedModels[0])?.name
+            : compact
+              ? "Models"
+              : "Choose models"}
         </span>
-        <span className="arena-count">{selectedModels.length}</span>
+        {!single && (
+          <span className="arena-count">{selectedModels.length}</span>
+        )}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="arena-dialog-overlay" />
@@ -54,10 +71,12 @@ export function ModelPicker({
           <div className="flex items-start justify-between gap-4 p-5 pb-3">
             <div>
               <Dialog.Title className="text-xl font-semibold text-[var(--arena-ink)]">
-                Your comparison
+                {single ? "Choose a model" : "Your comparison"}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-[var(--arena-muted)]">
-                Choose 1–4 models. Your selection follows you across the Arena.
+                {single
+                  ? "Keep the app. Change the model."
+                  : "Choose 1–4 models. Your selection follows you across the Arena."}
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -68,27 +87,29 @@ export function ModelPicker({
             </Dialog.Close>
           </div>
           <div className="px-5 pb-4">
-            <div
-              className="mb-4 flex flex-wrap gap-2"
-              aria-label="Selected models"
-            >
-              {selectedModels.map((id) => {
-                const m = MODELS.find((m) => m.id === id)!;
-                return (
-                  <button
-                    key={id}
-                    onClick={() => toggle(id)}
-                    disabled={selectedModels.length === 1}
-                    aria-label={`Remove ${m.name}`}
-                    className="arena-model-chip"
-                  >
-                    <span className={`h-2 w-2 rounded-none ${m.color}`} />
-                    {m.name}
-                    <X size={13} aria-hidden="true" />
-                  </button>
-                );
-              })}
-            </div>
+            {!single && (
+              <div
+                className="mb-4 flex flex-wrap gap-2"
+                aria-label="Selected models"
+              >
+                {selectedModels.map((id) => {
+                  const m = MODELS.find((m) => m.id === id)!;
+                  return (
+                    <button
+                      key={id}
+                      onClick={() => toggle(id)}
+                      disabled={selectedModels.length === 1}
+                      aria-label={`Remove ${m.name}`}
+                      className="arena-model-chip"
+                    >
+                      <span className={`h-2 w-2 rounded-none ${m.color}`} />
+                      {m.name}
+                      <X size={13} aria-hidden="true" />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             <label className="arena-search">
               <Search size={17} aria-hidden="true" />
               <span className="sr-only">Search all models</span>
@@ -117,11 +138,13 @@ export function ModelPicker({
                   )}
                 </select>
               </label>
-              <span role="status">
-                {selectedModels.length === MAX_COMPARISON_MODELS
-                  ? "Remove a model to add another"
-                  : `${selectedModels.length} of ${MAX_COMPARISON_MODELS} selected`}
-              </span>
+              {!single && (
+                <span role="status">
+                  {selectedModels.length === MAX_COMPARISON_MODELS
+                    ? "Remove a model to add another"
+                    : `${selectedModels.length} of ${MAX_COMPARISON_MODELS} selected`}
+                </span>
+              )}
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto border-y border-[var(--arena-line)] px-3 py-2">
@@ -139,9 +162,10 @@ export function ModelPicker({
                       onClick={() => toggle(m.id)}
                       aria-pressed={selected}
                       disabled={
-                        selected
+                        !single &&
+                        (selected
                           ? selectedModels.length === 1
-                          : selectedModels.length >= MAX_COMPARISON_MODELS
+                          : selectedModels.length >= MAX_COMPARISON_MODELS)
                       }
                       className="arena-model-option"
                     >
@@ -166,12 +190,14 @@ export function ModelPicker({
             )}
           </div>
           <div className="flex items-center justify-between gap-3 p-4">
-            <button
-              onClick={() => onChange([...DEFAULT_COMPARISON_MODELS])}
-              className="arena-text-button"
-            >
-              Use featured models
-            </button>
+            {!single && (
+              <button
+                onClick={() => onChange([...DEFAULT_COMPARISON_MODELS])}
+                className="arena-text-button"
+              >
+                Use featured models
+              </button>
+            )}
             <Dialog.Close className="arena-button arena-button-primary">
               Done
             </Dialog.Close>
