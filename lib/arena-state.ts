@@ -48,10 +48,13 @@ export function parseArenaLocation(
 ): ArenaLocation {
   const params = new URLSearchParams(search);
   const match = pathname.match(/^\/compare\/([^/]+)\/?$/);
+  const page = params.get("page");
+  const defaultModels =
+    match || page === "models" || page === "stats"
+      ? (remembered ?? (match ? undefined : [DEFAULT_EXPLORER_MODEL]))
+      : [DEFAULT_EXPLORER_MODEL];
   const models = normalizeModels(
-    params.has("models")
-      ? params.get("models")!.split(",")
-      : (remembered ?? (match ? undefined : [DEFAULT_EXPLORER_MODEL])),
+    params.has("models") ? params.get("models")!.split(",") : defaultModels,
   );
   let appId: string | undefined = params.get("app") || undefined;
   try {
@@ -59,7 +62,6 @@ export function parseArenaLocation(
   } catch {
     appId = match?.[1];
   }
-  const page = params.get("page");
   const tab = params.get("tab");
   return {
     page: page === "models" || page === "stats" ? page : "explore",
