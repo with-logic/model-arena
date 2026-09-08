@@ -51,12 +51,16 @@ test("navigation round trips filters, shortlist and display state", () => {
   const u = new URL(buildArenaUrl(s), "http://localhost");
   assert.deepEqual(parseArenaLocation(u.pathname, u.search), s);
 });
-test("a bare URL resets view/content while remembering the shortlist", () => {
-  const s = parseArenaLocation("/", "", ["gpt-6-astra"]);
+test("the homepage opens Astra even when the saved shortlist starts with Opus", () => {
+  const s = parseArenaLocation("/", "", [...DEFAULT_COMPARISON_MODELS]);
   assert.equal(s.content, "demo");
   assert.equal(s.view, "tabs");
   assert.equal(s.page, "explore");
   assert.deepEqual(s.models, ["gpt-6-astra"]);
+  assert.equal(s.tab, "gpt-6-astra");
+  const explicit = parseArenaLocation("/", "?models=opus-5", ["gpt-6-astra"]);
+  assert.deepEqual(explicit.models, ["opus-5"]);
+  assert.equal(explicit.tab, "opus-5");
 });
 test("untrusted model values and malformed paths do not crash navigation", () => {
   assert.deepEqual(normalizeModels(null), [...DEFAULT_COMPARISON_MODELS]);
@@ -83,4 +87,14 @@ test("existing comparison links stay expanded and split by default", () => {
   assert.equal(state.expanded, true);
   assert.equal(state.view, "side-by-side");
   assert.match(buildArenaUrl(state), /^\/compare\/asteroid-game\?/);
+  assert.deepEqual(
+    parseArenaLocation("/compare/asteroid-game", "", ["opus-5"]).models,
+    ["opus-5"],
+  );
+  assert.deepEqual(parseArenaLocation("/", "?page=stats", ["opus-5"]).models, [
+    "opus-5",
+  ]);
+  assert.deepEqual(parseArenaLocation("/", "?page=stats").models, [
+    "gpt-6-astra",
+  ]);
 });

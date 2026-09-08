@@ -174,6 +174,19 @@ test("fresh visitors land in a live Astra app with a searchable collection index
   assert.equal(document.querySelector('[role="dialog"]'), null);
 });
 
+test("returning visitors open Astra instead of restoring their old Opus default", async () => {
+  localStorage.setItem(
+    SELECTION_STORAGE_KEY,
+    JSON.stringify(["opus-5", "gpt-6-astra"]),
+  );
+  await render();
+  assert.equal(activeFrames().length, 1);
+  assert.match(activeFrames()[0].src, /gpt-6-astra\/ocean-wave-simulation/);
+  assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
+    "gpt-6-astra",
+  ]);
+});
+
 test("outer arrow keys browse and wrap while modifier shortcuts leave the collection alone", async () => {
   await render();
   await key("ArrowRight");
