@@ -1,201 +1,590 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import { CodeExample } from "@/lib/code-examples";
-import { AppComparisonView } from "./app-comparison-view";
-import { StatsMiniChart } from "./stats-mini-chart";
-import { StatsModelDashboard } from "./stats-model-card";
-import { MODEL_IDS, MODELS_BY_PROVIDER } from "@/lib/models";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import {
+  ArrowRight,
+  Search,
+  LayoutGrid,
+  Layers3,
+  ChartNoAxesCombined,
+  X,
+  ExternalLink,
+} from "lucide-react";
+import type { CodeExample } from "@/lib/code-examples";
+import { MODELS, MODELS_BY_PROVIDER } from "@/lib/models";
 import { DEFAULT_COMPARISON_MODELS } from "@/lib/models.config";
+import { stats, getModelAggregate } from "@/lib/stats";
+import {
+  buildArenaUrl,
+  MAX_COMPARISON_MODELS,
+  DEFAULT_LOCATION,
+  normalizeModels,
+  parseArenaLocation,
+  SELECTION_STORAGE_KEY,
+  type ArenaLocation,
+  type ArenaPage,
+} from "@/lib/arena-state";
+import * as Dialog from "@radix-ui/react-dialog";
+import { Brandmark } from "./brandmark";
+import { ModelPicker } from "./model-picker";
+import { AppComparisonView } from "./app-comparison-view";
+import { StatsModelDashboard } from "./stats-model-card";
 
-interface AppGridWithRoutingProps {
-  apps: CodeExample[];
+const groups = MODELS_BY_PROVIDER.filter((g) => g.models.length);
+const featuredSet = new Set<string>(DEFAULT_COMPARISON_MODELS);
+
+const categoryLabels: Record<string, string> = {
+  game: "Games",
+  tool: "Tools",
+  interactive: "Interactive",
+  website: "Websites",
+  creative: "Creative",
+  educational: "Learning",
+};
+const navigation: { id: ArenaPage; label: string; icon: typeof LayoutGrid }[] =
+  [
+    { id: "explore", label: "Explore apps", icon: LayoutGrid },
+    { id: "models", label: "Models", icon: Layers3 },
+    { id: "stats", label: "Stats", icon: ChartNoAxesCombined },
+  ];
+function ordinaryClick(e: MouseEvent<HTMLAnchorElement>) {
+  return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 }
 
-type PageMode = "apps" | "stats-by-app" | "stats-by-model";
-
-export function AppGridWithRouting({ apps }: AppGridWithRoutingProps) {
-  const [selectedApp, setSelectedApp] = useState<CodeExample | null>(null);
-  const [initialModels, setInitialModels] = useState<string[]>([...DEFAULT_COMPARISON_MODELS]);
-  const [initialView, setInitialView] = useState<"side-by-side" | "tabs">("side-by-side");
-  const [initialTab, setInitialTab] = useState<string>(DEFAULT_COMPARISON_MODELS[0]);
-  const [initialContentMode, setInitialContentMode] = useState<"demo" | "stats">("demo");
-  const [pageMode, setPageMode] = useState<PageMode>("apps");
-
-  // Parse URL on mount
+export function AppGridWithRouting({ apps }: { apps: CodeExample[] }) {
+  const [location, setLocation] = useState<ArenaLocation>(DEFAULT_LOCATION);
+  const [ready, setReady] = useState(false);
+  const [modelProvider, setModelProvider] = useState("all");
+  const openedFromGallery = useRef(false);
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const locationRef = useRef(location);
+  locationRef.current = location;
+  const collectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    const parseUrl = () => {
-      const path = window.location.pathname.replace(/\/+$/, ""); // Remove trailing slashes
-      const compareMatch = path.match(/^\/compare\/([^/]+)/);
-
-      if (compareMatch) {
-        const appId = compareMatch[1];
-        const app = apps.find(a => a.id === appId);
-
-        if (app) {
-          // Parse query params
-          const params = new URLSearchParams(window.location.search);
-          const models = params.get("models");
-          const view = params.get("view");
-          const tab = params.get("tab");
-          const content = params.get("content");
-
-          if (models) {
-            const validModels = models.split(",").filter(m => MODEL_IDS.has(m));
-            if (validModels.length > 0) {
-              setInitialModels(validModels);
-            }
-          }
-          if (view === "side-by-side" || view === "tabs") {
-            setInitialView(view);
-          }
-          if (tab && MODEL_IDS.has(tab)) {
-            setInitialTab(tab);
-          }
-          if (content === "stats") {
-            setInitialContentMode("stats");
-          }
-
-          setSelectedApp(app);
-        }
+    function read() {
+      let remembered: string[] | undefined;
+      try {
+        remembered = normalizeModels(
+          JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY) || "null"),
+        );
+      } catch {
+        /* A share link works even when storage is unavailable. */
       }
-    };
-
-    parseUrl();
-
-    // Handle browser back/forward
-    const handlePopState = () => {
-      const newPath = window.location.pathname;
-      if (newPath === "/") {
-        setSelectedApp(null);
-      } else {
-        parseUrl();
+      const next = parseArenaLocation(
+        window.location.pathname,
+        window.location.search,
+        remembered,
+      );
+      if (locationRef.current.appId && !next.appId) {
+        next.models = locationRef.current.models;
+        next.tab = next.models.includes(next.tab) ? next.tab : next.models[0];
+        window.history.replaceState({}, "", buildArenaUrl(next));
       }
-    };
-
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [apps]);
-
-  const handleOpenApp = useCallback((e: React.MouseEvent, app: CodeExample) => {
-    // Let middle-click, ctrl+click, cmd+click open in new tab naturally
-    if (e.button !== 0 || e.ctrlKey || e.metaKey) return;
-    e.preventDefault();
-    setInitialModels([...DEFAULT_COMPARISON_MODELS]);
-    setInitialView("side-by-side");
-    setInitialTab(DEFAULT_COMPARISON_MODELS[0]);
-    setInitialContentMode(pageMode !== "apps" ? "stats" : "demo");
-    setSelectedApp(app);
-  }, [pageMode]);
-
-  const handleClose = useCallback(() => {
-    setSelectedApp(null);
+      if (!next.appId) openedFromGallery.current = false;
+      setLocation(next);
+      setReady(true);
+    }
+    read();
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
   }, []);
-
-  const toggleBtnClass = (active: boolean) =>
-    `px-4 py-1.5 text-sm font-medium transition-colors ${
-      active
-        ? "bg-white text-neutral-900 shadow-sm"
-        : "text-neutral-500 hover:text-neutral-900"
-    }`;
+  useEffect(() => {
+    if (ready) {
+      try {
+        localStorage.setItem(
+          SELECTION_STORAGE_KEY,
+          JSON.stringify(location.models),
+        );
+      } catch {
+        /* Selection still lives in the URL. */
+      }
+    }
+  }, [ready, location.models]);
+  useEffect(() => {
+    if (!location.appId) {
+      returnFocus.current?.focus();
+      returnFocus.current = null;
+    }
+  }, [location.appId]);
+  function navigate(next: ArenaLocation, replace = false) {
+    const url = buildArenaUrl(next);
+    if (url === buildArenaUrl(locationRef.current)) return;
+    window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+    setLocation(next);
+  }
+  function chooseModels(ids: string[]) {
+    const models = normalizeModels(ids);
+    const current = locationRef.current;
+    navigate(
+      {
+        ...current,
+        models,
+        tab: models.includes(current.tab) ? current.tab : models[0],
+      },
+      true,
+    );
+  }
+  function changePage(page: ArenaPage) {
+    navigate({ ...location, page, appId: undefined, q: "", category: "all" });
+  }
+  function openApp(app: CodeExample, e?: MouseEvent<HTMLAnchorElement>) {
+    if (e && !ordinaryClick(e)) return;
+    e?.preventDefault();
+    returnFocus.current =
+      e?.currentTarget ??
+      (document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null);
+    openedFromGallery.current = true;
+    navigate({ ...location, appId: app.id, content: "demo" });
+  }
+  function closeApp() {
+    if (openedFromGallery.current) {
+      openedFromGallery.current = false;
+      window.history.back();
+    } else
+      navigate(
+        { ...location, appId: undefined, page: "explore", content: "demo" },
+        true,
+      );
+  }
+  function exploreModel(id: string) {
+    navigate({
+      ...location,
+      models: [id],
+      tab: id,
+      page: "explore",
+      q: "",
+      category: "all",
+      appId: undefined,
+    });
+    requestAnimationFrame(() =>
+      collectionRef.current?.scrollIntoView({ block: "start" }),
+    );
+  }
+  const activeApp = apps.find((app) => app.id === location.appId);
+  const categories = useMemo(
+    () => [...new Set(apps.flatMap((a) => a.tags))].sort(),
+    [apps],
+  );
+  const filteredApps = useMemo(
+    () =>
+      apps.filter(
+        (app) =>
+          (location.category === "all" ||
+            app.tags.includes(location.category)) &&
+          `${app.title} ${app.tags.join(" ")} ${app.prompt}`
+            .toLowerCase()
+            .includes(location.q.trim().toLowerCase()),
+      ),
+    [apps, location.category, location.q],
+  );
+  const appHref = (app: CodeExample) =>
+    buildArenaUrl({ ...location, appId: app.id, content: "demo" });
+  const directoryModels = MODELS.filter(
+    (m) =>
+      (modelProvider === "all" || m.provider === modelProvider) &&
+      `${m.name} ${groups.find((g) => g.id === m.provider)?.name}`
+        .toLowerCase()
+        .includes(location.q.toLowerCase()),
+  ).sort(
+    (a, b) => Number(featuredSet.has(b.id)) - Number(featuredSet.has(a.id)),
+  );
 
   return (
-    <>
-      {/* Apps / Stats by App / Stats by Model toggle */}
-      <div className="flex items-center justify-center mb-6">
-        <div className="flex items-center gap-px bg-neutral-100 p-0.5">
-          <button onClick={() => setPageMode("apps")} className={toggleBtnClass(pageMode === "apps")}>
-            Apps
-          </button>
-          <button onClick={() => setPageMode("stats-by-app")} className={toggleBtnClass(pageMode === "stats-by-app")}>
-            Stats by App
-          </button>
-          <button onClick={() => setPageMode("stats-by-model")} className={toggleBtnClass(pageMode === "stats-by-model")}>
-            Stats by Model
-          </button>
+    <div className="arena-shell">
+      <a href="#arena-collection" className="arena-skip">
+        Skip to the collection
+      </a>
+      <header className="arena-header">
+        <div className="arena-header-inner">
+          <a
+            href={buildArenaUrl({
+              ...location,
+              appId: undefined,
+              page: "explore",
+              q: "",
+              category: "all",
+            })}
+            onClick={(e) => {
+              if (ordinaryClick(e)) {
+                e.preventDefault();
+                changePage("explore");
+                window.scrollTo({ top: 0 });
+              }
+            }}
+            className="arena-brand"
+          >
+            <Brandmark size={29} fill="var(--arena-accent)" />
+            <span>
+              Arena<span className="arena-byline">by Logic</span>
+            </span>
+          </a>
+          <nav aria-label="Main navigation" className="arena-nav">
+            {navigation.map(({ id, label, icon: Icon }) => (
+              <a
+                key={id}
+                href={buildArenaUrl({
+                  ...location,
+                  page: id,
+                  appId: undefined,
+                  q: "",
+                  category: "all",
+                })}
+                aria-current={location.page === id ? "page" : undefined}
+                onClick={(e) => {
+                  if (ordinaryClick(e)) {
+                    e.preventDefault();
+                    changePage(id);
+                  }
+                }}
+              >
+                <Icon size={16} aria-hidden="true" />
+                {label}
+              </a>
+            ))}
+          </nav>
+          <a
+            className="arena-source"
+            href="https://github.com/with-logic/model-arena"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            View source
+            <ExternalLink size={13} aria-hidden="true" />
+          </a>
         </div>
-      </div>
+      </header>
 
-      {pageMode === "stats-by-model" ? (
-        <StatsModelDashboard />
-      ) : (
-        /* App grid (poster or mini chart) */
-        <div className="grid gap-px bg-neutral-200 sm:grid-cols-2 lg:grid-cols-3 border border-neutral-200 overflow-hidden">
-          {apps.map((app) => (
-            <a
-              key={app.id}
-              href={pageMode === "stats-by-app"
-                ? `/compare/${app.id}?models=${DEFAULT_COMPARISON_MODELS.join(',')}&view=side-by-side&content=stats`
-                : `/compare/${app.id}?models=${DEFAULT_COMPARISON_MODELS.join(',')}&view=side-by-side`}
-              className="group bg-white p-4 cursor-pointer hover:bg-neutral-50 transition-colors"
-              onClick={(e) => handleOpenApp(e, app)}
-            >
-              <div className="aspect-video bg-neutral-100 overflow-hidden mb-3">
-                {pageMode === "stats-by-app" ? (
-                  <StatsMiniChart appId={app.id} />
-                ) : (
-                  app.poster && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={app.poster}
-                      alt={app.title}
-                      className="w-full h-full object-cover"
-                      onError={(e) => {
-                        e.currentTarget.style.display = 'none';
-                      }}
-                    />
-                  )
-                )}
+      <main className="arena-main" id="arena-main">
+        <section
+          className="arena-collection"
+          id="arena-collection"
+          ref={collectionRef}
+        >
+          {location.page === "explore" ? (
+            <h1 className="sr-only">Arena app comparisons</h1>
+          ) : (
+            <div className="arena-section-heading">
+              <h1>
+                {location.page === "models" ? "Models" : "Code statistics"}
+              </h1>
+            </div>
+          )}
+
+          <div className="arena-shortlist">
+            <div className="arena-shortlist-models">
+              <span className="arena-shortlist-label">Comparing</span>
+              {location.models.map((id) => {
+                const m = MODELS.find((m) => m.id === id)!;
+                return (
+                  <span className="arena-model-chip" key={id}>
+                    <span className={`h-2 w-2 rounded-full ${m.color}`} />
+                    {m.name}
+                    {location.models.length > 1 && (
+                      <button
+                        aria-label={`Remove ${m.name} from comparison`}
+                        onClick={() =>
+                          chooseModels(location.models.filter((x) => x !== id))
+                        }
+                      >
+                        <X size={13} />
+                      </button>
+                    )}
+                  </span>
+                );
+              })}
+            </div>
+            <ModelPicker
+              selectedModels={location.models}
+              onChange={chooseModels}
+            />
+          </div>
+
+          {location.page === "explore" && (
+            <>
+              <div className="arena-gallery-tools">
+                <label className="arena-search">
+                  <Search size={18} aria-hidden="true" />
+                  <span className="sr-only">Search apps</span>
+                  <input
+                    value={location.q}
+                    onChange={(e) =>
+                      navigate({ ...location, q: e.target.value }, true)
+                    }
+                    placeholder="Search apps, ideas, or features…"
+                  />
+                  {location.q && (
+                    <button
+                      onClick={() => navigate({ ...location, q: "" }, true)}
+                      aria-label="Clear app search"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </label>
+                <span className="arena-result-count" role="status">
+                  {filteredApps.length} of {apps.length} apps
+                </span>
               </div>
-
-              <h3 className="font-medium text-neutral-900 group-hover:text-black mb-2">
-                {app.title}
-              </h3>
-
-              {/* Model dots */}
-              <div className="flex items-center gap-1">
-                {MODELS_BY_PROVIDER.map((group, gi) => (
-                  <div key={group.id} className={`flex items-center gap-1 ${gi > 0 ? "ml-1" : ""}`}>
-                    {group.models.map((model) => (
-                      <div
-                        key={model.id}
-                        className={`w-2 h-2 rounded-full ${model.color}`}
-                        title={model.name}
-                      />
-                    ))}
-                  </div>
+              <div
+                className="arena-categories"
+                aria-label="Filter apps by category"
+              >
+                <button
+                  aria-pressed={location.category === "all"}
+                  onClick={() =>
+                    navigate({ ...location, category: "all" }, true)
+                  }
+                >
+                  All apps <span>{apps.length}</span>
+                </button>
+                {categories.map((tag) => (
+                  <button
+                    key={tag}
+                    aria-pressed={location.category === tag}
+                    onClick={() =>
+                      navigate({ ...location, category: tag }, true)
+                    }
+                  >
+                    {categoryLabels[tag] || tag}
+                    <span>
+                      {apps.filter((a) => a.tags.includes(tag)).length}
+                    </span>
+                  </button>
                 ))}
               </div>
-
-              {app.tags && app.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-3">
-                  {app.tags.slice(0, 3).map((tag) => (
-                    <span key={tag} className="text-xs text-neutral-500">
-                      {tag}{app.tags!.indexOf(tag) < Math.min(app.tags!.length - 1, 2) ? "," : ""}
-                    </span>
+              {filteredApps.length ? (
+                <div className="arena-gallery">
+                  {filteredApps.map((app) => (
+                    <a
+                      key={app.id}
+                      href={appHref(app)}
+                      onClick={(e) => openApp(app, e)}
+                      className="arena-app-card"
+                    >
+                      <div className="arena-app-image">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={app.poster}
+                          alt=""
+                          loading="lazy"
+                          width={600}
+                          height={360}
+                          onError={(e) => {
+                            e.currentTarget.style.visibility = "hidden";
+                          }}
+                        />
+                        <span className="arena-open-label">
+                          Compare app
+                          <ArrowRight size={15} />
+                        </span>
+                      </div>
+                      <div className="arena-app-info">
+                        <div className="arena-app-meta">
+                          <span>
+                            {app.tags
+                              .map((tag) => categoryLabels[tag] || tag)
+                              .join(" / ") || "App"}
+                          </span>
+                          <span>
+                            {
+                              Object.keys(
+                                stats.apps[app.id]?.models || {},
+                              ).filter((id) => MODELS.some((m) => m.id === id))
+                                .length
+                            }{" "}
+                            models
+                          </span>
+                        </div>
+                        <h3>{app.title}</h3>
+                        <p>
+                          {app.prompt.match(/Goal:\s*([^\n]+)/)?.[1] ||
+                            app.prompt.split("\n")[0]}
+                        </p>
+                      </div>
+                    </a>
                   ))}
-                  {app.tags.length > 3 && (
-                    <span className="text-xs text-neutral-400">+{app.tags.length - 3}</span>
-                  )}
+                </div>
+              ) : (
+                <div className="arena-empty">
+                  <h3>No apps match those filters.</h3>
+                  <p>Try a different search or explore the full collection.</p>
+                  <button
+                    className="arena-button arena-button-secondary"
+                    onClick={() =>
+                      navigate({ ...location, q: "", category: "all" }, true)
+                    }
+                  >
+                    Show all apps
+                  </button>
                 </div>
               )}
-            </a>
-          ))}
-        </div>
-      )}
+            </>
+          )}
 
-      {selectedApp && (
+          {location.page === "models" && (
+            <>
+              <div className="arena-gallery-tools">
+                <label className="arena-search">
+                  <Search size={18} aria-hidden="true" />
+                  <span className="sr-only">Search model directory</span>
+                  <input
+                    value={location.q}
+                    onChange={(e) =>
+                      navigate({ ...location, q: e.target.value }, true)
+                    }
+                    placeholder="Find a model or provider…"
+                  />
+                </label>
+                <label className="arena-provider-filter">
+                  <span className="sr-only">Provider</span>
+                  <select
+                    value={modelProvider}
+                    onChange={(e) => setModelProvider(e.target.value)}
+                  >
+                    <option value="all">All providers</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <p className="arena-directory-count" role="status">
+                {directoryModels.length} models. Featured comparisons first;
+                every generation is available.
+              </p>
+              <div className="arena-model-directory">
+                {directoryModels.map((m) => (
+                  <article key={m.id} className="arena-directory-row">
+                    <span className={`arena-model-swatch ${m.color}`} />
+                    <div className="arena-directory-name">
+                      <span>
+                        {groups.find((g) => g.id === m.provider)?.name}
+                      </span>
+                      <h3>{m.name}</h3>
+                      <p>
+                        {getModelAggregate(m.id)?.totalApps || 0} apps
+                        {featuredSet.has(m.id) ? " · Featured comparison" : ""}
+                      </p>
+                    </div>
+                    <div className="arena-directory-actions">
+                      <button
+                        className="arena-text-button"
+                        onClick={() => exploreModel(m.id)}
+                      >
+                        Explore apps
+                        <ArrowRight size={15} />
+                      </button>
+                      <button
+                        className="arena-add-model"
+                        aria-pressed={location.models.includes(m.id)}
+                        disabled={
+                          location.models.includes(m.id)
+                            ? location.models.length === 1
+                            : location.models.length === MAX_COMPARISON_MODELS
+                        }
+                        onClick={() =>
+                          chooseModels(
+                            location.models.includes(m.id)
+                              ? location.models.filter((id) => id !== m.id)
+                              : [...location.models, m.id],
+                          )
+                        }
+                      >
+                        {location.models.includes(m.id)
+                          ? "Selected"
+                          : "Compare"}
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {!directoryModels.length && (
+                <div className="arena-empty">
+                  <h3>No models match.</h3>
+                  <button
+                    className="arena-text-button"
+                    onClick={() => {
+                      setModelProvider("all");
+                      navigate({ ...location, q: "" }, true);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+          {location.page === "stats" && (
+            <StatsModelDashboard
+              selectedModels={location.models}
+              onExploreModel={exploreModel}
+            />
+          )}
+        </section>
+        <footer className="arena-footer">
+          <p>
+            Arena / Model evaluation
+            <br />
+            <span>
+              {MODELS.length} models · {apps.length} shared challenges
+            </span>
+          </p>
+          <div>
+            <a
+              href="https://github.com/with-logic/model-arena/tree/main/examples"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Read the prompts
+            </a>
+            <a
+              href="https://logic.inc"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Made by Logic
+            </a>
+          </div>
+        </footer>
+      </main>
+      {ready && activeApp && (
         <AppComparisonView
-          app={selectedApp}
+          app={activeApp}
           apps={apps}
-          isOpen={true}
-          onClose={handleClose}
-          initialModels={initialModels}
-          initialView={initialView}
-          initialTab={initialTab}
-          initialContentMode={initialContentMode}
+          location={location}
+          onChange={(next) => navigate(next, true)}
+          onModelsChange={chooseModels}
+          onClose={closeApp}
         />
       )}
-    </>
+      {ready && location.appId && !activeApp && (
+        <Dialog.Root
+          open
+          onOpenChange={(open) => {
+            if (!open) closeApp();
+          }}
+        >
+          <Dialog.Portal>
+            <Dialog.Overlay className="arena-workspace-overlay" />
+            <Dialog.Content className="arena-not-found">
+              <Dialog.Title>That app isn’t in the collection.</Dialog.Title>
+              <Dialog.Description>
+                Browse the collection to find another app to compare.
+              </Dialog.Description>
+              <button
+                className="arena-button arena-button-primary"
+                onClick={closeApp}
+              >
+                Explore all apps
+              </button>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
+      )}
+    </div>
   );
 }

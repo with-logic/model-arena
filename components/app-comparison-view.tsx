@@ -1,479 +1,452 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { CodeExample } from "@/lib/code-examples";
-import { MODELS as BASE_MODELS, MODELS_BY_PROVIDER } from "@/lib/models";
-import { DEFAULT_COMPARISON_MODELS } from "@/lib/models.config";
-import { Brandmark } from "./brandmark";
+import { useEffect, useRef, useState } from "react";
+import * as Dialog from "@radix-ui/react-dialog";
+import {
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  Columns2,
+  Square,
+  Share2,
+  FileText,
+  ChartNoAxesCombined,
+  MoreHorizontal,
+  ExternalLink,
+  X,
+} from "lucide-react";
+import type { CodeExample } from "@/lib/code-examples";
+import { buildArenaUrl, type ArenaLocation } from "@/lib/arena-state";
+import { MODELS } from "@/lib/models";
+import { ModelPicker } from "./model-picker";
 import { StatsComparisonPanel } from "./stats-comparison-panel";
-
-const MODELS = BASE_MODELS.map(m => ({
-  ...m,
-  hoverColor: m.color.replace("bg-", "hover:bg-").replace("-500", "-600"),
-  borderColor: m.color.replace("bg-", "border-"),
-  textColor: m.color.replace("bg-", "text-").replace("-500", "-600"),
-}));
-
-interface AppComparisonViewProps {
-  app: CodeExample;
-  apps?: CodeExample[];
-  isOpen: boolean;
-  onClose: () => void;
-  initialModels?: string[];
-  initialView?: "side-by-side" | "tabs";
-  initialTab?: string;
-  initialContentMode?: "demo" | "stats";
-}
 
 export function AppComparisonView({
   app,
-  apps = [],
-  isOpen,
-  onClose: _onClose,
-  initialModels = [...DEFAULT_COMPARISON_MODELS],
-  initialView = "side-by-side",
-  initialTab = DEFAULT_COMPARISON_MODELS[0],
-  initialContentMode = "demo",
-}: AppComparisonViewProps) {
-  void _onClose; // Required prop for interface but handled via history.back()
-  const [selectedModels, setSelectedModels] = useState<string[]>(initialModels);
-  const [viewMode, setViewMode] = useState<"side-by-side" | "tabs">(initialView);
-  const [activeTab, setActiveTab] = useState(initialTab);
-  const [copied, setCopied] = useState(false);
-  const [hasPushedState, setHasPushedState] = useState(false);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isModelPickerOpen, setIsModelPickerOpen] = useState(false);
-  const [contentMode, setContentMode] = useState<"demo" | "stats">(initialContentMode);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const modelPickerRef = useRef<HTMLDivElement>(null);
-
-  // Update state when initial props change (for URL navigation).
-  // Serialize initialModels to avoid a new array reference triggering an infinite loop.
-  const initialModelsKey = initialModels.join(",");
+  apps,
+  location,
+  onChange,
+  onModelsChange,
+  onClose,
+}: {
+  app: CodeExample;
+  apps: CodeExample[];
+  location: ArenaLocation;
+  onChange: (location: ArenaLocation) => void;
+  onModelsChange: (ids: string[]) => void;
+  onClose: () => void;
+}) {
+  const [narrow, setNarrow] = useState(false);
+  const [shareState, setShareState] = useState<"idle" | "copied" | "manual">(
+    "idle",
+  );
+  const [shareUrl, setShareUrl] = useState("");
+  const shareRequest = useRef(0);
+  const comparisonUrl = buildArenaUrl(location);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsRef = useRef<HTMLDivElement>(null);
+  const optionsTriggerRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    setSelectedModels(initialModels);
-    setViewMode(initialView);
-    setActiveTab(initialTab);
-    setContentMode(initialContentMode);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialModelsKey, initialView, initialTab, initialContentMode]);
-
-  // Build the comparison URL
-  const buildUrl = useCallback((appId: string, models: string[], mode: "side-by-side" | "tabs", tab: string, content: "demo" | "stats") => {
-    const params = new URLSearchParams();
-    params.set("models", models.join(","));
-    params.set("view", mode);
-    if (mode === "tabs") params.set("tab", tab);
-    if (content === "stats") params.set("content", "stats");
-    return `/compare/${appId}?${params.toString()}`;
+    if (!optionsOpen) return;
+    function dismiss(event: PointerEvent) {
+      if (
+        event.target instanceof Node &&
+        !optionsRef.current?.contains(event.target)
+      )
+        setOptionsOpen(false);
+    }
+    let focusFrame: number | undefined;
+    function dismissOnFrameFocus() {
+      // Frame pointer events do not bubble to the parent document.
+      focusFrame = requestAnimationFrame(() => {
+        if (document.activeElement?.tagName === "IFRAME") setOptionsOpen(false);
+      });
+    }
+    document.addEventListener("pointerdown", dismiss);
+    window.addEventListener("blur", dismissOnFrameFocus);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      window.removeEventListener("blur", dismissOnFrameFocus);
+      if (focusFrame !== undefined) cancelAnimationFrame(focusFrame);
+    };
+  }, [optionsOpen]);
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 767px)");
+    const update = () => setNarrow(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
   }, []);
-
-  // Navigation between apps
-  const currentIndex = apps.findIndex(a => a.id === app.id);
-  const prevApp = currentIndex > 0 ? apps[currentIndex - 1] : null;
-  const nextApp = currentIndex < apps.length - 1 ? apps[currentIndex + 1] : null;
-
-  const navigateToApp = useCallback((targetApp: CodeExample) => {
-    const newUrl = buildUrl(targetApp.id, selectedModels, viewMode, activeTab, contentMode);
-    window.history.pushState({ app: targetApp.id }, "", newUrl);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-  }, [buildUrl, selectedModels, viewMode, activeTab, contentMode]);
-
-  // Push initial state when comparison opens (only once)
   useEffect(() => {
-    if (isOpen && !hasPushedState) {
-      const currentPath = window.location.pathname;
-      // Only push if we're not already on this comparison URL (i.e., we clicked to open it)
-      if (!currentPath.startsWith(`/compare/${app.id}`)) {
-        const newUrl = buildUrl(app.id, selectedModels, viewMode, activeTab, contentMode);
-        window.history.pushState({ app: app.id }, "", newUrl);
-      }
-      setHasPushedState(true);
-    }
-    if (!isOpen) {
-      setHasPushedState(false);
-    }
-  }, [isOpen, hasPushedState, app.id, selectedModels, viewMode, activeTab, contentMode, buildUrl]);
-
-  // Update URL when state changes (after initial push)
-  useEffect(() => {
-    if (isOpen && hasPushedState) {
-      const newUrl = buildUrl(app.id, selectedModels, viewMode, activeTab, contentMode);
-      window.history.replaceState({ app: app.id }, "", newUrl);
-    }
-  }, [isOpen, hasPushedState, selectedModels, viewMode, activeTab, contentMode, app.id, buildUrl]);
-
-  // Handle closing via escape key or X button
-  const handleClose = useCallback(() => {
-    window.history.back();
-  }, []);
-
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (isModelPickerOpen) {
-          setIsModelPickerOpen(false);
-        } else if (isDropdownOpen) {
-          setIsDropdownOpen(false);
-        } else {
-          handleClose();
-        }
-      }
-    };
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      document.body.style.overflow = "hidden";
-    }
+    setShareState("idle");
     return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "";
+      shareRequest.current += 1;
     };
-  }, [isOpen, handleClose, isDropdownOpen, isModelPickerOpen]);
-
-  // Close dropdown when clicking outside
+  }, [comparisonUrl]);
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsDropdownOpen(false);
-      }
-    };
-    if (isDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isDropdownOpen]);
-
-  // Close model picker when clicking outside
+    setPromptOpen(false);
+  }, [app.id]);
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (modelPickerRef.current && !modelPickerRef.current.contains(e.target as Node)) {
-        setIsModelPickerOpen(false);
-      }
-    };
-    if (isModelPickerOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [isModelPickerOpen]);
-
-  if (!isOpen) return null;
-
-  const toggleModel = (modelId: string) => {
-    setSelectedModels(prev => {
-      if (prev.includes(modelId)) {
-        if (prev.length === 1) return prev; // Keep at least one
-        return prev.filter(m => m !== modelId);
-      }
-      return [...prev, modelId];
+    if (shareState !== "copied") return;
+    const timer = setTimeout(() => setShareState("idle"), 2000);
+    return () => clearTimeout(timer);
+  }, [shareState]);
+  const index = apps.findIndex((a) => a.id === app.id);
+  const selected = location.models.flatMap((id) => {
+    const model = MODELS.find((m) => m.id === id);
+    return model ? [model] : [];
+  });
+  const split =
+    location.view === "side-by-side" && !narrow && selected.length > 1;
+  const visible = split
+    ? selected
+    : selected.filter((m) => m.id === location.tab);
+  function focusModel(id: string) {
+    const returnToSplit =
+      location.view === "tabs" && location.tab === id && selected.length > 1;
+    onChange({
+      ...location,
+      tab: id,
+      ...(!narrow
+        ? {
+            view: returnToSplit ? ("side-by-side" as const) : ("tabs" as const),
+          }
+        : {}),
     });
-  };
-
-  const selectAll = () => setSelectedModels(MODELS.map(m => m.id));
-
-  const copyLink = async () => {
+  }
+  async function share() {
+    const request = ++shareRequest.current;
+    const url = window.location.href;
+    const isCurrent = () =>
+      request === shareRequest.current && window.location.href === url;
+    setShareState("idle");
+    setShareUrl(url);
     try {
-      await navigator.clipboard.writeText(window.location.href);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+      await navigator.clipboard.writeText(url);
+      if (isCurrent()) setShareState("copied");
+    } catch {
+      if (isCurrent()) setShareState("manual");
     }
-  };
-
+  }
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col">
-      {/* Header */}
-      <header className="border-b border-neutral-200 flex-shrink-0 px-4 py-2 flex items-center justify-between gap-4">
-        {/* Left - logo & app name with nav arrows */}
-        <div className="flex items-center gap-3 min-w-0">
-          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/" className="flex-shrink-0" title="Back to home">
-            <Brandmark size={24} fill="#0a0a0a" />
-          </a>
-          <span className="text-neutral-300">/</span>
-          <div className="flex items-center gap-1.5 min-w-0">
+    <Dialog.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <Dialog.Portal>
+        <Dialog.Overlay className="arena-workspace-overlay" />
+        <Dialog.Content
+          className="arena-workspace"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => {
+            if (optionsOpen) {
+              event.preventDefault();
+              setOptionsOpen(false);
+              optionsTriggerRef.current?.focus();
+            }
+          }}
+        >
+          <Dialog.Title className="sr-only">Compare {app.title}</Dialog.Title>
+          <Dialog.Description className="sr-only">
+            Models appear from left to right in the order shown in the toolbar.
+            Focus on a model to use a full-width app. Comparison options contain
+            model selection, statistics, the prompt, and sharing.
+          </Dialog.Description>
+          <header className="arena-comparison-bar">
             <button
-              onClick={() => prevApp && navigateToApp(prevApp)}
-              disabled={!prevApp}
-              className={`p-0.5 transition-colors ${prevApp ? 'text-neutral-400 hover:text-neutral-900 cursor-pointer' : 'text-neutral-200 cursor-not-allowed'}`}
-              title={prevApp ? `Previous: ${prevApp.title}` : 'No previous example'}
+              onClick={onClose}
+              className="arena-back arena-icon-button"
+              aria-label="Back to collection"
+              title="Back to collection"
             >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              <ArrowLeft size={17} />
+              <span className="sr-only">Collection</span>
             </button>
-            <button
-              onClick={() => nextApp && navigateToApp(nextApp)}
-              disabled={!nextApp}
-              className={`p-0.5 transition-colors ${nextApp ? 'text-neutral-400 hover:text-neutral-900 cursor-pointer' : 'text-neutral-200 cursor-not-allowed'}`}
-              title={nextApp ? `Next: ${nextApp.title}` : 'No next example'}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-            {/* Title with dropdown */}
-            <div className="relative" ref={dropdownRef}>
+            <div className="arena-app-navigation">
               <button
-                onClick={() => apps.length > 0 && setIsDropdownOpen(!isDropdownOpen)}
-                className={`font-medium text-neutral-900 truncate max-w-[200px] px-1.5 py-0.5 -mx-1.5 -my-0.5 rounded transition-all ${apps.length === 0 ? 'cursor-default' : 'cursor-pointer hover:outline hover:outline-1 hover:outline-neutral-300'}`}
+                className="arena-icon-button arena-step-app"
+                aria-label="Previous app"
+                disabled={index <= 0}
+                onClick={() =>
+                  onChange({ ...location, appId: apps[index - 1].id })
+                }
               >
-                {app.title}
+                <ChevronLeft size={15} />
               </button>
-              {isDropdownOpen && apps.length > 0 && (
-                <div className="absolute top-full left-0 mt-1 w-72 max-h-80 overflow-y-auto bg-white border border-neutral-200 shadow-lg z-50">
-                  {apps.map((a, index) => (
-                    <button
-                      key={a.id}
-                      onClick={() => {
-                        navigateToApp(a);
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`w-full px-3 py-2 text-left text-sm hover:bg-neutral-50 transition-colors flex items-center gap-2 ${
-                        a.id === app.id ? 'bg-neutral-100 font-medium' : ''
-                      }`}
-                    >
-                      <span className="text-neutral-400 text-xs w-5">{index + 1}</span>
-                      <span className="truncate">{a.title}</span>
-                    </button>
+              <label>
+                <span className="sr-only">Choose an app</span>
+                <select
+                  value={app.id}
+                  onChange={(e) =>
+                    onChange({ ...location, appId: e.target.value })
+                  }
+                >
+                  {apps.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.title}
+                    </option>
                   ))}
+                </select>
+              </label>
+              <button
+                className="arena-icon-button arena-step-app"
+                aria-label="Next app"
+                disabled={index >= apps.length - 1}
+                onClick={() =>
+                  onChange({ ...location, appId: apps[index + 1].id })
+                }
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
+            {narrow ? (
+              <label className="arena-focused-model">
+                <span className="sr-only">Active model</span>
+                <select
+                  value={location.tab}
+                  onChange={(e) => focusModel(e.target.value)}
+                >
+                  {selected.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <div
+                className="arena-workspace-models"
+                aria-label="Models, ordered left to right"
+              >
+                {selected.map((model, i) => (
+                  <button
+                    key={model.id}
+                    aria-pressed={
+                      location.content === "stats" ||
+                      split ||
+                      location.tab === model.id
+                    }
+                    title={
+                      !split && location.tab === model.id && selected.length > 1
+                        ? "Return to split view"
+                        : `Focus on ${model.name}`
+                    }
+                    onClick={() => focusModel(model.id)}
+                  >
+                    <span className={`arena-signal ${model.color}`} />
+                    <span className="arena-model-number">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    {model.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {!narrow && selected.length > 1 && location.content === "demo" && (
+              <button
+                className="arena-icon-button"
+                aria-label={
+                  split ? "Focus on one model" : "Compare side by side"
+                }
+                title={split ? "Focus on one model" : "Compare side by side"}
+                onClick={() =>
+                  onChange({
+                    ...location,
+                    view: split ? "tabs" : "side-by-side",
+                  })
+                }
+              >
+                {split ? <Columns2 size={16} /> : <Square size={15} />}
+              </button>
+            )}
+            <div className="arena-bar-picker">
+              <ModelPicker
+                compact
+                selectedModels={location.models}
+                onChange={onModelsChange}
+              />
+            </div>
+            <div className="arena-options" ref={optionsRef}>
+              <button
+                ref={optionsTriggerRef}
+                className="arena-icon-button arena-options-trigger"
+                aria-label="Comparison options"
+                aria-expanded={optionsOpen}
+                aria-controls="comparison-options"
+                title="Comparison options"
+                onClick={() => setOptionsOpen((open) => !open)}
+              >
+                <MoreHorizontal size={20} />
+              </button>
+              {optionsOpen && (
+                <div
+                  id="comparison-options"
+                  className="arena-comparison-options"
+                  role="group"
+                  aria-label="Comparison options"
+                >
+                  <p className="arena-control-label">Comparison</p>
+                  <div
+                    className="arena-segment"
+                    aria-label="Comparison content"
+                  >
+                    <button
+                      aria-pressed={location.content === "demo"}
+                      onClick={() => onChange({ ...location, content: "demo" })}
+                    >
+                      Live apps
+                    </button>
+                    <button
+                      aria-pressed={location.content === "stats"}
+                      onClick={() =>
+                        onChange({ ...location, content: "stats" })
+                      }
+                    >
+                      <ChartNoAxesCombined size={14} />
+                      Code stats
+                    </button>
+                  </div>
+                  {!narrow && selected.length > 1 && (
+                    <div className="arena-segment" aria-label="App layout">
+                      <button
+                        aria-pressed={location.view === "side-by-side"}
+                        onClick={() =>
+                          onChange({ ...location, view: "side-by-side" })
+                        }
+                      >
+                        <Columns2 size={14} />
+                        Split
+                      </button>
+                      <button
+                        aria-pressed={location.view === "tabs"}
+                        onClick={() => onChange({ ...location, view: "tabs" })}
+                      >
+                        <Square size={13} />
+                        Focus
+                      </button>
+                    </div>
+                  )}
+                  <button
+                    className="arena-option-action"
+                    onClick={() => {
+                      setOptionsOpen(false);
+                      setPromptOpen(true);
+                    }}
+                  >
+                    <FileText size={15} />
+                    Shared prompt
+                  </button>
+                  <button
+                    className="arena-option-action arena-share"
+                    onClick={share}
+                  >
+                    <Share2 size={15} />
+                    <span role="status">
+                      {shareState === "copied" ? "Link copied" : "Share"}
+                    </span>
+                  </button>
+                  <a
+                    className="arena-option-action"
+                    href={`/apps/${location.tab}/${app.id}/index.html`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <ExternalLink size={15} />
+                    Open{" "}
+                    {
+                      selected.find((model) => model.id === location.tab)?.name
+                    }{" "}
+                    app
+                  </a>
+                  {shareState === "manual" && (
+                    <label className="arena-share-fallback">
+                      Copy link
+                      <input
+                        aria-label="Shareable comparison link"
+                        readOnly
+                        value={shareUrl}
+                        onFocus={(e) => e.target.select()}
+                      />
+                    </label>
+                  )}
                 </div>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* Center - selected model pills + add button with popover */}
-        <div className="flex items-center gap-1.5">
-          {/* Show selected/active models as pills */}
-          {(viewMode === "tabs"
-            ? MODELS.filter(m => m.id === activeTab)
-            : MODELS.filter(m => selectedModels.includes(m.id))
-          ).map(model => (
-            <span
-              key={model.id}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${model.color} text-white`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-white/50" />
-              {model.name}
-              {/* Remove button (only in side-by-side with >1 selected) */}
-              {viewMode === "side-by-side" && selectedModels.length > 1 && (
-                <button
-                  onClick={() => toggleModel(model.id)}
-                  className="ml-0.5 -mr-1 w-3.5 h-3.5 rounded-full hover:bg-white/20 inline-flex items-center justify-center transition-colors"
-                  title={`Remove ${model.name}`}
-                >
-                  <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </span>
-          ))}
-
-          {/* Add/change model popover trigger */}
-          <div className="relative" ref={modelPickerRef}>
-            <button
-              onClick={() => setIsModelPickerOpen(!isModelPickerOpen)}
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-neutral-100 text-neutral-600 hover:bg-neutral-200 transition-colors"
-              title={viewMode === "tabs" ? "Switch model" : "Add or remove models"}
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v12M6 12h12" />
-              </svg>
-              Models
-            </button>
-
-            {isModelPickerOpen && (
-              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-56 bg-white border border-neutral-200 shadow-lg z-50 py-1 max-h-[min(480px,80vh)] overflow-y-auto">
-                {MODELS_BY_PROVIDER.map((group, gi) => (
-                  <div key={group.id}>
-                    {gi > 0 && <div className="border-t border-neutral-100 my-1" />}
-                    <div className="px-3 py-1.5 text-[10px] text-neutral-400 uppercase tracking-wider font-medium">
-                      {group.name}
-                    </div>
-                    {group.models.map(gm => {
-                      const model = MODELS.find(m => m.id === gm.id)!;
-                      const isActive = viewMode === "tabs"
-                        ? activeTab === model.id
-                        : selectedModels.includes(model.id);
-                      return (
-                        <button
-                          key={model.id}
-                          onClick={() => {
-                            if (viewMode === "tabs") {
-                              setActiveTab(model.id);
-                              setIsModelPickerOpen(false);
-                            } else {
-                              toggleModel(model.id);
-                            }
-                          }}
-                          className={`w-full px-3 py-1.5 text-left text-sm flex items-center gap-2 transition-colors ${
-                            isActive ? "bg-neutral-50" : "hover:bg-neutral-50"
-                          }`}
-                        >
-                          <span className={`w-2 h-2 rounded-full ${model.color}`} />
-                          <span className="flex-1">{model.name}</span>
-                          {isActive && (
-                            <svg className="w-3.5 h-3.5 text-neutral-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+          </header>
+          <div className="arena-workspace-body">
+            {location.content === "stats" ? (
+              <StatsComparisonPanel
+                appId={app.id}
+                selectedModels={location.models}
+              />
+            ) : (
+              <div
+                className={`arena-demo-grid ${split ? "is-split" : ""}`}
+                style={
+                  split
+                    ? {
+                        gridTemplateColumns: `repeat(${visible.length}, minmax(340px, 1fr))`,
+                      }
+                    : undefined
+                }
+              >
+                {visible.map((model) => (
+                  <section
+                    key={`${app.id}/${model.id}`}
+                    className="arena-demo-panel"
+                    aria-label={`${model.name} app`}
+                  >
+                    <div
+                      className={`arena-model-edge ${model.color}`}
+                      aria-hidden="true"
+                    />
+                    <iframe
+                      src={`/apps/${model.id}/${app.id}/index.html`}
+                      title={`${app.title} by ${model.name}`}
+                      allow={[
+                        app.camera ? "camera" : "",
+                        app.microphone ? "microphone" : "",
+                        "fullscreen",
+                      ]
+                        .filter(Boolean)
+                        .join("; ")}
+                    />
+                  </section>
                 ))}
-                {viewMode === "side-by-side" && (
-                  <>
-                    <div className="border-t border-neutral-100 my-1" />
-                    <div className="flex items-center justify-center gap-2 px-3 py-1.5">
-                      <button
-                        onClick={() => { selectAll(); setIsModelPickerOpen(false); }}
-                        className="text-xs text-neutral-400 hover:text-neutral-900 transition-colors"
-                      >
-                        Select all
-                      </button>
-                      <span className="text-neutral-200">|</span>
-                      <button
-                        onClick={() => { setSelectedModels([selectedModels[0]]); setIsModelPickerOpen(false); }}
-                        className="text-xs text-neutral-400 hover:text-neutral-900 transition-colors"
-                      >
-                        Select none
-                      </button>
-                    </div>
-                  </>
-                )}
               </div>
             )}
           </div>
-        </div>
-
-        {/* Right - content toggle, view toggle, share, close */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {/* Demo / Stats toggle */}
-          <div className="flex items-center gap-px bg-neutral-100 p-0.5">
-            <button
-              onClick={() => setContentMode("demo")}
-              className={`px-2 py-1 text-xs font-medium transition-colors ${
-                contentMode === "demo"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-500 hover:text-neutral-900"
-              }`}
-            >
-              Demo
-            </button>
-            <button
-              onClick={() => setContentMode("stats")}
-              className={`px-2 py-1 text-xs font-medium transition-colors ${
-                contentMode === "stats"
-                  ? "bg-white text-neutral-900 shadow-sm"
-                  : "text-neutral-500 hover:text-neutral-900"
-              }`}
-            >
-              Stats
-            </button>
-          </div>
-
-          {/* Split / Tabs toggle (only for demo mode) */}
-          {contentMode === "demo" && (
-            <div className="flex items-center gap-px bg-neutral-100 p-0.5">
-              <button
-                onClick={() => setViewMode("side-by-side")}
-                className={`px-2 py-1 text-xs font-medium transition-colors ${
-                  viewMode === "side-by-side"
-                    ? "bg-white text-neutral-900 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-900"
-                }`}
+          <Dialog.Root open={promptOpen} onOpenChange={setPromptOpen}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="arena-dialog-overlay" />
+              <Dialog.Content
+                className="arena-prompt-dialog"
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  optionsTriggerRef.current?.focus();
+                }}
               >
-                Split
-              </button>
-              <button
-                onClick={() => setViewMode("tabs")}
-                className={`px-2 py-1 text-xs font-medium transition-colors ${
-                  viewMode === "tabs"
-                    ? "bg-white text-neutral-900 shadow-sm"
-                    : "text-neutral-500 hover:text-neutral-900"
-                }`}
-              >
-                Tabs
-              </button>
-            </div>
-          )}
-
-          <button
-            onClick={copyLink}
-            className="text-neutral-400 hover:text-neutral-900 transition-colors p-1"
-            title="Copy shareable link"
-          >
-            {copied ? (
-              <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-            ) : (
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-              </svg>
-            )}
-          </button>
-
-          <button
-            onClick={handleClose}
-            className="text-neutral-400 hover:text-neutral-900 transition-colors p-1"
-            title="Close (Esc)"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      </header>
-
-      {/* Content */}
-      <div className="flex-1 overflow-hidden">
-        {contentMode === "stats" ? (
-          <StatsComparisonPanel appId={app.id} selectedModels={selectedModels} />
-        ) : viewMode === "tabs" ? (
-          // Tabs view - single iframe
-          <div className="h-full">
-            <iframe
-              src={`/apps/${activeTab}/${app.id}`}
-              className="w-full h-full border-0"
-              title={`${app.title} - ${MODELS.find(m => m.id === activeTab)?.name}`}
-            />
-          </div>
-        ) : (
-          // Side by side view
-          <div
-            className="h-full grid gap-px bg-neutral-200"
-            style={{
-              gridTemplateColumns: `repeat(${selectedModels.length}, 1fr)`
-            }}
-          >
-            {selectedModels.map(modelId => {
-              const model = MODELS.find(m => m.id === modelId)!;
-              return (
-                <div key={modelId} className="flex flex-col bg-white overflow-hidden">
-                  {/* Model label */}
-                  <div className={`${model.color} px-3 py-2 text-white text-sm font-medium text-center flex-shrink-0`}>
-                    {model.name}
-                  </div>
-                  {/* iframe */}
-                  <iframe
-                    src={`/apps/${modelId}/${app.id}`}
-                    className="flex-1 w-full border-0"
-                    title={`${app.title} - ${model.name}`}
-                  />
+                <div className="arena-prompt-heading">
+                  <Dialog.Title>Shared prompt / {app.title}</Dialog.Title>
+                  <Dialog.Close
+                    className="arena-icon-button"
+                    aria-label="Close prompt"
+                  >
+                    <X size={18} />
+                  </Dialog.Close>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+                <Dialog.Description className="sr-only">
+                  Every model receives this same prompt.
+                </Dialog.Description>
+                <pre>{app.prompt}</pre>
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
   );
 }
