@@ -363,6 +363,9 @@ export const models: ModelConfig[] = [
 /** Default models shown in the side-by-side comparison view */
 export const DEFAULT_COMPARISON_MODELS = ["opus-5", "gpt-6-astra", "qwen-3.8-27b"] as const;
 
+/** Model shown to first-time visitors in the live collection. */
+export const DEFAULT_EXPLORER_MODEL = "gpt-6-astra";
+
 /** Configured models whose generated apps are ready for public comparison. */
 export const publishedModels = models.filter((model) => model.published !== false);
 
