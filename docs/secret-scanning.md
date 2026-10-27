@@ -45,8 +45,14 @@ changes need trusted human review, just like workflow changes; the required
 check does not technically enforce exception approval.
 
 For one historical finding, copy its complete Ignore ID into `.gitleaksignore`,
-one per line, with the reason and review reference. Its form is
-`<commit>:<path>:<rule>:<line>`. This is a finding fingerprint, not a file hash or
+one per line, with the reason and review reference on a separate comment line:
+
+```text
+# Generated frontend demo value; reviewed in <review link>.
+<commit>:<path>:<rule>:<line>
+```
+
+This is a finding fingerprint, not a file hash or
 whole-file exclusion. Rebase/history changes or a new introduction can produce a
 different ID.
 
