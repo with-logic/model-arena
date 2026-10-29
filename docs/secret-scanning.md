@@ -5,8 +5,9 @@ branch/tag pushes, merge queues, and manual runs. PR, merge-queue, and pushed
 commit-range scans report failure on findings. Non-publication full-history
 audits temporarily warn while historical findings are reviewed. Scanner, Git,
 and configuration errors fail the job. Secret-scan results are advisory for
-merging to `main`; publication gates remain blocking. Gitleaks recognizes
-credential patterns; it does not verify whether a match is a live, private secret.
+merging to `main`; publication gates remain blocking where configured. Gitleaks
+recognizes credential patterns; it does not verify whether a match is a live,
+private secret.
 
 PRs scan base-to-head history, so adding a credential and deleting it in a later
 commit still fails. Pushes scan the pushed range. First pushes to non-default
@@ -15,7 +16,8 @@ Missing required bases fail. In this audit workflow, new tag pushes, first
 default-branch pushes, and manual runs scan history reachable from the selected
 head and warn on historical findings during triage. Tag updates with a nonzero
 base SHA scan the pushed range and fail on findings. Separate publication and
-deployment gates remain strict.
+deployment gates remain strict where configured. This repository has no separate
+publication gate; its new-tag scans are advisory full-history audits.
 Ignored and untracked local files such as `.env` are outside the scan. A
 force-added or previously tracked `.env` is Git content and is checked.
 
