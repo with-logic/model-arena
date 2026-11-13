@@ -6,7 +6,7 @@ import { getAppStats } from "@/lib/stats";
 import { MODELS } from "@/lib/models";
 
 /** Map Tailwind bg classes to hex for recharts */
-const TW_HEX: Record<string, string> = {
+export const TW_HEX: Record<string, string> = {
   "bg-emerald-500": "#10b981",
   "bg-teal-500": "#14b8a6",
   "bg-cyan-500": "#06b6d4",
@@ -34,6 +34,7 @@ const TW_HEX: Record<string, string> = {
   "bg-cyan-600": "#0891b2",
   "bg-emerald-600": "#059669",
   "bg-emerald-700": "#047857",
+  "bg-cyan-700": "#0e7490",
   "bg-slate-500": "#64748b",
   "bg-fuchsia-600": "#c026d3",
   "bg-violet-600": "#7c3aed",
