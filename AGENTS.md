@@ -57,9 +57,8 @@ not prove that your agent is ready. The preparation checks of each review confir
 it.
 
 Commit `.crewrc` and its Crew-generated `.crewrc.lock`. Plain `crew install`
-retains the locked revision; `--latest` can advance it. The agent does not discard
-a lock change. The author commits it in the pull request under review, so that
-reviewers see it, or discards it after the review with `git restore .crewrc.lock`.
-If `.crewrc.lock` conflicts with the base branch, keep the base branch's lock; the
-next refresh can advance it again. Downloaded project skills stay ignored; authored
-and personal skills remain owned by their authors.
+retains the locked revision; `--latest` can advance it. The author commits a lock
+change in the pull request under review, so that reviewers see it, or discards it
+after the review with `git restore .crewrc.lock`. If `.crewrc.lock` conflicts with
+the base branch, keep the base branch's lock; the next refresh can advance it
+again. Authored and personal skills remain owned by their authors.
