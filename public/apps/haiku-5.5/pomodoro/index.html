@@ -1,0 +1,1305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Pomodoro</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='44' fill='%23ff5f6d'/%3E%3Ccircle cx='50' cy='56' r='26' fill='%23ffb347'/%3E%3C/svg%3E">
+<script>
+  // Apply the saved theme before first paint to avoid a light flash in dark mode.
+  (function () {
+    try {
+      var s = JSON.parse(localStorage.getItem('pomodoro.settings.v1') || '{}');
+      var t = s.theme;
+      var dark = t === 'dark' || ((!t || t === 'system') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      if (dark) document.documentElement.classList.add('dark');
+    } catch (e) { /* ignore */ }
+  })();
+</script>
+<style>
+  @property --a1 { syntax: '<color>'; inherits: true; initial-value: #ff5f6d; }
+  @property --a2 { syntax: '<color>'; inherits: true; initial-value: #ffb347; }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --a1: #ff5f6d;
+    --a2: #ffb347;
+    --bg: #f5f3ff;
+    --card: rgba(255, 255, 255, .72);
+    --panel: #ffffff;
+    --text: #1c1837;
+    --muted: #6b6789;
+    --line: rgba(28, 24, 55, .09);
+    --field: rgba(255, 255, 255, .9);
+    --shadow: 0 18px 40px -24px rgba(50, 30, 110, .35);
+    --radius: 24px;
+    color-scheme: light;
+  }
+  html[data-mode="short"] { --a1: #0fbf9f; --a2: #7ef2c9; }
+  html[data-mode="long"]  { --a1: #7c5cff; --a2: #38bdf8; }
+  html.dark {
+    --bg: #0b0917;
+    --card: rgba(255, 255, 255, .055);
+    --panel: #171430;
+    --text: #f5f3ff;
+    --muted: #a29dc4;
+    --line: rgba(255, 255, 255, .085);
+    --field: rgba(255, 255, 255, .06);
+    --shadow: 0 24px 50px -28px rgba(0, 0, 0, .8);
+    color-scheme: dark;
+  }
+  html {
+    transition: --a1 .6s ease, --a2 .6s ease, background-color .5s ease;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    transition: background-color .5s ease, color .5s ease;
+    overflow-x: hidden;
+  }
+
+  /* Ambient background blobs tinted by the current mode */
+  .blobs { position: fixed; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
+  .blob {
+    position: absolute; width: 55vmax; height: 55vmax; border-radius: 50%;
+    filter: blur(90px); opacity: .38;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  html.dark .blob { opacity: .22; }
+  .b1 { background: var(--a1); top: -25vmax; left: -15vmax; }
+  .b2 { background: var(--a2); bottom: -30vmax; right: -15vmax; animation-duration: 28s; }
+  .b3 { background: #7c5cff; top: 20%; left: 40%; width: 40vmax; height: 40vmax; opacity: .16; animation-duration: 34s; }
+  html.dark .b3 { opacity: .2; }
+  @keyframes drift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(6vmax, 4vmax) scale(1.12); }
+  }
+
+  .app { max-width: 1180px; margin: 0 auto; padding: 22px 18px 28px; }
+
+  /* Top bar */
+  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; gap: 12px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 46px; height: 46px; border-radius: 15px; display: grid; place-items: center; font-size: 24px;
+    background: linear-gradient(135deg, var(--a1), var(--a2));
+    box-shadow: 0 10px 24px -10px var(--a1);
+  }
+  .brand h1 { margin: 0; font-size: 1.4rem; letter-spacing: -.02em; }
+  .brand p { margin: 1px 0 0; color: var(--muted); font-size: .85rem; }
+  .top-actions { display: flex; gap: 10px; }
+
+  .icon-btn {
+    width: 42px; height: 42px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--card); color: var(--text); display: grid; place-items: center;
+    cursor: pointer; transition: transform .15s ease, background .2s ease; padding: 0;
+    font: inherit;
+  }
+  .icon-btn:hover { transform: translateY(-1px); }
+  .icon-btn:active { transform: scale(.94); }
+  .icon-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .icon-btn .i-sun { display: none; }
+  html.dark .icon-btn .i-sun { display: block; }
+  html.dark .icon-btn .i-moon { display: none; }
+  .icon-btn.del { width: 30px; height: 30px; font-size: .8rem; opacity: .35; border: 0; background: transparent; }
+  .icon-btn.del:hover { opacity: 1; color: #ff5f6d; background: var(--field); }
+
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--a1) 60%, transparent); outline-offset: 2px; }
+
+  /* Layout */
+  .grid { display: grid; gap: 18px; grid-template-columns: 1fr; }
+  .card {
+    background: var(--card);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: var(--shadow);
+    min-width: 0;
+  }
+  @media (min-width: 920px) {
+    .grid { grid-template-columns: 5fr 7fr; }
+    .timer-card     { grid-column: 1; grid-row: 1 / span 2; }
+    .stats-card     { grid-column: 2; grid-row: 1; }
+    .chart-card     { grid-column: 2; grid-row: 2; }
+    .breakdown-card { grid-column: 1; grid-row: 3; }
+    .log-card       { grid-column: 2; grid-row: 3; }
+  }
+
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .card h2 { margin: 0; font-size: 1rem; font-weight: 750; letter-spacing: -.01em; }
+  .sub { margin: 3px 0 0; color: var(--muted); font-size: .82rem; }
+  .pill {
+    padding: 6px 12px; border-radius: 999px; background: var(--field);
+    border: 1px solid var(--line); font-size: .8rem; font-weight: 700; white-space: nowrap;
+  }
+
+  /* Timer */
+  .timer-card { display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .mode-tabs {
+    display: flex; gap: 4px; padding: 4px; border-radius: 999px;
+    background: var(--field); border: 1px solid var(--line); width: 100%; max-width: 380px;
+  }
+  .mode-tabs button {
+    flex: 1; border: 0; background: transparent; color: var(--muted); font: inherit;
+    font-weight: 700; font-size: .85rem; padding: 9px 6px; border-radius: 999px;
+    cursor: pointer; transition: background .3s ease, color .3s ease, box-shadow .3s ease;
+  }
+  .mode-tabs button:hover { color: var(--text); }
+  .mode-tabs button[aria-selected="true"] {
+    background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff;
+    box-shadow: 0 8px 18px -10px var(--a1);
+  }
+
+  .ring-wrap { position: relative; width: min(300px, 80vw); aspect-ratio: 1; margin: 26px 0 14px; }
+  .ring { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .ring .track { fill: none; stroke: var(--line); stroke-width: 14; }
+  .ring .progress {
+    fill: none; stroke: url(#ringGrad); stroke-width: 14; stroke-linecap: round;
+    transition: stroke-dashoffset .3s linear;
+    filter: drop-shadow(0 0 8px color-mix(in srgb, var(--a1) 50%, transparent));
+  }
+  .ring-wrap.running .ring .progress { filter: drop-shadow(0 0 16px color-mix(in srgb, var(--a1) 75%, transparent)); }
+  .ring-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .time {
+    font-size: clamp(3.3rem, 13vw, 4.7rem); font-weight: 780; letter-spacing: -.035em;
+    font-variant-numeric: tabular-nums; line-height: 1;
+  }
+  .ring-wrap.running .time { animation: breathe 2.4s ease-in-out infinite; }
+  @keyframes breathe { 50% { transform: scale(1.025); } }
+  .phase { margin-top: 10px; color: var(--muted); font-weight: 650; font-size: .88rem; }
+
+  .task { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 7px; text-align: left; font-size: .8rem; color: var(--muted); font-weight: 700; }
+  .task input {
+    font: inherit; font-size: 1rem; font-weight: 500; color: var(--text); background: var(--field);
+    border: 1px solid var(--line); border-radius: 16px; padding: 13px 16px; outline: none;
+    transition: box-shadow .2s ease, border-color .2s ease;
+  }
+  .task input::placeholder { color: var(--muted); opacity: .7; }
+  .task input:focus { border-color: var(--a1); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a1) 22%, transparent); }
+
+  .controls { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+  .btn {
+    font: inherit; font-weight: 750; cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    color: var(--text); background: var(--field); border: 1px solid var(--line);
+    border-radius: 999px; padding: 13px 20px;
+    transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: scale(.97); }
+  .btn svg { width: 18px; height: 18px; flex-shrink: 0; }
+  .btn.primary {
+    color: #fff; border: 0; min-width: 170px; justify-content: center;
+    font-size: 1.08rem; padding: 16px 30px;
+    background: linear-gradient(135deg, var(--a1), var(--a2));
+    box-shadow: 0 14px 28px -12px var(--a1);
+  }
+  .btn.primary .i-pause { display: none; }
+  .btn.primary[data-state="running"] .i-pause { display: block; }
+  .btn.primary[data-state="running"] .i-play { display: none; }
+
+  .cycle { display: flex; gap: 9px; margin-top: 22px; align-items: center; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--line); transition: background .3s ease, transform .3s ease, box-shadow .3s ease; }
+  .dot.done { background: linear-gradient(135deg, var(--a1), var(--a2)); transform: scale(1.1); }
+  .dot.current { box-shadow: 0 0 0 4px color-mix(in srgb, var(--a1) 25%, transparent); }
+
+  .quote { margin: 18px 0 0; color: var(--muted); font-size: .93rem; min-height: 1.4em; font-style: italic; max-width: 360px; }
+
+  /* Stats */
+  .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat { background: var(--field); border: 1px solid var(--line); border-radius: 18px; padding: 14px 12px; min-width: 0; }
+  .stat b {
+    display: block; font-size: 1.75rem; letter-spacing: -.02em; font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, var(--a1), var(--a2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .stat span { font-size: .75rem; color: var(--muted); font-weight: 700; }
+  .goal { margin-top: 16px; }
+  .goal-top { display: flex; justify-content: space-between; gap: 8px; font-size: .84rem; font-weight: 700; margin-bottom: 9px; color: var(--muted); }
+  .bar-track { height: 12px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .bar-fill {
+    height: 100%; width: 0; border-radius: 999px;
+    background: linear-gradient(90deg, var(--a2), var(--a1));
+    transition: width .7s cubic-bezier(.2, .8, .2, 1);
+  }
+  @media (max-width: 560px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+
+  /* Segmented control */
+  .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); gap: 2px; }
+  .seg button {
+    font: inherit; font-size: .8rem; font-weight: 750; border: 0; background: transparent;
+    color: var(--muted); padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+
+  /* Chart */
+  #chart { width: 100%; height: auto; display: block; overflow: visible; }
+  #chart .grid { stroke: var(--line); stroke-width: 1; }
+  #chart .axis { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  #chart .xlabel { fill: var(--muted); font-size: 11.5px; font-weight: 650; }
+  #chart .xlabel.strong { fill: var(--text); font-weight: 800; }
+  #chart .goal-line { stroke: var(--muted); stroke-dasharray: 4 5; stroke-width: 1.5; opacity: .6; }
+  #chart .goal-text { fill: var(--muted); font-size: 11px; font-weight: 650; }
+  #chart .empty-text { fill: var(--muted); font-size: 14px; font-weight: 600; text-anchor: middle; }
+  #chart .bar-g { cursor: pointer; }
+  #chart .bar {
+    fill: url(#barGrad);
+    transform-box: fill-box; transform-origin: 50% 100%;
+    animation: grow .8s cubic-bezier(.2, .9, .25, 1) both;
+    transition: filter .2s ease, opacity .2s ease;
+  }
+  #chart .bar.empty { opacity: .22; }
+  #chart .bar.today { filter: drop-shadow(0 6px 10px color-mix(in srgb, var(--a1) 45%, transparent)); }
+  #chart .bar-g:hover .bar { opacity: .75; }
+  @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+  /* Breakdown */
+  .breakdown { display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .donut { width: 150px; height: 150px; flex-shrink: 0; }
+  .donut-big { fill: var(--text); font-size: 17px; font-weight: 800; text-anchor: middle; }
+  .donut-sub { fill: var(--muted); font-size: 11px; font-weight: 700; text-anchor: middle; }
+  .legend { list-style: none; margin: 0; padding: 0; flex: 1; min-width: 180px; display: grid; gap: 11px; }
+  .legend li { display: grid; grid-template-columns: 12px 1fr auto; gap: 10px; align-items: center; font-size: .92rem; min-width: 0; }
+  .legend i { width: 12px; height: 12px; border-radius: 4px; }
+  .lg-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .lg-val { color: var(--muted); font-variant-numeric: tabular-nums; font-size: .82rem; font-weight: 700; }
+
+  /* Log */
+  .log-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .ghost-sm {
+    font: inherit; font-size: .8rem; font-weight: 750; padding: 7px 13px; border-radius: 999px;
+    border: 1px solid var(--line); background: var(--field); color: var(--text); cursor: pointer;
+    transition: border-color .2s ease, color .2s ease;
+  }
+  .ghost-sm:hover { border-color: var(--a1); }
+  .ghost-sm:disabled { opacity: .45; cursor: default; border-color: var(--line); }
+  .ghost-sm.danger:hover:not(:disabled) { color: #ff5f6d; border-color: #ff5f6d; }
+  .log-list { list-style: none; margin: 0; padding: 0 6px 0 0; max-height: 380px; overflow: auto; scrollbar-width: thin; }
+  .day-head {
+    padding: 14px 6px 6px; font-size: .74rem; font-weight: 800; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--muted);
+  }
+  .day-head span { text-transform: none; letter-spacing: 0; font-weight: 650; }
+  .log-item {
+    display: grid; grid-template-columns: 70px 1fr auto 30px; gap: 12px; align-items: center;
+    padding: 9px 10px; border-radius: 14px; transition: background .2s ease;
+  }
+  .log-item:hover { background: var(--field); }
+  .log-time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .85rem; font-weight: 700; }
+  .log-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; min-width: 0; }
+  .log-label.muted { color: var(--muted); font-weight: 550; font-style: italic; }
+  .log-min {
+    font-size: .8rem; font-weight: 800; padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--a1) 24%, transparent), color-mix(in srgb, var(--a2) 24%, transparent));
+  }
+  .empty-state { list-style: none; text-align: center; padding: 28px 12px; color: var(--muted); }
+  .empty-state span { font-size: 2rem; display: block; margin-bottom: 6px; }
+  .empty-state p { margin: 0; font-size: .92rem; }
+
+  /* Footer */
+  .foot { display: flex; justify-content: center; gap: 18px; flex-wrap: wrap; margin-top: 22px; color: var(--muted); font-size: .8rem; font-weight: 600; }
+  kbd {
+    font: inherit; font-size: .74rem; font-weight: 800; padding: 2px 7px; border-radius: 7px;
+    background: var(--field); border: 1px solid var(--line); color: var(--text);
+  }
+
+  /* Settings dialog */
+  dialog.settings {
+    border: 1px solid var(--line); border-radius: 26px; padding: 0; background: var(--panel); color: var(--text);
+    width: min(480px, 92vw); max-height: 90vh; box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .5);
+  }
+  dialog.settings::backdrop { background: rgba(10, 8, 25, .5); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  dialog.settings[open] { animation: pop .3s cubic-bezier(.2, .9, .3, 1.15); }
+  @keyframes pop { from { opacity: 0; transform: translateY(12px) scale(.97); } to { opacity: 1; transform: none; } }
+  #settingsForm { padding: 22px; display: grid; gap: 16px; }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; }
+  .dlg-head h2 { margin: 0; font-size: 1.2rem; letter-spacing: -.01em; }
+  fieldset.group { border: 0; margin: 0; padding: 0; min-width: 0; }
+  fieldset.group legend { font-size: .74rem; font-weight: 800; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding: 0 0 10px; }
+  .field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  .num { display: flex; flex-direction: column; gap: 6px; font-size: .8rem; color: var(--muted); font-weight: 700; }
+  .num input {
+    font: inherit; font-size: 1rem; color: var(--text); background: var(--field); border: 1px solid var(--line);
+    border-radius: 14px; padding: 10px 12px; outline: none; width: 100%; font-variant-numeric: tabular-nums;
+  }
+  .num input:focus { border-color: var(--a1); box-shadow: 0 0 0 4px color-mix(in srgb, var(--a1) 22%, transparent); }
+  .check {
+    display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: 16px;
+    background: var(--field); border: 1px solid var(--line); cursor: pointer; margin-bottom: 8px;
+  }
+  .check input { width: 20px; height: 20px; accent-color: var(--a1); margin-top: 1px; flex-shrink: 0; }
+  .check input:disabled { opacity: .4; }
+  .check b { display: block; font-size: .95rem; }
+  .check small { color: var(--muted); font-size: .8rem; }
+  .range { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 16px; background: var(--field); border: 1px solid var(--line); font-weight: 700; font-size: .92rem; margin-bottom: 8px; }
+  .range span { display: flex; justify-content: space-between; }
+  .range output { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .range input { accent-color: var(--a1); width: 100%; }
+  #testSound { margin-top: 2px; }
+  .seg-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 4px; border-radius: 999px; background: var(--field); border: 1px solid var(--line); }
+  .seg-opt { position: relative; }
+  .seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg-opt span {
+    display: block; text-align: center; padding: 9px 8px; border-radius: 999px; font-weight: 750;
+    font-size: .88rem; color: var(--muted); cursor: pointer; transition: background .25s ease, color .25s ease;
+  }
+  .seg-opt input:checked + span { background: linear-gradient(135deg, var(--a1), var(--a2)); color: #fff; }
+  .seg-opt input:focus-visible + span { outline: 3px solid color-mix(in srgb, var(--a1) 60%, transparent); outline-offset: 2px; }
+  .dlg-foot { display: flex; justify-content: flex-end; }
+  .btn-done {
+    font: inherit; font-weight: 750; border: 0; border-radius: 999px; padding: 11px 22px; cursor: pointer; color: #fff;
+    background: linear-gradient(135deg, var(--a1), var(--a2));
+  }
+
+  /* Toast + confetti */
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, calc(100% + 48px)); z-index: 60;
+    background: var(--text); color: var(--bg); padding: 12px 20px; border-radius: 999px;
+    font-weight: 700; font-size: .9rem; box-shadow: var(--shadow); max-width: calc(100vw - 32px);
+    transition: transform .45s cubic-bezier(.2, .9, .3, 1.25); pointer-events: none; text-align: center;
+  }
+  .toast.show { transform: translate(-50%, 0); }
+  .confetti {
+    position: fixed; left: 0; top: 0; width: 9px; height: 14px; border-radius: 3px;
+    pointer-events: none; z-index: 70; will-change: transform, opacity;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+  }
+</style>
+</head>
+<body>
+<div class="blobs" aria-hidden="true"><span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span></div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" style="stop-color:var(--a2)"/>
+      <stop offset="1" style="stop-color:var(--a1)"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--a2)"/>
+      <stop offset="1" style="stop-color:var(--a1)"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true">🍅</div>
+      <div>
+        <h1>Pomodoro</h1>
+        <p>Small steps, big focus.</p>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" type="button" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <svg class="i-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        <svg class="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="Open settings" title="Settings">
+        <svg viewBox="0 0 24 24"><line x1="4" y1="7" x2="20" y2="7"/><circle cx="9" cy="7" r="2.2"/><line x1="4" y1="17" x2="20" y2="17"/><circle cx="15" cy="17" r="2.2"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="card timer-card" aria-label="Timer">
+      <div class="mode-tabs" id="modeTabs" role="tablist" aria-label="Timer mode">
+        <button type="button" role="tab" data-mode="focus" aria-selected="true">Focus</button>
+        <button type="button" role="tab" data-mode="short" aria-selected="false" tabindex="-1">Short break</button>
+        <button type="button" role="tab" data-mode="long" aria-selected="false" tabindex="-1">Long break</button>
+      </div>
+
+      <div class="ring-wrap" id="ringWrap">
+        <svg class="ring" viewBox="0 0 260 260" aria-hidden="true">
+          <circle class="track" cx="130" cy="130" r="118"/>
+          <circle class="progress" id="ringProgress" cx="130" cy="130" r="118"/>
+        </svg>
+        <div class="ring-center">
+          <div class="time" id="time" role="timer" aria-live="off">25:00</div>
+          <div class="phase" id="phaseLabel">Focus</div>
+        </div>
+      </div>
+
+      <label class="task">
+        <span>What are you working on?</span>
+        <input id="taskInput" type="text" maxlength="60" autocomplete="off" placeholder="e.g. Draft the project brief">
+      </label>
+
+      <div class="controls">
+        <button class="btn" id="resetBtn" type="button" title="Reset timer (R)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+          Reset
+        </button>
+        <button class="btn primary" id="startBtn" type="button" data-state="idle" title="Start / pause (Space)">
+          <svg class="i-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10-6.5z" fill="currentColor"/></svg>
+          <svg class="i-pause" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>
+          <span id="startLabel">Start</span>
+        </button>
+        <button class="btn" id="skipBtn" type="button" title="Skip phase (S)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l9 7-9 7z" fill="currentColor"/><rect x="16" y="5" width="3" height="14" rx="1" fill="currentColor"/></svg>
+          Skip
+        </button>
+      </div>
+
+      <div class="cycle" id="cycleDots" role="img" aria-label="Focus sessions in this cycle"></div>
+      <p class="quote" id="quote" aria-live="polite"></p>
+    </section>
+
+    <section class="card stats-card" aria-labelledby="todayTitle">
+      <div class="card-head">
+        <h2 id="todayTitle">Today</h2>
+        <span class="pill" id="streakPill">🔥 0 days streak</span>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><b id="todaySessions">0</b><span>sessions</span></div>
+        <div class="stat"><b id="todayMinutes">0</b><span>focus min</span></div>
+        <div class="stat"><b id="totalSessions">0</b><span>all time</span></div>
+        <div class="stat"><b id="totalHours">0</b><span>hours focused</span></div>
+      </div>
+      <div class="goal">
+        <div class="goal-top"><span id="goalText">Daily goal</span><span id="goalPct">0%</span></div>
+        <div class="bar-track" role="progressbar" aria-label="Daily goal progress"><div class="bar-fill" id="goalFill"></div></div>
+      </div>
+    </section>
+
+    <section class="card chart-card" aria-labelledby="chartTitle">
+      <div class="card-head">
+        <div>
+          <h2 id="chartTitle">Focus minutes</h2>
+          <p class="sub" id="chartSub"></p>
+        </div>
+        <div class="seg" role="group" aria-label="Chart range" id="rangeSeg">
+          <button type="button" data-range="7" aria-pressed="true">7d</button>
+          <button type="button" data-range="14" aria-pressed="false">14d</button>
+          <button type="button" data-range="30" aria-pressed="false">30d</button>
+        </div>
+      </div>
+      <svg id="chart" viewBox="0 0 680 260" role="img" aria-label="Bar chart of focus minutes per day"></svg>
+    </section>
+
+    <section class="card breakdown-card" aria-labelledby="breakdownTitle">
+      <div class="card-head"><h2 id="breakdownTitle">Where the time went</h2><span class="sub" id="breakdownSub"></span></div>
+      <div class="breakdown">
+        <svg class="donut" id="donut" viewBox="0 0 140 140" role="img" aria-label="Focus time by task"></svg>
+        <ul class="legend" id="legend"></ul>
+      </div>
+    </section>
+
+    <section class="card log-card" aria-labelledby="logTitle">
+      <div class="card-head">
+        <div>
+          <h2 id="logTitle">Session log</h2>
+          <p class="sub" id="logCount">0 total</p>
+        </div>
+        <div class="log-actions">
+          <button class="ghost-sm" id="exportBtn" type="button">Export CSV</button>
+          <button class="ghost-sm danger" id="clearBtn" type="button">Clear</button>
+        </div>
+      </div>
+      <ul class="log-list" id="log"></ul>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span><kbd>Space</kbd> start / pause</span>
+    <span><kbd>R</kbd> reset</span>
+    <span><kbd>S</kbd> skip</span>
+  </footer>
+</div>
+
+<dialog id="settingsDlg" class="settings" aria-labelledby="settingsTitle">
+  <form id="settingsForm" method="dialog">
+    <div class="dlg-head">
+      <h2 id="settingsTitle">Settings</h2>
+      <button class="icon-btn" value="close" type="submit" aria-label="Close settings">✕</button>
+    </div>
+
+    <fieldset class="group">
+      <legend>Durations</legend>
+      <div class="field-grid">
+        <label class="num">Focus (min)<input type="number" name="focus" min="1" max="180" inputmode="numeric"></label>
+        <label class="num">Short break (min)<input type="number" name="shortBreak" min="1" max="60" inputmode="numeric"></label>
+        <label class="num">Long break (min)<input type="number" name="longBreak" min="1" max="120" inputmode="numeric"></label>
+        <label class="num">Long break every<input type="number" name="longEvery" min="2" max="10" inputmode="numeric"></label>
+        <label class="num">Daily goal (sessions)<input type="number" name="dailyGoal" min="1" max="30" inputmode="numeric"></label>
+      </div>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Behavior &amp; alerts</legend>
+      <label class="check">
+        <input type="checkbox" name="autoStart">
+        <span><b>Auto-start next session</b><small>Breaks and focus blocks roll on by themselves</small></span>
+      </label>
+      <label class="check">
+        <input type="checkbox" name="sound">
+        <span><b>Sound alert</b><small>Three beeps when a phase ends</small></span>
+      </label>
+      <label class="range">
+        <span>Volume <output id="volOut"></output></span>
+        <input type="range" name="volume" min="0" max="100" step="5">
+      </label>
+      <button class="ghost-sm" id="testSound" type="button">Test sound</button>
+      <label class="check" style="margin-top:10px">
+        <input type="checkbox" name="notify">
+        <span><b>Desktop notifications</b><small>A system ping when a phase ends in a background tab</small></span>
+      </label>
+    </fieldset>
+
+    <fieldset class="group">
+      <legend>Appearance</legend>
+      <div class="seg-row">
+        <label class="seg-opt"><input type="radio" name="theme" value="system"><span>System</span></label>
+        <label class="seg-opt"><input type="radio" name="theme" value="light"><span>Light</span></label>
+        <label class="seg-opt"><input type="radio" name="theme" value="dark"><span>Dark</span></label>
+      </div>
+    </fieldset>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- helpers ---------- */
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+  const pad2 = n => String(n).padStart(2, '0');
+  const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const fmtMin = m => {
+    m = Math.round(m);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? `${h}h ${r}m` : `${h}h`;
+  };
+  const dayKey = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const shiftDay = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const dayLabel = d => {
+    const k = dayKey(d);
+    if (k === dayKey(new Date())) return 'Today';
+    if (k === dayKey(shiftDay(new Date(), -1))) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  };
+
+  /* ---------- storage ---------- */
+  const KEYS = { settings: 'pomodoro.settings.v1', sessions: 'pomodoro.sessions.v1', timer: 'pomodoro.timer.v1', task: 'pomodoro.task.v1' };
+  const DEFAULTS = { focus: 25, shortBreak: 5, longBreak: 15, longEvery: 4, dailyGoal: 8, autoStart: false, sound: true, volume: 70, notify: false, theme: 'system' };
+  const LIMITS = { focus: [1, 180], shortBreak: [1, 60], longBreak: [1, 120], longEvery: [2, 10], dailyGoal: [1, 30], volume: [0, 100] };
+  const DUR_KEY = { focus: 'focus', short: 'shortBreak', long: 'longBreak' };
+  const MODE_NAME = { focus: 'Focus', short: 'Short break', long: 'Long break' };
+  const PALETTE = ['#ff5f6d', '#ffb347', '#12c2a0', '#7c5cff', '#38bdf8', '#f472b6'];
+  const OTHER_COLOR = '#94a3b8';
+  const QUOTES = {
+    focus: [
+      'One thing at a time. You have got this.',
+      'Deep work beats busy work.',
+      'Make the next 25 minutes count.',
+      'Momentum starts with one small step.',
+      'Silence the pings. Start the clock.',
+      'Future you is watching. Make them proud.'
+    ],
+    short: [
+      'Stretch, sip some water, look far away.',
+      'Breathe. Your brain is filing that away.',
+      'Tiny reset, big return.',
+      'Walk around and let the ideas settle.'
+    ],
+    long: [
+      'Long break unlocked. Get some fresh air.',
+      'You earned this. Really.',
+      'Rest is part of the work.',
+      'Step away and come back sharper.'
+    ]
+  };
+  const RING_R = 118;
+  const RING_C = 2 * Math.PI * RING_R;
+
+  const load = (key, fallback) => {
+    try { const raw = localStorage.getItem(key); return raw == null ? fallback : JSON.parse(raw); }
+    catch { return fallback; }
+  };
+  const store = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); }
+    catch { /* storage unavailable or full; the app keeps working in memory */ }
+  };
+
+  function sanitize(raw) {
+    const out = { ...DEFAULTS, ...(raw || {}) };
+    for (const [k, [lo, hi]] of Object.entries(LIMITS)) {
+      const n = Math.round(Number(out[k]));
+      out[k] = Number.isFinite(n) ? clamp(n, lo, hi) : DEFAULTS[k];
+    }
+    out.autoStart = !!out.autoStart;
+    out.sound = !!out.sound;
+    out.notify = !!out.notify;
+    if (!['system', 'light', 'dark'].includes(out.theme)) out.theme = 'system';
+    return out;
+  }
+
+  /* ---------- state ---------- */
+  let settings = sanitize(load(KEYS.settings, {}));
+  let sessions = (load(KEYS.sessions, []) || [])
+    .filter(s => s && Number.isFinite(s.at) && Number.isFinite(s.minutes))
+    .sort((a, b) => a.at - b.at);
+
+  const timer = { mode: 'focus', running: false, endAt: 0, remaining: 0, cycle: 0, handle: null };
+  let chartRange = 7;
+  let quoteMode = null;
+
+  const durOf = mode => settings[DUR_KEY[mode]] * 60000;
+  const leftMs = () => (timer.running ? Math.max(0, timer.endAt - Date.now()) : timer.remaining);
+
+  function persistTimer() {
+    store(KEYS.timer, { mode: timer.mode, running: timer.running, endAt: timer.endAt, remaining: timer.remaining, cycle: timer.cycle });
+  }
+
+  /* ---------- timer engine ---------- */
+  function startTicking() {
+    clearInterval(timer.handle);
+    timer.handle = setInterval(onTick, 250);
+  }
+  function stopTicking() {
+    clearInterval(timer.handle);
+    timer.handle = null;
+  }
+
+  function start() {
+    if (timer.running) return;
+    if (timer.remaining <= 0) timer.remaining = durOf(timer.mode);
+    unlockAudio();
+    timer.endAt = Date.now() + timer.remaining;
+    timer.running = true;
+    startTicking();
+    persistTimer();
+    renderTimerUI();
+    onTick();
+  }
+
+  function pause() {
+    if (!timer.running) return;
+    timer.remaining = leftMs();
+    timer.running = false;
+    stopTicking();
+    persistTimer();
+    renderTimerUI();
+  }
+
+  function toggle() {
+    if (timer.running) pause();
+    else start();
+  }
+
+  function onTick() {
+    if (leftMs() <= 0) { finishPhase(); return; }
+    renderClock();
+  }
+
+  // Moves to the next phase in the cycle: focus -> short/long break -> focus.
+  function advance() {
+    if (timer.mode === 'focus') {
+      timer.cycle += 1;
+      timer.mode = timer.cycle >= settings.longEvery ? 'long' : 'short';
+    } else {
+      if (timer.mode === 'long') timer.cycle = 0;
+      timer.mode = 'focus';
+    }
+    timer.remaining = durOf(timer.mode);
+  }
+
+  function finishPhase({ silent = false, at = Date.now() } = {}) {
+    stopTicking();
+    timer.running = false;
+    const finished = timer.mode;
+    if (finished === 'focus') addSession(settings.focus, currentTask(), at);
+    advance();
+    persistTimer();
+    if (!silent) {
+      celebrate(finished);
+      alertUser(finished);
+    }
+    renderAll();
+    if (settings.autoStart && !silent) start();
+  }
+
+  function skip() {
+    const wasRunning = timer.running;
+    stopTicking();
+    timer.running = false;
+    advance();
+    persistTimer();
+    renderAll();
+    if (wasRunning) start();
+  }
+
+  function resetPhase() {
+    stopTicking();
+    timer.running = false;
+    timer.remaining = durOf(timer.mode);
+    persistTimer();
+    renderTimerUI();
+  }
+
+  function setMode(mode) {
+    if (mode === timer.mode) return;
+    stopTicking();
+    timer.running = false;
+    timer.mode = mode;
+    timer.remaining = durOf(mode);
+    persistTimer();
+    renderTimerUI();
+  }
+
+  function restoreTimer() {
+    const t = load(KEYS.timer, null);
+    if (!t || !DUR_KEY[t.mode]) {
+      timer.remaining = durOf('focus');
+      return;
+    }
+    timer.mode = t.mode;
+    timer.cycle = clamp(Math.floor(Number(t.cycle)) || 0, 0, 1000);
+    timer.remaining = Number(t.remaining) > 0 ? Number(t.remaining) : durOf(t.mode);
+    const endAt = Number(t.endAt);
+    if (t.running && endAt > 0) {
+      if (endAt > Date.now()) {
+        timer.endAt = endAt;
+        timer.running = true;
+        startTicking();
+      } else {
+        // The phase ended while the page was closed; record it quietly.
+        finishPhase({ silent: true, at: endAt });
+      }
+    }
+  }
+
+  /* ---------- sessions ---------- */
+  function addSession(minutes, label, at) {
+    sessions.push({ id: uid(), at, minutes, label: String(label || '').trim().slice(0, 60) });
+    sessions.sort((a, b) => a.at - b.at);
+    store(KEYS.sessions, sessions);
+  }
+  const currentTask = () => $('#taskInput').value;
+
+  function summarize() {
+    const byDay = new Map();
+    for (const s of sessions) {
+      const k = dayKey(new Date(s.at));
+      const e = byDay.get(k) || { count: 0, minutes: 0 };
+      e.count += 1;
+      e.minutes += s.minutes;
+      byDay.set(k, e);
+    }
+    return byDay;
+  }
+
+  /* ---------- feedback: sound, confetti, notifications ---------- */
+  let audioCtx = null;
+  function unlockAudio() {
+    try {
+      if (!audioCtx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        audioCtx = new AC();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    } catch { return null; }
+    return audioCtx;
+  }
+
+  function playBeeps(volume) {
+    const ctx = unlockAudio();
+    if (!ctx || volume <= 0) return;
+    const t0 = ctx.currentTime + 0.05;
+    [660, 880, 1100].forEach((freq, i) => {
+      const t = t0 + i * 0.28;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(volume * 0.4, t + 0.02);
+      gain.gain.setValueAtTime(volume * 0.4, t + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.24);
+    });
+  }
+
+  function confetti(count) {
+    const root = getComputedStyle(document.documentElement);
+    const colors = [root.getPropertyValue('--a1').trim() || '#ff5f6d', root.getPropertyValue('--a2').trim() || '#ffb347', '#ffffff', '#ffd166'];
+    const originX = window.innerWidth / 2;
+    const originY = window.innerHeight * 0.35;
+    for (let i = 0; i < count; i++) {
+      const p = document.createElement('i');
+      p.className = 'confetti';
+      p.style.background = colors[i % colors.length];
+      document.body.appendChild(p);
+      const x0 = originX + (Math.random() - 0.5) * 160;
+      const y0 = originY;
+      const dx = (Math.random() - 0.5) * 620;
+      const dy = -(180 + Math.random() * 420);
+      const spin = Math.random() * 720 - 360;
+      const anim = p.animate([
+        { transform: `translate(${x0}px, ${y0}px) rotate(0deg)`, opacity: 1 },
+        { transform: `translate(${x0 + dx * 0.55}px, ${y0 + dy}px) rotate(${spin / 2}deg)`, opacity: 1, offset: 0.4 },
+        { transform: `translate(${x0 + dx}px, ${y0 + dy * 0.1 + 520}px) rotate(${spin}deg)`, opacity: 0 }
+      ], { duration: 1500 + Math.random() * 900, easing: 'cubic-bezier(.2, .7, .4, 1)' });
+      anim.onfinish = () => p.remove();
+    }
+  }
+
+  function celebrate(finished) {
+    confetti(finished === 'focus' ? 90 : 26);
+  }
+
+  function alertUser(finished) {
+    const focusDone = finished === 'focus';
+    if (settings.sound) playBeeps(settings.volume / 100);
+    toast(focusDone ? 'Focus session complete. Nice work!' : 'Break is over. Ready when you are.');
+    if (settings.notify && 'Notification' in window && Notification.permission === 'granted' && document.hidden) {
+      try {
+        new Notification(focusDone ? 'Session complete' : 'Break is over', {
+          body: focusDone ? 'Time for a break.' : 'Time to focus.',
+          tag: 'pomodoro'
+        });
+      } catch { /* some browsers forbid constructing notifications */ }
+    }
+  }
+
+  let toastTimer = null;
+  function toast(message) {
+    const el = $('#toast');
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  }
+
+  /* ---------- rendering: timer ---------- */
+  function phaseLabel() {
+    if (timer.mode === 'focus') {
+      return `Focus · session ${Math.min(timer.cycle + 1, settings.longEvery)} of ${settings.longEvery}`;
+    }
+    return timer.mode === 'short' ? 'Short break · recharge' : 'Long break · you earned it';
+  }
+
+  function renderClock() {
+    const ms = leftMs();
+    const total = durOf(timer.mode);
+    const secs = Math.ceil(ms / 1000);
+    const mmss = `${pad2(Math.floor(secs / 60))}:${pad2(secs % 60)}`;
+    $('#time').textContent = mmss;
+    const frac = total > 0 ? clamp(ms / total, 0, 1) : 0;
+    $('#ringProgress').style.strokeDashoffset = String(RING_C * (1 - frac));
+    document.title = timer.running ? `${mmss} · ${MODE_NAME[timer.mode]} · Pomodoro` : 'Pomodoro';
+  }
+
+  function renderTimerUI() {
+    document.documentElement.dataset.mode = timer.mode;
+    $('#ringWrap').classList.toggle('running', timer.running);
+    $('#phaseLabel').textContent = phaseLabel();
+
+    const startBtn = $('#startBtn');
+    const label = timer.running ? 'Pause' : (timer.remaining < durOf(timer.mode) ? 'Resume' : 'Start');
+    startBtn.dataset.state = timer.running ? 'running' : 'idle';
+    $('#startLabel').textContent = label;
+
+    for (const btn of $$('#modeTabs button')) {
+      const on = btn.dataset.mode === timer.mode;
+      btn.setAttribute('aria-selected', String(on));
+      btn.tabIndex = on ? 0 : -1;
+    }
+
+    const dots = $('#cycleDots');
+    const n = settings.longEvery;
+    if (dots.children.length !== n) {
+      dots.innerHTML = Array.from({ length: n }, () => '<span class="dot"></span>').join('');
+    }
+    Array.from(dots.children).forEach((el, i) => {
+      el.classList.toggle('done', i < timer.cycle);
+      el.classList.toggle('current', timer.mode === 'focus' && i === timer.cycle);
+    });
+
+    if (quoteMode !== timer.mode) {
+      quoteMode = timer.mode;
+      const list = QUOTES[timer.mode];
+      $('#quote').textContent = list[Math.floor(Math.random() * list.length)];
+    }
+
+    renderClock();
+  }
+
+  /* ---------- rendering: history ---------- */
+  function renderHistory() {
+    const byDay = summarize();
+    const todayKey = dayKey(new Date());
+    const today = byDay.get(todayKey) || { count: 0, minutes: 0 };
+
+    let streak = 0;
+    let cursor = new Date();
+    if (!byDay.has(todayKey)) cursor = shiftDay(cursor, -1);
+    while (byDay.has(dayKey(cursor))) {
+      streak += 1;
+      cursor = shiftDay(cursor, -1);
+    }
+
+    const totalMin = sessions.reduce((a, s) => a + s.minutes, 0);
+    $('#todaySessions').textContent = today.count;
+    $('#todayMinutes').textContent = today.minutes;
+    $('#totalSessions').textContent = sessions.length;
+    $('#totalHours').textContent = +(totalMin / 60).toFixed(1);
+    $('#streakPill').textContent = `🔥 ${streak} ${streak === 1 ? 'day' : 'days'} streak`;
+
+    const pct = clamp(today.count / settings.dailyGoal, 0, 1);
+    $('#goalFill').style.width = `${Math.round(pct * 100)}%`;
+    $('#goalPct').textContent = `${Math.round(pct * 100)}%`;
+    $('#goalText').textContent = today.count >= settings.dailyGoal
+      ? 'Daily goal crushed. Keep the streak alive!'
+      : `${today.count} of ${settings.dailyGoal} sessions today`;
+
+    const days = Array.from({ length: chartRange }, (_, i) => {
+      const d = shiftDay(new Date(), i - (chartRange - 1));
+      const key = dayKey(d);
+      const e = byDay.get(key) || { count: 0, minutes: 0 };
+      return { d, key, count: e.count, minutes: e.minutes, isToday: key === todayKey };
+    });
+    const rangeMin = days.reduce((a, d) => a + d.minutes, 0);
+    $('#chartSub').textContent = `${fmtMin(rangeMin)} total · ${fmtMin(rangeMin / chartRange)} per day on average`;
+
+    renderChart(days, rangeMin);
+    renderBreakdown(days);
+    renderLog(byDay);
+  }
+
+  function renderChart(days, rangeMin) {
+    const W = 680, H = 260, P = { l: 46, r: 12, t: 18, b: 34 };
+    const pw = W - P.l - P.r, ph = H - P.t - P.b;
+    const goal = settings.dailyGoal * settings.focus;
+    const maxData = Math.max(0, ...days.map(d => d.minutes));
+    const NICE_TOPS = [30, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720, 900, 1200];
+    const needed = Math.max(maxData, goal);
+    const top = NICE_TOPS.find(t => t >= needed) || Math.ceil(needed / 600) * 600;
+    const slot = pw / days.length;
+    const bw = Math.min(42, slot * 0.6);
+    const yOf = v => P.t + ph - (v / top) * ph;
+    const tick = v => (v === 0 ? '0' : v >= 60 ? `${+(v / 60).toFixed(1)}h` : `${v}m`);
+
+    let g = '';
+    for (const v of [0, top / 2, top]) {
+      const y = yOf(v);
+      g += `<line class="grid" x1="${P.l}" x2="${W - P.r}" y1="${y}" y2="${y}"/>`;
+      g += `<text class="axis" x="${P.l - 8}" y="${y + 4}" text-anchor="end">${tick(v)}</text>`;
+    }
+    if (goal <= top) {
+      const gy = yOf(goal);
+      g += `<line class="goal-line" x1="${P.l}" x2="${W - P.r}" y1="${gy}" y2="${gy}"/>`;
+      g += `<text class="goal-text" x="${W - P.r}" y="${gy - 6}" text-anchor="end">goal ${tick(goal)}</text>`;
+    }
+
+    days.forEach((d, i) => {
+      const x = P.l + i * slot + (slot - bw) / 2;
+      const h = Math.max(3, (d.minutes / top) * ph);
+      const y = P.t + ph - h;
+      const title = `${d.d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}: ${fmtMin(d.minutes)} · ${d.count} session${d.count === 1 ? '' : 's'}`;
+      const cls = ['bar', d.isToday ? 'today' : '', d.minutes ? '' : 'empty'].filter(Boolean).join(' ');
+      g += `<g class="bar-g"><title>${escapeHtml(title)}</title>`
+        + `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="${Math.min(8, bw / 2).toFixed(1)}" style="animation-delay:${i * 35}ms"/></g>`;
+
+      const every = days.length <= 14 ? 1 : 5;
+      if (i % every === 0 || i === days.length - 1) {
+        const txt = days.length <= 7
+          ? d.d.toLocaleDateString(undefined, { weekday: 'short' })
+          : String(d.d.getDate());
+        g += `<text class="xlabel${d.isToday ? ' strong' : ''}" x="${(x + bw / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle">${txt}</text>`;
+      }
+    });
+
+    if (rangeMin === 0) {
+      g += `<text class="empty-text" x="${W / 2}" y="${P.t + ph / 2}">No focus time in this range yet</text>`;
+    }
+
+    $('#chart').innerHTML = `<defs><linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">`
+      + `<stop offset="0" style="stop-color:var(--a2)"/><stop offset="1" style="stop-color:var(--a1)"/></linearGradient></defs>${g}`;
+  }
+
+  function renderBreakdown(days) {
+    const keys = new Set(days.map(d => d.key));
+    const byLabel = new Map();
+    for (const s of sessions) {
+      if (!keys.has(dayKey(new Date(s.at)))) continue;
+      const name = s.label || 'Untitled';
+      byLabel.set(name, (byLabel.get(name) || 0) + s.minutes);
+    }
+    const sorted = [...byLabel.entries()].sort((a, b) => b[1] - a[1]);
+    const total = sorted.reduce((a, [, m]) => a + m, 0);
+    const restMin = sorted.slice(5).reduce((a, [, m]) => a + m, 0);
+    const segs = sorted.slice(0, 5).map(([name, m], i) => ({ name, m, color: PALETTE[i % PALETTE.length] }));
+    if (restMin) segs.push({ name: 'Other', m: restMin, color: OTHER_COLOR });
+
+    $('#breakdownSub').textContent = total ? `${segs.length} ${segs.length === 1 ? 'task' : 'tasks'}` : '';
+
+    const DONUT_R = 54;
+    const DONUT_C = 2 * Math.PI * DONUT_R;
+    let arcs = '';
+    let acc = 0;
+    for (const seg of segs) {
+      const len = (seg.m / total) * DONUT_C;
+      const drawn = segs.length > 1 ? Math.max(0, len - 2) : len; // small gap between slices
+      arcs += `<circle cx="70" cy="70" r="${DONUT_R}" fill="none" stroke="${seg.color}" stroke-width="18" `
+        + `stroke-dasharray="${drawn.toFixed(2)} ${DONUT_C.toFixed(2)}" stroke-dashoffset="${(-acc).toFixed(2)}"/>`;
+      acc += len;
+    }
+    $('#donut').innerHTML = `<g transform="rotate(-90 70 70)">`
+      + `<circle cx="70" cy="70" r="54" fill="none" stroke="var(--line)" stroke-width="18"/>${arcs}</g>`
+      + `<text class="donut-big" x="70" y="72">${total ? fmtMin(total) : '0m'}</text>`
+      + `<text class="donut-sub" x="70" y="90">focused</text>`;
+
+    $('#legend').innerHTML = total
+      ? segs.map(s => `<li><i style="background:${s.color}"></i><span class="lg-name" title="${escapeHtml(s.name)}">${escapeHtml(s.name)}</span>`
+        + `<span class="lg-val">${fmtMin(s.m)} · ${Math.round((s.m / total) * 100)}%</span></li>`).join('')
+      : '<li class="empty-state" style="display:block"><span aria-hidden="true">📊</span><p>Log a focus session to see where your time goes.</p></li>';
+  }
+
+  function renderLog(byDay) {
+    const list = $('#log');
+    $('#logCount').textContent = `${sessions.length} total`;
+    $('#clearBtn').disabled = sessions.length === 0;
+    $('#exportBtn').disabled = sessions.length === 0;
+
+    if (!sessions.length) {
+      list.innerHTML = '<li class="empty-state"><span aria-hidden="true">🌱</span><p>No sessions yet. Start your first focus block and watch this fill up.</p></li>';
+      return;
+    }
+
+    const recent = sessions.slice(-200).reverse();
+    let html = '';
+    let lastKey = '';
+    for (const s of recent) {
+      const d = new Date(s.at);
+      const k = dayKey(d);
+      if (k !== lastKey) {
+        lastKey = k;
+        const e = byDay.get(k) || { count: 0, minutes: 0 };
+        html += `<li class="day-head">${escapeHtml(dayLabel(d))} <span>· ${e.count} session${e.count === 1 ? '' : 's'} · ${fmtMin(e.minutes)}</span></li>`;
+      }
+      const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+      html += `<li class="log-item">`
+        + `<span class="log-time">${escapeHtml(time)}</span>`
+        + `<span class="log-label${s.label ? '' : ' muted'}">${escapeHtml(s.label || 'Untitled focus')}</span>`
+        + `<span class="log-min">${s.minutes}m</span>`
+        + `<button class="icon-btn del" type="button" data-del="${escapeHtml(s.id)}" aria-label="Delete this session">✕</button>`
+        + `</li>`;
+    }
+    list.innerHTML = html;
+  }
+
+  function renderAll() {
+    renderTimerUI();
+    renderHistory();
+  }
+
+  /* ---------- export ---------- */
+  function exportCsv() {
+    if (!sessions.length) return;
+    const rows = ['started_at,minutes,label'];
+    for (const s of sessions) {
+      rows.push([new Date(s.at).toISOString(), s.minutes, `"${(s.label || '').replace(/"/g, '""')}"`].join(','));
+    }
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pomodoro-sessions-${dayKey(new Date())}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Exported your sessions as CSV');
+  }
+
+  /* ---------- theme ---------- */
+  const mq = window.matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme() {
+    const dark = settings.theme === 'dark' || (settings.theme === 'system' && mq.matches);
+    document.documentElement.classList.toggle('dark', dark);
+    $('#themeBtn').setAttribute('aria-pressed', String(dark));
+  }
+  if (mq.addEventListener) mq.addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
+
+  $('#themeBtn').addEventListener('click', () => {
+    const dark = document.documentElement.classList.contains('dark');
+    settings.theme = dark ? 'light' : 'dark';
+    store(KEYS.settings, settings);
+    applyTheme();
+    fillForm();
+  });
+
+  /* ---------- settings form ---------- */
+  const form = $('#settingsForm');
+
+  function fillForm() {
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      if (el.type === 'checkbox') el.checked = !!settings[el.name];
+      else if (el.type === 'radio') el.checked = settings.theme === el.value;
+      else el.value = settings[el.name];
+    }
+    syncOutputs();
+  }
+
+  function syncOutputs() {
+    $('#volOut').textContent = `${settings.volume}%`;
+  }
+
+  function onSettingsChange(e) {
+    const target = e.target;
+    const prevFull = durOf(timer.mode);
+    const next = { ...settings };
+    for (const el of form.elements) {
+      if (!el.name) continue;
+      if (el.type === 'checkbox') next[el.name] = el.checked;
+      else if (el.type === 'radio') { if (el.checked) next[el.name] = el.value; }
+      else next[el.name] = el.value;
+    }
+    settings = sanitize(next);
+
+    if (target.name === 'notify' && target.checked) {
+      const supported = 'Notification' in window;
+      if (!supported || Notification.permission === 'denied') {
+        settings.notify = false;
+        toast('Notifications are blocked in your browser settings');
+      } else if (Notification.permission === 'default') {
+        Notification.requestPermission().then(p => {
+          if (p !== 'granted') {
+            settings.notify = false;
+            store(KEYS.settings, settings);
+            fillForm();
+            toast('Notifications were not allowed');
+          } else {
+            store(KEYS.settings, settings);
+          }
+        }).catch(() => {});
+      }
+    }
+
+    store(KEYS.settings, settings);
+    applyTheme();
+
+    if (!timer.running) {
+      timer.remaining = timer.remaining === prevFull
+        ? durOf(timer.mode)
+        : Math.min(timer.remaining, durOf(timer.mode));
+      persistTimer();
+    }
+
+    syncOutputs();
+    renderTimerUI();
+    renderHistory();
+    if (e.type === 'change') fillForm();
+  }
+
+  form.addEventListener('input', onSettingsChange);
+  form.addEventListener('change', onSettingsChange);
+
+  $('#settingsBtn').addEventListener('click', () => {
+    fillForm();
+    $('#settingsDlg').showModal();
+  });
+
+  $('#testSound').addEventListener('click', () => {
+    playBeeps(settings.volume / 100);
+  });
+
+  /* ---------- controls ---------- */
+  $('#startBtn').addEventListener('click', toggle);
+  $('#resetBtn').addEventListener('click', resetPhase);
+  $('#skipBtn').addEventListener('click', skip);
+
+  $('#modeTabs').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-mode]');
+    if (btn) setMode(btn.dataset.mode);
+  });
+
+  $('#taskInput').addEventListener('input', e => store(KEYS.task, e.target.value));
+
+  $('#rangeSeg').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-range]');
+    if (!btn) return;
+    chartRange = Number(btn.dataset.range);
+    for (const b of $$('#rangeSeg button')) b.setAttribute('aria-pressed', String(b === btn));
+    renderHistory();
+  });
+
+  $('#exportBtn').addEventListener('click', exportCsv);
+
+  $('#clearBtn').addEventListener('click', () => {
+    if (!sessions.length) return;
+    if (!confirm(`Delete all ${sessions.length} sessions? This cannot be undone.`)) return;
+    sessions = [];
+    store(KEYS.sessions, sessions);
+    renderHistory();
+    toast('History cleared');
+  });
+
+  $('#log').addEventListener('click', e => {
+    const btn = e.target.closest('[data-del]');
+    if (!btn) return;
+    const id = btn.dataset.del;
+    sessions = sessions.filter(s => s.id !== id);
+    store(KEYS.sessions, sessions);
+    renderHistory();
+    toast('Session removed');
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const t = e.target;
+    if (t.closest && t.closest('input, textarea, select, dialog[open]')) return;
+    if (e.code === 'Space') {
+      if (t.closest && t.closest('button, a')) return; // native button activation handles it
+      e.preventDefault();
+      toggle();
+    } else if (e.key === 'r' || e.key === 'R') {
+      resetPhase();
+    } else if (e.key === 's' || e.key === 'S') {
+      skip();
+    }
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (timer.running) onTick();
+  });
+
+  /* ---------- init ---------- */
+  function init() {
+    $('#ringProgress').style.strokeDasharray = String(RING_C);
+    applyTheme();
+    fillForm();
+    $('#taskInput').value = load(KEYS.task, '');
+    restoreTimer();
+    renderAll();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

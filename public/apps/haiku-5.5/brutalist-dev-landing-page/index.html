@@ -1,0 +1,1063 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>SLAB — Ship APIs. No noise.</title>
+<meta name="description" content="Deploy, stream logs and roll back HTTP services with one call. No YAML. No dashboards you will never open.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&amp;family=JetBrains+Mono:wght@400;500;700&amp;display=swap">
+<style>
+/* ---------- Tokens ---------- */
+:root{
+  --bg:#000;
+  --fg:#fff;
+  --mute:rgba(255,255,255,.62);
+  --sans:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --nav-h:60px;
+  --ease:cubic-bezier(.2,.7,.1,1);
+}
+:root[data-theme="light"]{
+  --bg:#fff;
+  --fg:#000;
+  --mute:rgba(0,0,0,.62);
+}
+
+/* ---------- Base ---------- */
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:calc(var(--nav-h) + 8px)}
+html,body{margin:0;background:var(--bg);color:var(--fg)}
+body{
+  font-family:var(--sans);font-size:16px;line-height:1.5;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  transition:background-color .25s var(--ease),color .25s var(--ease);
+}
+img,svg{display:block;max-width:100%}
+p{margin:0}
+ul{list-style:none;margin:0;padding:0}
+h1,h2,h3{margin:0;font-weight:900}
+a{color:inherit}
+button{font:inherit;color:inherit}
+::selection{background:var(--fg);color:var(--bg)}
+:focus-visible{outline:3px solid var(--fg);outline-offset:3px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.skip{position:absolute;left:1rem;top:-100px;z-index:200;background:var(--fg);color:var(--bg);padding:.6rem 1rem;font:700 13px var(--mono);text-decoration:none}
+.skip:focus{top:1rem}
+.label{font:500 12px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase}
+
+/* ---------- Grid system ---------- */
+.wrap{width:100%;max-width:1440px;margin:0 auto;border-left:1px solid var(--fg);border-right:1px solid var(--fg)}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr))}
+.span-3{grid-column:span 3}
+.span-4{grid-column:span 4}
+.span-6{grid-column:span 6}
+.span-8{grid-column:span 8}
+.span-9{grid-column:span 9}
+.span-12{grid-column:span 12}
+.section{border-top:1px solid var(--fg)}
+.head-row{padding:1.5rem 1.25rem 2.5rem;row-gap:1rem;align-items:start}
+.h2{
+  font-size:clamp(2.6rem,6.4vw,6rem);line-height:.88;letter-spacing:-.045em;
+  font-stretch:70%;font-weight:900;text-transform:uppercase;
+}
+
+/* Grid overlay + cursor readout */
+.grid-overlay{
+  position:fixed;top:0;bottom:0;left:50%;transform:translateX(-50%);
+  width:100%;max-width:1440px;height:100vh;
+  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+  pointer-events:none;z-index:40;
+}
+.grid-overlay span{border-left:1px solid color-mix(in srgb,var(--fg) 11%,transparent)}
+.grid-overlay span:last-child{border-right:1px solid color-mix(in srgb,var(--fg) 11%,transparent)}
+.col-band{
+  position:fixed;top:0;left:0;height:100vh;width:0;
+  background:color-mix(in srgb,var(--fg) 7%,transparent);
+  pointer-events:none;z-index:39;will-change:transform;
+}
+.readout{
+  position:fixed;top:0;left:0;z-index:100;pointer-events:none;
+  background:var(--fg);color:var(--bg);
+  font:500 11px/1 var(--mono);letter-spacing:.05em;
+  padding:.45rem .55rem;white-space:nowrap;
+  will-change:transform;
+}
+.readout span{display:inline-block;min-width:4.5ch}
+@media (hover:none),(pointer:coarse){.readout,.col-band{display:none!important}}
+
+/* ---------- Buttons ---------- */
+.btn{
+  display:inline-flex;align-items:center;gap:.6em;
+  padding:.95em 1.3em;border:2px solid var(--fg);border-radius:0;
+  background:transparent;color:var(--fg);
+  font:700 14px/1 var(--mono);text-transform:uppercase;letter-spacing:.05em;
+  text-decoration:none;cursor:pointer;
+  box-shadow:4px 4px 0 var(--fg);
+  transition:transform .12s var(--ease),box-shadow .12s var(--ease),background-color .12s,color .12s;
+}
+.btn:hover{background:var(--fg);color:var(--bg);transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--fg)}
+.btn:active{transform:translate(2px,2px);box-shadow:0 0 0 var(--fg)}
+.btn-solid{background:var(--fg);color:var(--bg)}
+.btn-solid:hover{background:transparent;color:var(--fg)}
+.btn-sm{padding:.7em .9em;font-size:12px;box-shadow:3px 3px 0 var(--fg)}
+.btn-sm:hover{box-shadow:5px 5px 0 var(--fg)}
+
+/* ---------- Top bar ---------- */
+.topbar{
+  position:sticky;top:0;z-index:50;height:var(--nav-h);
+  background:var(--bg);border-bottom:1px solid var(--fg);
+}
+.topbar .wrap{height:100%;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:stretch}
+.logo{
+  grid-column:1/4;display:flex;align-items:center;gap:.6rem;padding:0 1.25rem;
+  font-weight:900;font-stretch:62%;font-size:1.45rem;letter-spacing:-.02em;text-decoration:none;
+}
+.logo svg{width:22px;height:22px;flex:none}
+.nav{grid-column:4/10;display:flex;border-left:1px solid var(--fg)}
+.nav a{
+  display:flex;align-items:center;padding:0 1.2rem;text-decoration:none;
+  font:500 13px var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  border-right:1px solid var(--fg);transition:background-color .12s,color .12s;
+}
+.nav a:hover{background:var(--fg);color:var(--bg)}
+.bar-actions{grid-column:10/13;display:flex;justify-content:flex-end;align-items:center;gap:.75rem;padding:0 1.25rem;border-left:1px solid var(--fg)}
+
+/* ---------- Hero ---------- */
+.hero{
+  position:relative;overflow:hidden;display:flex;align-items:flex-end;
+  min-height:calc(100vh - var(--nav-h));min-height:calc(100svh - var(--nav-h));
+  border-bottom:1px solid var(--fg);
+}
+.term-bg{position:absolute;inset:0;pointer-events:none;user-select:none;opacity:.3;overflow:hidden}
+.term{
+  position:absolute;inset:0;margin:0;padding:6.5rem clamp(1rem,3vw,3rem) 2rem;
+  font:400 clamp(12px,1.25vw,18px)/1.6 var(--mono);color:var(--fg);
+  white-space:pre;overflow:hidden;
+}
+.caret{
+  display:inline-block;width:.6em;height:1.05em;background:var(--fg);
+  vertical-align:-.14em;animation:blink 1s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.hero .wrap{position:relative;z-index:1;width:100%}
+.hero-copy{
+  padding:clamp(1.5rem,4vw,3rem) clamp(1.25rem,3vw,2.5rem) clamp(1.5rem,3vw,2.5rem);
+  background:color-mix(in srgb,var(--bg) 84%,transparent);
+  backdrop-filter:blur(2px);
+}
+.live{display:inline-flex;align-items:center;gap:.6rem}
+.dot{width:9px;height:9px;background:var(--fg);display:inline-block;animation:pulse 1.4s steps(2) infinite}
+@keyframes pulse{50%{opacity:.15}}
+.display{
+  margin:.35rem 0 0;font-size:clamp(4.2rem,17.5vw,18.5rem);line-height:.8;
+  letter-spacing:-.06em;font-stretch:62%;font-weight:900;text-transform:uppercase;
+}
+.display span{display:block}
+.lede{
+  font-size:clamp(1.15rem,2.1vw,1.6rem);line-height:1.28;font-weight:500;
+  max-width:32ch;margin:1.5rem 0 2rem;
+}
+.ctas{display:flex;flex-wrap:wrap;gap:1rem}
+
+/* ---------- Ticker ---------- */
+.ticker{background:var(--fg);color:var(--bg);overflow:hidden;white-space:nowrap;border-bottom:1px solid var(--fg)}
+.ticker-track{display:flex;width:max-content;animation:tick 30s linear infinite}
+.ticker-track span{
+  flex:none;padding:.95rem 1.5rem;
+  font:900 clamp(1rem,2vw,1.5rem)/1 var(--sans);font-stretch:62%;text-transform:uppercase;letter-spacing:-.01em;
+}
+@keyframes tick{to{transform:translateX(-50%)}}
+
+/* ---------- Proof / logo wall ---------- */
+.logo-wall{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));border-top:1px solid var(--fg)}
+.logo-cell{
+  grid-column:span 3;display:grid;place-items:center;
+  padding:clamp(1.5rem,3vw,2.75rem) clamp(1rem,2vw,2rem);
+  border-right:1px solid var(--fg);border-bottom:1px solid var(--fg);
+  aspect-ratio:16/8.5;
+}
+.logo-cell:nth-child(4n){border-right:0}
+.logo-cell svg{width:100%;max-width:230px;height:auto;color:var(--fg);opacity:.82;transition:opacity .2s,transform .2s var(--ease)}
+.logo-cell:hover svg{opacity:1;transform:scale(1.05)}
+.logo-svg text{font-family:var(--sans);font-weight:800;font-size:25px;letter-spacing:-.02em;fill:currentColor}
+.proof-foot{padding:1.25rem;align-items:center;row-gap:1rem}
+.proof-foot p{grid-column:span 8}
+.proof-foot .btn{grid-column:span 4;justify-self:end}
+
+/* ---------- Features ---------- */
+.cards{border-top:1px solid var(--fg)}
+.card{
+  grid-column:span 4;display:flex;flex-direction:column;gap:1.25rem;min-width:0;
+  padding:1.5rem;border-right:1px solid var(--fg);border-bottom:1px solid var(--fg);
+}
+.card:nth-child(3n){border-right:0}
+.card-num{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.card h3{font-size:clamp(1.9rem,3vw,2.5rem);line-height:.92;font-stretch:70%;text-transform:uppercase;letter-spacing:-.035em}
+.card p{color:var(--mute);font-size:1rem;max-width:38ch}
+.tabs{display:flex;border:2px solid var(--fg);width:max-content;max-width:100%}
+.tabs button{
+  font:700 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  padding:.7rem .95rem;background:transparent;color:var(--fg);border:0;border-right:2px solid var(--fg);
+  cursor:pointer;transition:background-color .12s,color .12s;
+}
+.tabs button:last-child{border-right:0}
+.tabs button:hover{background:color-mix(in srgb,var(--fg) 14%,transparent)}
+.tabs button[aria-selected="true"]{background:var(--fg);color:var(--bg)}
+.snippet{border:2px solid var(--fg);display:flex;flex-direction:column;flex:1;min-width:0;position:relative}
+.snippet-bar{display:flex;justify-content:space-between;align-items:center;gap:.75rem;padding:.5rem .6rem .5rem .8rem;border-bottom:2px solid var(--fg)}
+.snippet-bar .label{font-size:11px}
+.snippet pre{
+  margin:0;padding:1.1rem 1rem 1.25rem;flex:1;overflow:auto;
+  font:400 13px/1.65 var(--mono);white-space:pre;tab-size:2;
+}
+.copy{
+  position:relative;display:inline-flex;align-items:center;
+  font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  background:var(--fg);color:var(--bg);border:2px solid var(--fg);padding:.5rem .65rem;cursor:pointer;
+  transition:background-color .12s,color .12s;
+}
+.copy:hover{background:transparent;color:var(--fg)}
+.copy .tip{
+  position:absolute;bottom:calc(100% + 12px);right:-2px;white-space:nowrap;
+  background:var(--fg);color:var(--bg);padding:.4rem .55rem;
+  font:500 11px/1.2 var(--mono);letter-spacing:.02em;text-transform:none;
+  opacity:0;transform:translateY(4px);transition:opacity .15s,transform .15s var(--ease);pointer-events:none;
+}
+.copy .tip::after{
+  content:"";position:absolute;top:100%;right:14px;
+  border:6px solid transparent;border-top-color:var(--fg);border-bottom:0;
+}
+.copy:hover .tip,.copy:focus-visible .tip{opacity:1;transform:none}
+.copy .t-done{display:none}
+.copy.is-copied .t-done{display:inline}
+.copy.is-copied .t-copy{display:none}
+.copy.is-copied .tip{opacity:1;transform:none}
+
+/* ---------- Pricing ---------- */
+.price-wrap{border-top:1px solid var(--fg)}
+.price{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+.price th,.price td{border-bottom:1px solid var(--fg);border-left:1px solid var(--fg);text-align:left;vertical-align:top;min-width:0}
+.price th:first-child,.price td:first-child{border-left:0}
+.price thead th{
+  position:sticky;top:var(--nav-h);z-index:5;background:var(--bg);
+  border-bottom:2px solid var(--fg);padding:1.5rem 1.25rem 1.5rem;vertical-align:bottom;
+}
+.price thead th.is-featured{background:var(--fg);color:var(--bg)}
+.price thead th:first-child .label{display:block;padding-bottom:.5rem}
+.tier-flag{
+  display:inline-block;font:700 11px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  padding:.35rem .5rem;background:var(--fg);color:var(--bg);margin-bottom:.9rem;
+}
+.is-featured .tier-flag{background:var(--bg);color:var(--fg)}
+.tier-name{font:900 2rem/1 var(--sans);font-stretch:70%;text-transform:uppercase;letter-spacing:-.03em}
+.tier-price{font:900 clamp(2.6rem,4.5vw,4rem)/1 var(--sans);font-stretch:62%;letter-spacing:-.05em;margin:.7rem 0 1.1rem}
+.tier-price small{font:500 13px var(--mono);letter-spacing:0;margin-left:.35rem;text-transform:uppercase}
+.price tbody th{
+  font:500 12px/1.4 var(--mono);text-transform:uppercase;letter-spacing:.06em;
+  padding:1.1rem 1.25rem;width:30%;
+}
+.price tbody td{padding:1.1rem 1.25rem;font-size:1.05rem;font-weight:600}
+.price td.is-featured{background:var(--fg);color:var(--bg)}
+.is-featured .btn{border-color:var(--bg);color:var(--bg);box-shadow:4px 4px 0 var(--bg)}
+.is-featured .btn:hover{background:var(--bg);color:var(--fg);box-shadow:6px 6px 0 var(--bg)}
+.is-featured .btn-solid{background:var(--bg);color:var(--fg)}
+.is-featured .btn-solid:hover{background:transparent;color:var(--bg)}
+.price tbody tr:hover td:not(.is-featured),.price tbody tr:hover th{background:color-mix(in srgb,var(--fg) 6%,transparent)}
+
+/* ---------- Docs ---------- */
+.doc-list{border-top:1px solid var(--fg)}
+.doc-list li{border-bottom:1px solid var(--fg)}
+.doc-list a{
+  display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:center;gap:0;
+  padding:1.25rem 1.25rem;text-decoration:none;transition:background-color .12s,color .12s;
+}
+.doc-list a:hover,.doc-list a:focus-visible{background:var(--fg);color:var(--bg)}
+.doc-list .doc-n{grid-column:span 1}
+.doc-list .doc-t{grid-column:span 8;font-size:clamp(2rem,5vw,4.5rem);line-height:.9;font-weight:900;font-stretch:62%;text-transform:uppercase;letter-spacing:-.04em}
+.doc-list .doc-m{grid-column:span 3;justify-self:end;text-align:right}
+
+/* ---------- Footer ---------- */
+.foot-top{padding:2.5rem 1.25rem;row-gap:2.5rem}
+.foot-brand{display:flex;flex-direction:column;gap:1.25rem;align-items:flex-start}
+.foot-brand p{color:var(--mute);font-size:1.1rem;max-width:24ch}
+.social{display:flex;gap:.6rem;margin-top:.5rem}
+.social a{
+  display:grid;place-items:center;width:52px;height:52px;border:2px solid var(--fg);color:var(--fg);
+  transition:background-color .12s,color .12s,transform .12s var(--ease);
+}
+.social a:hover,.social a:focus-visible{background:var(--fg);color:var(--bg);transform:translate(-2px,-2px)}
+.social svg{width:22px;height:22px;fill:currentColor}
+.sitemap{min-width:0}
+.sitemap-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));row-gap:2rem}
+.sitemap .col{grid-column:span 3;min-width:0}
+.sitemap h3{margin-bottom:1rem}
+.sitemap ul{display:flex;flex-direction:column;gap:.15rem}
+.sitemap a{
+  display:flex;justify-content:space-between;align-items:center;gap:.5rem;
+  padding:.45rem .5rem;margin:0 -.5rem;text-decoration:none;font-size:1.05rem;font-weight:500;
+}
+.sitemap a::after{content:"→";opacity:0;transform:translateX(-4px);transition:opacity .15s,transform .15s var(--ease)}
+.sitemap a:hover,.sitemap a:focus-visible{background:var(--fg);color:var(--bg)}
+.sitemap a:hover::after,.sitemap a:focus-visible::after{opacity:1;transform:none}
+.foot-word{
+  font-size:clamp(5rem,27vw,30rem);line-height:.74;letter-spacing:-.07em;font-stretch:62%;font-weight:900;
+  text-transform:uppercase;border-top:1px solid var(--fg);padding:1.5rem 0 0 1rem;margin:0;overflow:hidden;
+  user-select:none;
+}
+.foot-bottom{padding:1rem 1.25rem;border-top:1px solid var(--fg);align-items:center;row-gap:.75rem}
+.foot-bottom .l{grid-column:span 6}
+.foot-bottom .r{grid-column:span 6;justify-self:end;display:flex;gap:1.25rem;align-items:center;flex-wrap:wrap}
+.kbd{display:inline-block;border:1px solid var(--fg);padding:.05rem .35rem;margin:0 .15rem;font:500 11px var(--mono)}
+.linkbtn{background:none;border:0;padding:0;cursor:pointer;text-decoration:underline;text-underline-offset:4px;font:500 12px var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.linkbtn:hover{background:var(--fg);color:var(--bg);text-decoration:none}
+
+/* ---------- Modal ---------- */
+dialog.modal{
+  border:2px solid var(--fg);background:var(--bg);color:var(--fg);padding:0;border-radius:0;
+  width:min(560px,calc(100vw - 2rem));max-height:calc(100vh - 2rem);
+  box-shadow:12px 12px 0 var(--fg);
+}
+dialog.modal::backdrop{background:color-mix(in srgb,var(--bg) 70%,transparent);backdrop-filter:blur(3px)}
+.modal-form{padding:1.5rem;display:flex;flex-direction:column;gap:1.2rem}
+.modal-head{display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.modal h2{font:900 clamp(2.2rem,6vw,3.4rem)/.88 var(--sans);font-stretch:70%;text-transform:uppercase;letter-spacing:-.04em;margin:.25rem 0 0}
+.field{display:flex;flex-direction:column;gap:.45rem;font:600 12px/1 var(--mono);text-transform:uppercase;letter-spacing:.06em}
+.field input,.field select{
+  width:100%;font:500 17px/1.2 var(--sans);letter-spacing:0;text-transform:none;
+  padding:.8rem .9rem;border:2px solid var(--fg);border-radius:0;background:var(--bg);color:var(--fg);
+}
+.field input:focus-visible,.field select:focus-visible{outline:3px solid var(--fg);outline-offset:2px}
+.modal .btn{justify-content:center}
+.msg{min-height:1.5em;font:500 14px/1.4 var(--mono)}
+.fine{color:var(--mute);font-size:13px}
+
+/* ---------- Reveal ---------- */
+html.js .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s var(--ease),transform .6s var(--ease)}
+html.js .reveal.in{opacity:1;transform:none}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1100px){
+  .card{grid-column:span 6}
+  .card:nth-child(3n){border-right:1px solid var(--fg)}
+  .card:nth-child(2n){border-right:0}
+  .logo-cell{grid-column:span 6}
+  .logo-cell:nth-child(4n){border-right:1px solid var(--fg)}
+  .logo-cell:nth-child(2n){border-right:0}
+}
+@media (max-width:860px){
+  .grid > [class*="span-"]{grid-column:1/-1}
+  .head-row > *{grid-column:1/-1!important}
+  .nav{display:none}
+  .logo{grid-column:1/7}
+  .bar-actions{grid-column:7/13}
+  .card{grid-column:1/-1;border-right:0}
+  .proof-foot p,.proof-foot .btn{grid-column:1/-1;justify-self:start}
+  .doc-list .doc-n{display:none}
+  .doc-list .doc-t{grid-column:1/10}
+  .doc-list .doc-m{grid-column:10/13}
+  .sitemap .col{grid-column:span 6}
+  .foot-bottom .l,.foot-bottom .r{grid-column:1/-1;justify-self:start}
+  .price-wrap{overflow-x:auto}
+  .price{min-width:720px}
+  .price thead th{position:static}
+}
+@media (max-width:560px){
+  .logo-cell{grid-column:span 12;border-right:0}
+  .logo-cell:nth-child(n){border-right:0}
+  .bar-actions .btn{padding:.7em .7em}
+  .bar-actions [data-theme-toggle]{display:none}
+  .lede{max-width:none}
+  .sitemap .col{grid-column:1/-1}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+  html.js .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- Grid overlay (12 columns) and cursor readout -->
+<div class="grid-overlay" id="grid-overlay" aria-hidden="true">
+  <span></span><span></span><span></span><span></span><span></span><span></span>
+  <span></span><span></span><span></span><span></span><span></span><span></span>
+</div>
+<div class="col-band" id="col-band" aria-hidden="true" hidden></div>
+<div class="readout" id="readout" aria-hidden="true" hidden><span id="ro-col">C--/12</span><span id="ro-pos">R---</span></div>
+
+<header class="topbar">
+  <div class="wrap">
+    <a class="logo" href="#top" aria-label="SLAB home">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="0" y="0" width="24" height="24" fill="currentColor"/><rect x="7" y="7" width="10" height="10" fill="var(--bg)"/></svg>
+      SLAB
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <a href="#features">Features</a>
+      <a href="#proof">Proof</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#docs">Docs</a>
+    </nav>
+    <div class="bar-actions">
+      <button class="btn btn-sm" type="button" data-theme-toggle aria-pressed="false" aria-label="Invert colours">Invert ◐</button>
+      <button class="btn btn-solid btn-sm" type="button" data-open-signup data-plan="Hobby">Start free</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="top">
+  <div class="term-bg" aria-hidden="true"><pre class="term" id="term"><span id="term-text"></span><span class="caret"></span></pre></div>
+  <div class="wrap">
+    <div class="hero-copy">
+      <p class="label live"><span class="dot" aria-hidden="true"></span>API-first developer platform · v4.0</p>
+      <h1 class="display"><span>Ship APIs.</span><span>No noise.</span></h1>
+      <p class="lede">Deploy, stream logs and roll back HTTP services with one call. No YAML. No dashboards you will never open.</p>
+      <div class="ctas">
+        <button class="btn btn-solid" type="button" data-open-signup data-plan="Hobby">Start free <span aria-hidden="true">→</span></button>
+        <a class="btn" href="#docs">Docs</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="ticker" aria-hidden="true">
+  <div class="ticker-track">
+    <span>Deploy in one call ✱ Stream logs live ✱ Roll back in a click ✱ Rotate keys safely ✱ </span>
+    <span>Deploy in one call ✱ Stream logs live ✱ Roll back in a click ✱ Rotate keys safely ✱ </span>
+  </div>
+</div>
+
+<!-- ============ PROOF ============ -->
+<section class="section" id="proof">
+  <div class="wrap">
+    <div class="grid head-row reveal">
+      <p class="label span-3">[01] Proof</p>
+      <h2 class="h2 span-9">Forty teams. Zero decks.</h2>
+    </div>
+    <ul class="logo-wall" role="list">
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Nordlys"><circle cx="28" cy="32" r="20" fill="currentColor"/><text x="62" y="41">NORDLYS</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Kiln and Co"><rect x="8" y="12" width="40" height="40" fill="currentColor"/><text x="62" y="41">KILN &amp; CO</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Halder"><path d="M28 8 L50 54 L6 54 Z" fill="currentColor"/><text x="66" y="41">HALDER</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Vecta"><path d="M28 6 L50 32 L28 58 L6 32 Z" fill="currentColor"/><text x="66" y="41">VECTA</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Oblique"><path d="M10 54 L28 10 H52 L34 54 Z" fill="currentColor"/><text x="66" y="41">OBLIQUE</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Parsec"><path d="M28 4 L50 17 V47 L28 60 L6 47 V17 Z" fill="currentColor"/><text x="66" y="41">PARSEC</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Meridian"><rect x="8" y="8" width="40" height="9" fill="currentColor"/><rect x="8" y="27" width="28" height="9" fill="currentColor"/><rect x="8" y="46" width="16" height="9" fill="currentColor"/><text x="66" y="41">MERIDIAN</text></svg>
+      </li>
+      <li class="logo-cell reveal">
+        <svg class="logo-svg" viewBox="0 0 240 64" role="img" aria-label="Folio"><path d="M8 6 H38 L50 18 V58 H8 Z" fill="currentColor"/><text x="66" y="41">FOLIO</text></svg>
+      </li>
+    </ul>
+    <div class="grid proof-foot reveal">
+      <p class="label">Invert the page to check the contrast yourself. Every logo above is a live SVG and inherits the current ink.</p>
+      <button class="btn" type="button" data-theme-toggle aria-pressed="false">Invert page ◐</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="grid head-row reveal">
+      <p class="label span-3">[02] Features</p>
+      <h2 class="h2 span-9">Three calls. Zero ceremony.</h2>
+    </div>
+
+    <div class="grid cards">
+      <!-- Card 1 -->
+      <article class="card reveal" aria-labelledby="card1-title">
+        <div class="card-num"><span class="label">01 / Deploy</span><span class="label">POST</span></div>
+        <div>
+          <h3 id="card1-title">One call ships it.</h3>
+          <p>Send a repo and a region. Get a live URL, TLS and a rollback handle back in the same response.</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Deploy snippet language">
+          <button type="button" role="tab" id="c1-tab-js" aria-controls="c1-panel" aria-selected="true" data-lang="js">JS</button>
+          <button type="button" role="tab" id="c1-tab-py" aria-controls="c1-panel" aria-selected="false" tabindex="-1" data-lang="py">Python</button>
+          <button type="button" role="tab" id="c1-tab-curl" aria-controls="c1-panel" aria-selected="false" tabindex="-1" data-lang="curl">cURL</button>
+        </div>
+        <div class="snippet" role="tabpanel" id="c1-panel" aria-labelledby="c1-tab-js">
+          <div class="snippet-bar">
+            <span class="label">deploy.&lt;ext&gt;</span>
+            <button class="copy" type="button" aria-label="Copy snippet">
+              <span class="t-copy">Copy</span><span class="t-done">Copied</span>
+              <span class="tip" aria-hidden="true"><span class="t-copy">Copy snippet to clipboard</span><span class="t-done">Copied to clipboard ✓</span></span>
+            </button>
+            <span class="sr-only" aria-live="polite" data-live></span>
+          </div>
+          <pre data-lang="js" tabindex="0" aria-label="JavaScript example"><code>const res = await fetch("https://api.slab.dev/v1/deployments", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.SLAB_KEY}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ repo: "acme/checkout", region: "eu-west-1" })
+});
+
+const { url } = await res.json();
+console.log(url); // https://checkout.slab.app</code></pre>
+          <pre data-lang="py" hidden tabindex="0" aria-label="Python example"><code>import os, requests
+
+res = requests.post(
+    "https://api.slab.dev/v1/deployments",
+    headers={"Authorization": f"Bearer {os.environ['SLAB_KEY']}"},
+    json={"repo": "acme/checkout", "region": "eu-west-1"},
+)
+print(res.json()["url"])  # https://checkout.slab.app</code></pre>
+          <pre data-lang="curl" hidden tabindex="0" aria-label="cURL example"><code>curl -X POST https://api.slab.dev/v1/deployments \
+  -H "Authorization: Bearer $SLAB_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"repo":"acme/checkout","region":"eu-west-1"}'</code></pre>
+        </div>
+      </article>
+
+      <!-- Card 2 -->
+      <article class="card reveal" aria-labelledby="card2-title">
+        <div class="card-num"><span class="label">02 / Observe</span><span class="label">GET · stream</span></div>
+        <div>
+          <h3 id="card2-title">Logs, live.</h3>
+          <p>Follow any service as it runs. Lines arrive as they are written, with no polling and no agent to install.</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Logs snippet language">
+          <button type="button" role="tab" id="c2-tab-js" aria-controls="c2-panel" aria-selected="true" data-lang="js">JS</button>
+          <button type="button" role="tab" id="c2-tab-py" aria-controls="c2-panel" aria-selected="false" tabindex="-1" data-lang="py">Python</button>
+          <button type="button" role="tab" id="c2-tab-curl" aria-controls="c2-panel" aria-selected="false" tabindex="-1" data-lang="curl">cURL</button>
+        </div>
+        <div class="snippet" role="tabpanel" id="c2-panel" aria-labelledby="c2-tab-js">
+          <div class="snippet-bar">
+            <span class="label">logs.&lt;ext&gt;</span>
+            <button class="copy" type="button" aria-label="Copy snippet">
+              <span class="t-copy">Copy</span><span class="t-done">Copied</span>
+              <span class="tip" aria-hidden="true"><span class="t-copy">Copy snippet to clipboard</span><span class="t-done">Copied to clipboard ✓</span></span>
+            </button>
+            <span class="sr-only" aria-live="polite" data-live></span>
+          </div>
+          <pre data-lang="js" tabindex="0" aria-label="JavaScript example"><code>const res = await fetch("https://api.slab.dev/v1/logs?service=checkout&amp;follow=true", {
+  headers: { Authorization: `Bearer ${process.env.SLAB_KEY}` }
+});
+
+const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+for (;;) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  console.log(value);
+}</code></pre>
+          <pre data-lang="py" hidden tabindex="0" aria-label="Python example"><code>import os, requests
+
+with requests.get(
+    "https://api.slab.dev/v1/logs",
+    params={"service": "checkout", "follow": "true"},
+    headers={"Authorization": f"Bearer {os.environ['SLAB_KEY']}"},
+    stream=True,
+) as res:
+    for line in res.iter_lines(decode_unicode=True):
+        print(line)</code></pre>
+          <pre data-lang="curl" hidden tabindex="0" aria-label="cURL example"><code>curl -N "https://api.slab.dev/v1/logs?service=checkout&amp;follow=true" \
+  -H "Authorization: Bearer $SLAB_KEY"</code></pre>
+        </div>
+      </article>
+
+      <!-- Card 3 -->
+      <article class="card reveal" aria-labelledby="card3-title">
+        <div class="card-num"><span class="label">03 / Secure</span><span class="label">POST</span></div>
+        <div>
+          <h3 id="card3-title">Rotate keys, no outage.</h3>
+          <p>Issue a new key and keep the old one alive for a grace window. Nothing in production breaks at 3 a.m.</p>
+        </div>
+        <div class="tabs" role="tablist" aria-label="Key rotation snippet language">
+          <button type="button" role="tab" id="c3-tab-js" aria-controls="c3-panel" aria-selected="true" data-lang="js">JS</button>
+          <button type="button" role="tab" id="c3-tab-py" aria-controls="c3-panel" aria-selected="false" tabindex="-1" data-lang="py">Python</button>
+          <button type="button" role="tab" id="c3-tab-curl" aria-controls="c3-panel" aria-selected="false" tabindex="-1" data-lang="curl">cURL</button>
+        </div>
+        <div class="snippet" role="tabpanel" id="c3-panel" aria-labelledby="c3-tab-js">
+          <div class="snippet-bar">
+            <span class="label">rotate.&lt;ext&gt;</span>
+            <button class="copy" type="button" aria-label="Copy snippet">
+              <span class="t-copy">Copy</span><span class="t-done">Copied</span>
+              <span class="tip" aria-hidden="true"><span class="t-copy">Copy snippet to clipboard</span><span class="t-done">Copied to clipboard ✓</span></span>
+            </button>
+            <span class="sr-only" aria-live="polite" data-live></span>
+          </div>
+          <pre data-lang="js" tabindex="0" aria-label="JavaScript example"><code>const res = await fetch("https://api.slab.dev/v1/keys/rotate", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.SLAB_KEY}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ grace: "15m" })
+});
+
+const { key } = await res.json();
+console.log(key); // new key, old key valid for 15 minutes</code></pre>
+          <pre data-lang="py" hidden tabindex="0" aria-label="Python example"><code>import os, requests
+
+res = requests.post(
+    "https://api.slab.dev/v1/keys/rotate",
+    headers={"Authorization": f"Bearer {os.environ['SLAB_KEY']}"},
+    json={"grace": "15m"},
+)
+print(res.json()["key"])  # old key valid for 15 minutes</code></pre>
+          <pre data-lang="curl" hidden tabindex="0" aria-label="cURL example"><code>curl -X POST https://api.slab.dev/v1/keys/rotate \
+  -H "Authorization: Bearer $SLAB_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"grace":"15m"}'</code></pre>
+        </div>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PRICING ============ -->
+<section class="section" id="pricing">
+  <div class="wrap">
+    <div class="grid head-row reveal">
+      <p class="label span-3">[03] Pricing</p>
+      <h2 class="h2 span-9">Pay for calls. Not seats.</h2>
+    </div>
+    <div class="price-wrap reveal">
+      <table class="price">
+        <caption class="sr-only">Plan comparison</caption>
+        <colgroup><col style="width:30%"><col style="width:23%"><col style="width:24%"><col style="width:23%"></colgroup>
+        <thead>
+          <tr>
+            <th scope="col"><span class="label">Compare plans</span></th>
+            <th scope="col">
+              <div class="tier-name">Hobby</div>
+              <div class="tier-price">$0</div>
+              <button class="btn btn-sm" type="button" data-open-signup data-plan="Hobby">Start free</button>
+            </th>
+            <th scope="col" class="is-featured">
+              <span class="tier-flag">Most picked</span>
+              <div class="tier-name">Team</div>
+              <div class="tier-price">$49<small>/mo</small></div>
+              <button class="btn btn-solid btn-sm" type="button" data-open-signup data-plan="Team">Start trial</button>
+            </th>
+            <th scope="col">
+              <div class="tier-name">Scale</div>
+              <div class="tier-price">$399<small>/mo</small></div>
+              <button class="btn btn-sm" type="button" data-open-signup data-plan="Scale">Get Scale</button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th scope="row">Requests / month</th><td>100k</td><td class="is-featured">25M</td><td>Unlimited</td></tr>
+          <tr><th scope="row">Deployments</th><td>3 services</td><td class="is-featured">Unlimited</td><td>Unlimited</td></tr>
+          <tr><th scope="row">Log retention</th><td>24 hours</td><td class="is-featured">30 days</td><td>365 days</td></tr>
+          <tr><th scope="row">Seats</th><td>1</td><td class="is-featured">25</td><td>Unlimited</td></tr>
+          <tr><th scope="row">Uptime SLA</th><td>None</td><td class="is-featured">99.9%</td><td>99.99%</td></tr>
+          <tr><th scope="row">Support</th><td>Community</td><td class="is-featured">Email, same day</td><td>Named engineer</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DOCS ============ -->
+<section class="section" id="docs">
+  <div class="wrap">
+    <div class="grid head-row reveal">
+      <p class="label span-3">[04] Docs</p>
+      <h2 class="h2 span-9">Read it in ten minutes.</h2>
+    </div>
+    <ul class="doc-list">
+      <li><a href="#docs"><span class="label doc-n">01</span><span class="doc-t">Quickstart</span><span class="label doc-m">5 min →</span></a></li>
+      <li><a href="#docs"><span class="label doc-n">02</span><span class="doc-t">API reference</span><span class="label doc-m">REST · v1 →</span></a></li>
+      <li><a href="#docs"><span class="label doc-n">03</span><span class="doc-t">CLI</span><span class="label doc-m">slab 4.x →</span></a></li>
+      <li><a href="#docs"><span class="label doc-n">04</span><span class="doc-t">Webhooks</span><span class="label doc-m">Signed payloads →</span></a></li>
+      <li><a href="#docs"><span class="label doc-n">05</span><span class="doc-t">Changelog</span><span class="label doc-m">Weekly →</span></a></li>
+    </ul>
+  </div>
+</section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="section" id="footer">
+  <div class="wrap">
+    <div class="grid foot-top">
+      <div class="foot-brand span-4">
+        <p>Ship APIs. No noise.</p>
+        <ul class="social" role="list">
+          <li>
+            <a href="#footer" aria-label="GitHub">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+            </a>
+          </li>
+          <li>
+            <a href="#footer" aria-label="X">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M18.9 2H22l-6.8 7.8L23 22h-6.3l-4.9-6.4L5.9 22H2.8l7.3-8.4L1 2h6.5l4.4 5.8L18.9 2zm-1.1 18.2h1.7L7.2 3.7H5.4l12.4 16.5z"/></svg>
+            </a>
+          </li>
+          <li>
+            <a href="#footer" aria-label="YouTube">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.6 12 3.6 12 3.6s-7.5 0-9.4.5A3 3 0 0 0 .5 6.2 31 31 0 0 0 0 12a31 31 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.5 9.4.5 9.4.5s7.5 0 9.4-.5a3 3 0 0 0 2.1-2.1A31 31 0 0 0 24 12a31 31 0 0 0-.5-5.8zM9.6 15.6V8.4l6.2 3.6-6.2 3.6z"/></svg>
+            </a>
+          </li>
+          <li>
+            <a href="#footer" aria-label="Email">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 4h20v16H2zM4 6v.5l8 5 8-5V6zm0 3.2V18h16V9.2l-8 5z"/></svg>
+            </a>
+          </li>
+        </ul>
+      </div>
+
+      <nav class="sitemap span-8" aria-label="Site map" id="sitemap">
+        <div class="sitemap-grid">
+          <div class="col">
+            <h3 class="label">Product</h3>
+            <ul>
+              <li><a href="#features">Features</a></li>
+              <li><a href="#pricing">Pricing</a></li>
+              <li><a href="#proof">Customers</a></li>
+              <li><a href="#footer">Status</a></li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3 class="label">Build</h3>
+            <ul>
+              <li><a href="#docs">Quickstart</a></li>
+              <li><a href="#docs">API reference</a></li>
+              <li><a href="#docs">CLI</a></li>
+              <li><a href="#docs">Webhooks</a></li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3 class="label">Company</h3>
+            <ul>
+              <li><a href="#footer">About</a></li>
+              <li><a href="#footer">Careers</a></li>
+              <li><a href="#footer">Security</a></li>
+              <li><a href="#footer">Contact</a></li>
+            </ul>
+          </div>
+          <div class="col">
+            <h3 class="label">Legal</h3>
+            <ul>
+              <li><a href="#footer">Terms</a></li>
+              <li><a href="#footer">Privacy</a></li>
+              <li><a href="#footer">DPA</a></li>
+              <li><a href="#footer">Cookies</a></li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    </div>
+
+    <p class="foot-word" aria-hidden="true">SLAB</p>
+
+    <div class="grid foot-bottom">
+      <p class="label l">© 2026 SLAB Labs · All calls logged</p>
+      <div class="label r">
+        <span>Keys: <span class="kbd">↑</span><span class="kbd">↓</span><span class="kbd">←</span><span class="kbd">→</span> move · <span class="kbd">G</span> grid · <span class="kbd">I</span> invert</span>
+        <button class="linkbtn" type="button" id="grid-toggle" aria-pressed="true">Grid overlay</button>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ SIGNUP MODAL ============ -->
+<dialog class="modal" id="signup" aria-labelledby="signup-title">
+  <form class="modal-form" id="signup-form" novalidate>
+    <div class="modal-head">
+      <p class="label">Sign up · <span id="plan-label">Hobby</span></p>
+      <button class="btn btn-sm" type="button" data-close>Close ✕</button>
+    </div>
+    <h2 id="signup-title">Get your key in 30 seconds.</h2>
+    <label class="field">Work email
+      <input type="email" name="email" required autocomplete="email" placeholder="you@company.com">
+    </label>
+    <label class="field">Plan
+      <select name="plan">
+        <option value="Hobby">Hobby · $0</option>
+        <option value="Team">Team · $49/mo</option>
+        <option value="Scale">Scale · $399/mo</option>
+      </select>
+    </label>
+    <button class="btn btn-solid" type="submit">Create account <span aria-hidden="true">→</span></button>
+    <p class="msg" role="status" aria-live="polite" id="signup-msg"></p>
+    <p class="fine">No card needed for Hobby. Cancel any time.</p>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+  const root = document.documentElement;
+  const $ = (s, c = document) => c.querySelector(s);
+  const $$ = (s, c = document) => Array.from(c.querySelectorAll(s));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  root.classList.add('js');
+
+  /* ---------- Theme (invert) ---------- */
+  const THEME_KEY = 'slab-theme';
+  const toggles = $$('[data-theme-toggle]');
+  function setTheme(mode) {
+    root.dataset.theme = mode;
+    toggles.forEach((b) => b.setAttribute('aria-pressed', String(mode === 'light')));
+    try { localStorage.setItem(THEME_KEY, mode); } catch (_) { /* storage may be blocked */ }
+  }
+  let savedTheme = null;
+  try { savedTheme = localStorage.getItem(THEME_KEY); } catch (_) { /* ignore */ }
+  setTheme(savedTheme === 'light' ? 'light' : 'dark');
+  const toggleTheme = () => setTheme(root.dataset.theme === 'light' ? 'dark' : 'light');
+  toggles.forEach((b) => b.addEventListener('click', toggleTheme));
+
+  /* ---------- Grid overlay ---------- */
+  const overlay = $('#grid-overlay');
+  const gridToggle = $('#grid-toggle');
+  function setGrid(on) {
+    overlay.hidden = !on;
+    gridToggle.setAttribute('aria-pressed', String(on));
+  }
+  gridToggle.addEventListener('click', () => setGrid(overlay.hidden));
+
+  /* ---------- Cursor grid coordinates ---------- */
+  const frame = $('.hero .wrap');
+  const readout = $('#readout');
+  const band = $('#col-band');
+  const colOut = $('#ro-col');
+  const posOut = $('#ro-pos');
+  let pending = null;
+  let rafId = 0;
+
+  function paintReadout() {
+    rafId = 0;
+    if (!pending) return;
+    const { x, y } = pending;
+    const r = frame.getBoundingClientRect();
+    const colW = r.width / 12;
+    const raw = Math.floor((x - r.left) / colW) + 1;
+    const inside = raw >= 1 && raw <= 12;
+    const col = Math.min(12, Math.max(1, raw));
+    const absY = Math.round(y + window.scrollY);
+    const row = Math.floor(absY / 8) + 1; // 8px baseline rows
+    colOut.textContent = inside ? `C${String(col).padStart(2, '0')}/12` : 'C--/12';
+    posOut.textContent = `R${String(row).padStart(4, '0')} · X${String(Math.round(x)).padStart(4, '0')} Y${String(absY).padStart(5, '0')}`;
+    band.hidden = !inside;
+    band.style.width = `${colW}px`;
+    band.style.transform = `translateX(${r.left + (col - 1) * colW}px)`;
+    const maxX = window.innerWidth - readout.offsetWidth - 12;
+    const left = Math.min(x + 16, maxX);
+    const top = y + 18 > window.innerHeight - 30 ? y - 30 : y + 18;
+    readout.style.transform = `translate(${left}px, ${top}px)`;
+  }
+  window.addEventListener('pointermove', (e) => {
+    if (e.pointerType !== 'mouse') return;
+    readout.hidden = false;
+    pending = { x: e.clientX, y: e.clientY };
+    if (!rafId) rafId = requestAnimationFrame(paintReadout);
+  }, { passive: true });
+  document.documentElement.addEventListener('pointerleave', () => {
+    readout.hidden = true;
+    band.hidden = true;
+  });
+
+  /* ---------- Terminal demo (background) ---------- */
+  const termText = $('#term-text');
+  const SCRIPT = [
+    ['$ ', 55],
+    ['curl -X POST https://api.slab.dev/v1/deployments \\\n  -H "Authorization: Bearer $SLAB_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d \'{"repo":"acme/checkout","region":"eu-west-1"}\'', 14],
+    ['\n\n', 0],
+    ['HTTP/2 201 Created\n', 6],
+    ['{\n  "id": "dep_9f3k2a",\n  "status": "building",\n  "region": "eu-west-1",\n  "url": "https://checkout.slab.app"\n}\n', 4],
+    ['\n$ ', 55],
+    ['slab logs checkout --follow\n', 14],
+    ['[12:04:11] checkout  listening on :8080\n[12:04:12] checkout  GET /health 200 3ms\n[12:04:13] checkout  POST /v1/orders 201 41ms\n', 4],
+  ];
+  async function runTerminal() {
+    if (reduceMotion) {
+      termText.textContent = SCRIPT.map((s) => s[0]).join('');
+      return;
+    }
+    for (;;) {
+      let buf = '';
+      termText.textContent = '';
+      for (const [chunk, delay] of SCRIPT) {
+        for (const ch of chunk) {
+          buf += ch;
+          termText.textContent = buf;
+          await sleep(delay);
+          while (document.hidden) await sleep(500);
+        }
+      }
+      await sleep(4200);
+    }
+  }
+  runTerminal();
+
+  /* ---------- Copy to clipboard ---------- */
+  async function copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (_) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      ta.remove();
+      return ok;
+    }
+  }
+
+  /* ---------- Feature cards: tabs + copy ---------- */
+  $$('.card').forEach((card) => {
+    const tabs = $$('[role="tab"]', card);
+    const panes = $$('pre[data-lang]', card);
+    const copyBtn = $('.copy', card);
+    const live = $('[data-live]', card);
+    let copyTimer = 0;
+
+    function selectTab(tab) {
+      tabs.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+      });
+      panes.forEach((p) => { p.hidden = p.dataset.lang !== tab.dataset.lang; });
+      $('.snippet', card).setAttribute('aria-labelledby', tab.id);
+    }
+
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', () => selectTab(tab));
+      tab.addEventListener('keydown', (e) => {
+        let j = null;
+        if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = tabs.length - 1;
+        if (j === null) return;
+        e.preventDefault();
+        tabs[j].focus();
+        selectTab(tabs[j]);
+      });
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      const pane = panes.find((p) => !p.hidden);
+      const text = pane.textContent.replace(/\s+$/, '');
+      const ok = await copyText(text);
+      copyBtn.classList.toggle('is-copied', ok);
+      live.textContent = ok ? 'Copied to clipboard' : 'Copy failed';
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => {
+        copyBtn.classList.remove('is-copied');
+        live.textContent = '';
+      }, 1800);
+    });
+  });
+
+  /* ---------- Signup modal ---------- */
+  const dialog = $('#signup');
+  const form = $('#signup-form');
+  const planSelect = $('select[name="plan"]', form);
+  const planLabel = $('#plan-label');
+  const msg = $('#signup-msg');
+
+  $$('[data-open-signup]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const plan = btn.dataset.plan || 'Hobby';
+      planSelect.value = plan;
+      planLabel.textContent = plan;
+      msg.textContent = '';
+      dialog.showModal();
+      $('input[name="email"]', form).focus();
+    });
+  });
+  $$('[data-close]', dialog).forEach((b) => b.addEventListener('click', () => dialog.close()));
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const email = $('input[name="email"]', form);
+    if (!email.checkValidity()) {
+      msg.textContent = 'Enter a valid work email.';
+      email.focus();
+      return;
+    }
+    // Stub: no backend is wired up in this landing page. Connect this to your signup endpoint.
+    msg.textContent = `You're on the ${planSelect.value} plan. Check your inbox for your key.`;
+  });
+
+  /* ---------- Footer site map: arrow-key navigation ---------- */
+  const siteNav = $('#sitemap');
+  const columns = $$('.col', siteNav).map((c) => $$('a', c));
+  function locate(el) {
+    for (let c = 0; c < columns.length; c++) {
+      const r = columns[c].indexOf(el);
+      if (r > -1) return { c, r };
+    }
+    return null;
+  }
+  siteNav.addEventListener('keydown', (e) => {
+    const a = e.target.closest('a');
+    const pos = a && locate(a);
+    if (!pos) return;
+    let { c, r } = pos;
+    let target = null;
+    switch (e.key) {
+      case 'ArrowDown': r = Math.min(columns[c].length - 1, r + 1); target = columns[c][r]; break;
+      case 'ArrowUp': r = Math.max(0, r - 1); target = columns[c][r]; break;
+      case 'ArrowRight': c = Math.min(columns.length - 1, c + 1); target = columns[c][Math.min(r, columns[c].length - 1)]; break;
+      case 'ArrowLeft': c = Math.max(0, c - 1); target = columns[c][Math.min(r, columns[c].length - 1)]; break;
+      case 'Home': target = columns[c][0]; break;
+      case 'End': target = columns[c][columns[c].length - 1]; break;
+      default: return;
+    }
+    e.preventDefault();
+    if (target) target.focus();
+  });
+
+  /* ---------- Single-key shortcuts ---------- */
+  document.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey || dialog.open) return;
+    if (e.target.closest && e.target.closest('input,select,textarea,[contenteditable]')) return;
+    const key = e.key.toLowerCase();
+    if (key === 'g') setGrid(overlay.hidden);
+    if (key === 'i') toggleTheme();
+  });
+
+  /* ---------- Reveal on scroll ---------- */
+  const revealEls = $$('.reveal');
+  if ('IntersectionObserver' in window && !reduceMotion) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((en) => {
+        if (en.isIntersecting) {
+          en.target.classList.add('in');
+          io.unobserve(en.target);
+        }
+      });
+    }, { threshold: 0.12 });
+    revealEls.forEach((el) => io.observe(el));
+  } else {
+    revealEls.forEach((el) => el.classList.add('in'));
+  }
+})();
+</script>
+</body>
+</html>

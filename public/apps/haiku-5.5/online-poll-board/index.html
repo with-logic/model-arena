@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Online Poll Board</title>
+<meta name="description" content="Vote on what matters and watch the results move in real time.">
+<style>
+  :root {
+    --ink: #2d2a4a;
+    --muted: #6f6a8e;
+    --card: rgba(255, 255, 255, 0.74);
+    --line: rgba(120, 100, 180, 0.16);
+    --violet: #8f6bff;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+
+  body {
+    min-height: 100vh;
+    color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Avenir Next Rounded", Nunito, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: linear-gradient(160deg, #fff4ec 0%, #fdeefa 35%, #eef0ff 70%, #e8fbf6 100%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  /* Ambient background blobs */
+  .blob {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(70px);
+    opacity: 0.55;
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  .b1 { width: 420px; height: 420px; background: #ffb3c7; top: -120px; left: -100px; }
+  .b2 { width: 480px; height: 480px; background: #b9c9ff; bottom: -160px; right: -120px; animation-delay: -6s; }
+  .b3 { width: 300px; height: 300px; background: #a8f0d6; top: 40%; left: 45%; animation-delay: -12s; }
+  @keyframes drift { to { transform: translate(60px, -40px) scale(1.1); } }
+
+  .app {
+    position: relative;
+    z-index: 1;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+
+  .sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  /* Header */
+  header.top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .brand h1 {
+    margin: 0;
+    font-size: clamp(1.7rem, 3.2vw, 2.4rem);
+    letter-spacing: -0.02em;
+    background: linear-gradient(90deg, #ff6b8b, #8f6bff 50%, #3fb8ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .brand p { margin: 4px 0 0; color: var(--muted); font-weight: 600; }
+
+  .stats-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    backdrop-filter: blur(10px);
+    font-weight: 700;
+    font-size: 0.92rem;
+  }
+  .pill b { font-variant-numeric: tabular-nums; font-size: 1rem; }
+  .live-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #2fd08c;
+    animation: ping 1.8s infinite;
+  }
+  @keyframes ping {
+    0% { box-shadow: 0 0 0 0 rgba(47, 208, 140, 0.6); }
+    70%, 100% { box-shadow: 0 0 0 10px rgba(47, 208, 140, 0); }
+  }
+
+  .btn {
+    font: inherit;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #fff;
+    border: 0;
+    border-radius: 14px;
+    padding: 11px 18px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #ff7a9a, #8f6bff);
+    box-shadow: 0 8px 20px -8px rgba(143, 107, 255, 0.7);
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: translateY(-2px); box-shadow: 0 12px 24px -8px rgba(143, 107, 255, 0.8); }
+  .btn:active { transform: translateY(0) scale(0.98); }
+  .btn.ghost { background: #fff; color: var(--ink); box-shadow: none; border: 1px solid var(--line); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .link {
+    background: none;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    font-weight: 700;
+    color: #7a4fff;
+    cursor: pointer;
+  }
+  .link:hover { text-decoration: underline; }
+
+  :focus-visible { outline: 3px solid var(--violet); outline-offset: 2px; }
+
+  /* Toolbar */
+  .toolbar {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 24px 0 18px;
+  }
+  .search { position: relative; flex: 1; min-width: 220px; }
+  .search input {
+    width: 100%;
+    font: inherit;
+    padding: 12px 14px 12px 42px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--ink);
+    outline: none;
+  }
+  .search input:focus { border-color: var(--violet); box-shadow: 0 0 0 4px rgba(143, 107, 255, 0.18); }
+  .search svg {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip-btn {
+    font: inherit;
+    font-size: 0.86rem;
+    font-weight: 700;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid var(--line);
+    padding: 7px 13px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, transform 0.15s;
+  }
+  .chip-btn:hover { transform: translateY(-1px); }
+  .chip-btn[aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    gap: 22px;
+    align-items: start;
+  }
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; }
+    .detail { position: static !important; }
+  }
+
+  .list { display: grid; gap: 12px; }
+
+  .poll-card {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 18px 18px 16px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 26px -22px rgba(60, 40, 120, 0.5);
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  }
+  .poll-card:hover { transform: translateY(-2px); box-shadow: 0 16px 30px -20px rgba(60, 40, 120, 0.5); }
+  .poll-card[aria-pressed="true"] {
+    border-color: var(--violet);
+    box-shadow: 0 0 0 3px rgba(143, 107, 255, 0.2), 0 16px 32px -20px rgba(90, 70, 160, 0.6);
+  }
+  .poll-card.flash { animation: flash 1s ease-out; }
+  @keyframes flash {
+    0% { box-shadow: 0 0 0 6px rgba(255, 194, 107, 0.6); }
+    100% { box-shadow: 0 10px 26px -22px rgba(60, 40, 120, 0.5); }
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .card-q { display: block; margin: 10px 0 12px; font-size: 1.05rem; font-weight: 800; line-height: 1.3; }
+  .card-meta { display: block; margin-top: 10px; font-size: 0.8rem; color: var(--muted); font-weight: 600; }
+
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    font-weight: 800;
+    padding: 5px 10px;
+    border-radius: 999px;
+    background: rgba(143, 107, 255, 0.12);
+    color: #6a45e8;
+  }
+  .voted {
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #d9fbea;
+    color: #13835a;
+  }
+
+  .mini {
+    display: flex;
+    height: 8px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(120, 100, 180, 0.12);
+  }
+  .seg { display: block; height: 100%; transition: width 0.9s cubic-bezier(0.22, 0.9, 0.3, 1); }
+
+  /* Detail panel */
+  .detail {
+    position: sticky;
+    top: 20px;
+    min-height: 320px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    padding: 28px;
+    backdrop-filter: blur(14px);
+    box-shadow: 0 20px 50px -30px rgba(90, 70, 160, 0.35);
+  }
+  .detail-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .detail-q { margin: 16px 0 6px; font-size: clamp(1.4rem, 2.6vw, 1.85rem); line-height: 1.2; letter-spacing: -0.01em; }
+  .detail-d { margin: 0; color: var(--muted); font-weight: 600; }
+
+  .stats-inline {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+  }
+  .stat-box {
+    flex: 1;
+    min-width: 150px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line);
+  }
+  .stat-box .big { display: block; font-size: 1.9rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .stat-box .big-text { display: block; font-size: 1.1rem; font-weight: 800; line-height: 1.2; }
+  .stat-box span.label { font-size: 0.8rem; color: var(--muted); font-weight: 700; }
+
+  .options { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  .option {
+    position: relative;
+    overflow: hidden;
+    width: 100%;
+    text-align: left;
+    font: inherit;
+    color: var(--ink);
+    background: #fff;
+    border: 2px solid transparent;
+    border-radius: 16px;
+    padding: 16px 18px;
+    cursor: pointer;
+    box-shadow: 0 6px 16px -12px rgba(60, 40, 120, 0.45);
+    transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .option:hover { transform: translateY(-2px); border-color: rgba(143, 107, 255, 0.4); box-shadow: 0 12px 22px -14px rgba(60, 40, 120, 0.5); }
+  .option:active { transform: scale(0.99); }
+  .option.mine { border-color: var(--violet); }
+  .bar {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 0;
+    opacity: 0.28;
+    border-radius: 14px;
+    transition: width 0.9s cubic-bezier(0.22, 0.9, 0.3, 1);
+  }
+  .opt-row {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+  }
+  .opt-label { font-weight: 800; font-size: 1rem; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+  .opt-count { display: flex; align-items: baseline; gap: 8px; white-space: nowrap; }
+  .opt-count b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+  .opt-count small { color: var(--muted); font-weight: 800; font-variant-numeric: tabular-nums; min-width: 2.6em; text-align: right; }
+  .badge {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #fff;
+    background: var(--violet);
+    border-radius: 999px;
+    padding: 3px 8px;
+  }
+  .crown { display: inline-block; animation: bob 1.6s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-3px) rotate(-6deg); } }
+
+  .hint { margin: 16px 0 0; font-size: 0.88rem; color: var(--muted); font-weight: 600; }
+
+  .empty {
+    padding: 30px 22px;
+    text-align: center;
+    color: var(--muted);
+    font-weight: 700;
+    background: var(--card);
+    border: 1px dashed rgba(120, 100, 180, 0.35);
+    border-radius: 20px;
+  }
+
+  .footnote { margin: 36px 0 0; text-align: center; font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+
+  /* Floating effects */
+  .float {
+    position: fixed;
+    z-index: 80;
+    pointer-events: none;
+    font-weight: 900;
+    font-size: 1.3rem;
+    color: var(--violet);
+    text-shadow: 0 2px 8px rgba(143, 107, 255, 0.35);
+  }
+  .confetti {
+    position: fixed;
+    z-index: 70;
+    width: 8px;
+    height: 12px;
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    z-index: 90;
+    max-width: calc(100vw - 32px);
+    padding: 12px 18px;
+    border-radius: 14px;
+    background: var(--ink);
+    color: #fff;
+    font-weight: 700;
+    box-shadow: 0 16px 40px -12px rgba(30, 20, 70, 0.5);
+    opacity: 0;
+    transform: translate(-50%, 20px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: none;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* Create-poll dialog */
+  dialog {
+    width: min(540px, calc(100vw - 32px));
+    padding: 0;
+    border: 0;
+    border-radius: 24px;
+    background: #fffdfb;
+    color: var(--ink);
+    box-shadow: 0 30px 80px -20px rgba(60, 40, 120, 0.45);
+  }
+  dialog::backdrop { background: rgba(45, 42, 74, 0.35); backdrop-filter: blur(4px); }
+  dialog form { padding: 26px; display: grid; gap: 16px; }
+  dialog h2 { margin: 0; font-size: 1.5rem; letter-spacing: -0.01em; }
+  dialog label > span, dialog legend {
+    display: block;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  dialog input[type="text"], dialog textarea, dialog select {
+    font: inherit;
+    width: 100%;
+    padding: 11px 13px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--ink);
+    outline: none;
+  }
+  dialog input:focus, dialog textarea:focus, dialog select:focus { border-color: var(--violet); box-shadow: 0 0 0 4px rgba(143, 107, 255, 0.16); }
+  dialog fieldset { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; }
+  .opt-inputs { display: grid; gap: 8px; }
+  .opt-input-row { display: flex; gap: 8px; }
+  .opt-input-row input { flex: 1; }
+  .icon-btn {
+    width: 42px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--muted);
+    font: inherit;
+    cursor: pointer;
+  }
+  .icon-btn:hover:not(:disabled) { color: #d6336c; border-color: #f2b8cc; }
+  .icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .error { margin: 0; min-height: 1.2em; color: #d6336c; font-size: 0.9rem; font-weight: 700; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="blob b1" aria-hidden="true"></div>
+<div class="blob b2" aria-hidden="true"></div>
+<div class="blob b3" aria-hidden="true"></div>
+
+<main class="app">
+  <header class="top">
+    <div class="brand">
+      <h1>Online Poll Board</h1>
+      <p>Vote on what matters. Watch the results move.</p>
+    </div>
+    <div class="stats-row">
+      <span class="pill"><span class="live-dot" aria-hidden="true"></span>Live</span>
+      <span class="pill"><b id="stat-polls" data-count="polls" data-to="0">0</b> polls</span>
+      <span class="pill"><b id="stat-votes" data-count="global" data-to="0">0</b> votes</span>
+      <button class="btn" id="new-btn" type="button">+ New poll</button>
+    </div>
+  </header>
+
+  <section class="toolbar" aria-label="Find polls">
+    <label class="search">
+      <span class="sr">Search polls</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search" type="search" placeholder="Search polls…" autocomplete="off">
+    </label>
+    <div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+  </section>
+
+  <div class="layout">
+    <section aria-label="Poll list">
+      <div class="list" id="list"></div>
+    </section>
+    <section class="detail" id="detail" aria-label="Selected poll"></section>
+  </div>
+
+  <p class="footnote">Demo data. Your votes and new polls are saved in this browser.</p>
+</main>
+
+<dialog id="new-dialog" aria-labelledby="new-title">
+  <form id="new-form" novalidate>
+    <h2 id="new-title">Create a poll</h2>
+    <label>
+      <span>Question</span>
+      <input type="text" id="f-q" maxlength="120" placeholder="What should we decide?" autocomplete="off">
+    </label>
+    <label>
+      <span>Description <em>(optional)</em></span>
+      <textarea id="f-d" rows="2" maxlength="200" placeholder="Add a little context"></textarea>
+    </label>
+    <label>
+      <span>Category</span>
+      <select id="f-cat"></select>
+    </label>
+    <fieldset>
+      <legend>Options (2 to 6)</legend>
+      <div class="opt-inputs" id="opt-inputs"></div>
+      <div><button type="button" class="link" id="add-opt">+ Add option</button></div>
+    </fieldset>
+    <p class="error" id="form-error" role="alert"></p>
+    <div class="form-actions">
+      <button type="button" class="btn ghost" data-close>Cancel</button>
+      <button type="submit" class="btn">Publish poll</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const KEY = 'online-poll-board:v1';
+  const HOUR = 3600e3;
+  const EMOJI = { Food: '🍕', Lifestyle: '🌿', Tech: '💻', Work: '🏢', Science: '🔭', Fun: '🎉' };
+  const COLORS = ['#ff6b8b', '#ffa23a', '#22c79a', '#3d9bff', '#8f6bff', '#ff5fc8', '#14b8c4', '#e0a800'];
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const total = p => p.options.reduce((s, o) => s + o.votes, 0);
+  const share = (o, t) => (t ? Math.round((o.votes / t) * 100) : 0);
+  const timeAgo = ts => {
+    const s = (Date.now() - ts) / 1000;
+    if (s < 60) return 'just now';
+    const m = s / 60;
+    if (m < 60) return `${Math.floor(m)}m ago`;
+    const h = m / 60;
+    if (h < 24) return `${Math.floor(h)}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  };
+
+  /* ---------- Data ---------- */
+  function seed() {
+    const now = Date.now();
+    const raw = [
+      { q: "What's the best pizza topping?", d: 'Settle it once and for all. Choose wisely.', c: 'Food', ago: 2 * HOUR,
+        o: [['Pepperoni', 412], ['Mushrooms', 238], ['Pineapple', 301], ['Extra cheese', 187]] },
+      { q: 'Which season is the best?', d: 'Pick the season you would never want to skip.', c: 'Lifestyle', ago: 26 * HOUR,
+        o: [['Spring', 184], ['Summer', 226], ['Autumn', 342], ['Winter', 121]] },
+      { q: 'Tabs or spaces?', d: 'The eternal question. The linter has opinions too.', c: 'Tech', ago: 50 * HOUR,
+        o: [['Tabs', 503], ['Spaces', 548], ['Whatever the linter says', 212]] },
+      { q: 'Where should the team offsite be?', d: 'Budget is flexible. Vibes are not.', c: 'Work', ago: 4 * 24 * HOUR,
+        o: [['Lake cabin', 96], ['City weekend', 142], ['Beach', 211], ['Mountain retreat', 77]] },
+      { q: 'Best way to spend a rainy day?', d: 'Cozy plans only.', c: 'Fun', ago: 6 * 24 * HOUR,
+        o: [['Reading', 164], ['Movie marathon', 203], ['Board games', 131], ['Baking', 118]] },
+      { q: 'Which moon would you visit first?', d: "Pack light. There's no coming back for a while.", c: 'Science', ago: 9 * 24 * HOUR,
+        o: [['Europa', 261], ['Titan', 238], ['Enceladus', 144], ['Io', 97]] },
+    ];
+    return {
+      myVotes: {},
+      polls: raw.map((r, i) => {
+        const id = `p${i + 1}`;
+        return {
+          id,
+          question: r.q,
+          description: r.d,
+          category: r.c,
+          createdAt: now - r.ago,
+          options: r.o.map(([label, votes], j) => ({ id: `${id}-${j}`, label, votes })),
+        };
+      }),
+    };
+  }
+
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.polls) && s.polls.length) return { myVotes: s.myVotes || {}, polls: s.polls };
+    } catch { /* ignore corrupt storage */ }
+    return seed();
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage unavailable */ }
+  }
+
+  let state = load();
+  const ui = { selectedId: state.polls[0] ? state.polls[0].id : null, filter: 'All', query: '', flashId: null };
+  const current = () => state.polls.find(p => p.id === ui.selectedId) || null;
+
+  /* ---------- Animation helpers ---------- */
+  const shownPct = new Map();
+  const shownCount = new Map();
+
+  function tween(el, from, to, suffix) {
+    cancelAnimationFrame(el._raf);
+    const fmt = n => Math.round(n).toLocaleString() + suffix;
+    if (reduceMotion || from === to) { el.textContent = fmt(to); return; }
+    el.textContent = fmt(from);
+    const dur = Math.min(950, 320 + Math.abs(to - from) * 30);
+    const t0 = performance.now();
+    const step = now => {
+      const k = Math.min(1, (now - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      el.textContent = fmt(from + (to - from) * e);
+      if (k < 1) el._raf = requestAnimationFrame(step);
+    };
+    el._raf = requestAnimationFrame(step);
+  }
+
+  // Animates freshly rendered bars and counters from their last shown value to the current one.
+  function hydrate(root) {
+    root.querySelectorAll('[data-bar]').forEach(bar => {
+      const key = bar.dataset.bar;
+      const to = Number(bar.dataset.pct);
+      const from = shownPct.has(key) ? shownPct.get(key) : 0;
+      shownPct.set(key, to);
+      bar.style.width = from + '%';
+      void bar.offsetWidth; // force reflow so the transition runs
+      bar.style.width = to + '%';
+    });
+    root.querySelectorAll('[data-count]').forEach(el => {
+      const key = el.dataset.count;
+      const to = Number(el.dataset.to);
+      const from = shownCount.has(key) ? shownCount.get(key) : 0;
+      shownCount.set(key, to);
+      tween(el, from, to, el.dataset.suffix || '');
+    });
+  }
+
+  function burst(x, y) {
+    if (reduceMotion) return;
+    for (let i = 0; i < 18; i++) {
+      const el = document.createElement('span');
+      el.className = 'confetti';
+      el.style.left = x + 'px';
+      el.style.top = y + 'px';
+      el.style.background = COLORS[i % COLORS.length];
+      document.body.appendChild(el);
+      const ang = Math.random() * Math.PI * 2;
+      const dist = 60 + Math.random() * 90;
+      const dx = Math.cos(ang) * dist;
+      const dy = Math.sin(ang) * dist - 40;
+      el.animate([
+        { transform: 'translate(-50%, -50%) rotate(0deg)', opacity: 1 },
+        { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy + 70}px)) rotate(${Math.random() * 720 - 360}deg)`, opacity: 0 },
+      ], { duration: 900 + Math.random() * 400, easing: 'cubic-bezier(.2,.7,.4,1)' }).onfinish = () => el.remove();
+    }
+  }
+
+  function floatText(text, x, y) {
+    if (reduceMotion) return;
+    const el = document.createElement('div');
+    el.className = 'float';
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    document.body.appendChild(el);
+    el.animate([
+      { transform: 'translate(-50%, -50%) scale(0.6)', opacity: 0 },
+      { transform: 'translate(-50%, -90%) scale(1.15)', opacity: 1, offset: 0.3 },
+      { transform: 'translate(-50%, -170%) scale(1)', opacity: 0 },
+    ], { duration: 1000, easing: 'ease-out' }).onfinish = () => el.remove();
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $('#toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  }
+
+  /* ---------- Rendering ---------- */
+  function visiblePolls() {
+    const q = ui.query.trim().toLowerCase();
+    return state.polls.filter(p =>
+      (ui.filter === 'All' || p.category === ui.filter) &&
+      (!q || (p.question + ' ' + p.description).toLowerCase().includes(q)));
+  }
+
+  function ensureVisibleSelection() {
+    const vis = visiblePolls();
+    if (vis.length && !vis.some(p => p.id === ui.selectedId)) ui.selectedId = vis[0].id;
+  }
+
+  let filtersKey = null;
+  function renderFilters() {
+    const cats = [...new Set(state.polls.map(p => p.category))].sort();
+    const key = cats.join('|');
+    const box = $('#chips');
+    if (key !== filtersKey) {
+      filtersKey = key;
+      box.innerHTML = ['All', ...cats].map(c =>
+        `<button type="button" class="chip-btn" data-filter="${esc(c)}">${c === 'All' ? 'All' : `${EMOJI[c] || ''} ${esc(c)}`}</button>`).join('');
+    }
+    box.querySelectorAll('[data-filter]').forEach(b =>
+      b.setAttribute('aria-pressed', String(b.dataset.filter === ui.filter)));
+  }
+
+  function cardHTML(p) {
+    const t = total(p);
+    const mine = state.myVotes[p.id];
+    const segs = p.options.map((o, i) =>
+      `<span class="seg" style="width:${share(o, t)}%;background:${COLORS[i % COLORS.length]}"></span>`).join('');
+    const cls = ['poll-card', p.id === ui.flashId ? 'flash' : ''].join(' ').trim();
+    return `<button type="button" class="${cls}" data-select="${esc(p.id)}" aria-pressed="${p.id === ui.selectedId}">
+      <span class="card-top">
+        <span class="tag">${EMOJI[p.category] || '📊'} ${esc(p.category)}</span>
+        ${mine ? '<span class="voted">✓ Voted</span>' : ''}
+      </span>
+      <span class="card-q">${esc(p.question)}</span>
+      <span class="mini" aria-hidden="true">${segs}</span>
+      <span class="card-meta">${t.toLocaleString()} votes · ${timeAgo(p.createdAt)}</span>
+    </button>`;
+  }
+
+  function renderList() {
+    const list = visiblePolls();
+    $('#list').innerHTML = list.length
+      ? list.map(cardHTML).join('')
+      : `<div class="empty">No polls match that yet. <button type="button" class="link" data-action="new">Start one</button></div>`;
+  }
+
+  function optionHTML(o, i, t, mine, leaderId) {
+    const pct = share(o, t);
+    const color = COLORS[i % COLORS.length];
+    const isMine = mine === o.id;
+    const isLeader = leaderId === o.id;
+    return `<li><button type="button" class="option${isMine ? ' mine' : ''}" data-vote="${esc(o.id)}"
+        aria-label="Vote for ${esc(o.label)}${isMine ? ' (your current vote)' : ''}">
+      <span class="bar" data-bar="${esc(o.id)}" data-pct="${pct}" style="background:${color}"></span>
+      <span class="opt-row">
+        <span class="opt-label">${esc(o.label)}${isLeader ? ' <span class="crown" title="Leading" aria-hidden="true">👑</span>' : ''}${isMine ? '<span class="badge">Your vote</span>' : ''}</span>
+        <span class="opt-count">
+          <b data-count="${esc(o.id)}" data-to="${o.votes}">0</b>
+          <small data-count="pct:${esc(o.id)}" data-to="${pct}" data-suffix="%">0%</small>
+        </span>
+      </span>
+    </button></li>`;
+  }
+
+  function renderDetail() {
+    const el = $('#detail');
+    const p = current();
+    if (!p) {
+      el.innerHTML = `<div class="empty">No polls yet. Create the first one!</div>`;
+      return;
+    }
+    const t = total(p);
+    const mine = state.myVotes[p.id];
+    const maxV = Math.max(0, ...p.options.map(o => o.votes));
+    const leaders = p.options.filter(o => o.votes === maxV);
+    const leaderId = t && leaders.length === 1 ? leaders[0].id : null;
+
+    el.innerHTML = `
+      <div class="detail-head">
+        <span class="tag">${EMOJI[p.category] || '📊'} ${esc(p.category)}</span>
+        <span class="card-meta" style="margin:0">Created ${timeAgo(p.createdAt)}</span>
+      </div>
+      <h2 class="detail-q">${esc(p.question)}</h2>
+      ${p.description ? `<p class="detail-d">${esc(p.description)}</p>` : ''}
+      <div class="stats-inline">
+        <div class="stat-box">
+          <span class="big" data-count="total:${esc(p.id)}" data-to="${t}">0</span>
+          <span class="label">total votes</span>
+        </div>
+        <div class="stat-box">
+          <span class="big-text">${mine ? '✓ You voted' : 'Not voted yet'}</span>
+          <span class="label">${mine ? 'Switch anytime below' : 'Pick an option below'}</span>
+        </div>
+      </div>
+      <ul class="options">${p.options.map((o, i) => optionHTML(o, i, t, mine, leaderId)).join('')}</ul>
+      <p class="hint">${mine ? 'Tap a different option to switch your vote.' : 'Tap an option to vote. Results update live.'}</p>`;
+    hydrate(el);
+  }
+
+  function renderHeader() {
+    $('#stat-polls').dataset.to = state.polls.length;
+    $('#stat-votes').dataset.to = state.polls.reduce((s, p) => s + total(p), 0);
+    hydrate(document.querySelector('.stats-row'));
+  }
+
+  function renderAll() {
+    renderFilters();
+    renderList();
+    renderDetail();
+    renderHeader();
+  }
+
+  /* ---------- Actions ---------- */
+  function vote(optId, anchor) {
+    const p = current();
+    if (!p) return;
+    const opt = p.options.find(o => o.id === optId);
+    if (!opt) return;
+    const prev = state.myVotes[p.id];
+    if (prev === optId) {
+      toast('That is already your pick. Choose another option to switch.');
+      return;
+    }
+    const r = anchor.getBoundingClientRect();
+    if (prev) {
+      const po = p.options.find(o => o.id === prev);
+      if (po) po.votes = Math.max(0, po.votes - 1);
+    }
+    opt.votes += 1;
+    state.myVotes[p.id] = optId;
+    save();
+    renderAll();
+
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    floatText('+1', r.right - 28, cy);
+    burst(cx, cy);
+    toast(prev ? `Vote switched to “${opt.label}”` : `Vote recorded for “${opt.label}”`);
+  }
+
+  // Mock activity: other visitors occasionally vote, so results feel alive.
+  function simulate() {
+    if (document.hidden || !state.polls.length) return;
+    const p = state.polls[Math.floor(Math.random() * state.polls.length)];
+    const o = p.options[Math.floor(Math.random() * p.options.length)];
+    o.votes += 1 + (Math.random() < 0.3 ? 1 : 0);
+    save();
+    ui.flashId = p.id;
+    renderAll();
+    setTimeout(() => { ui.flashId = null; }, 1000);
+  }
+  function scheduleSim() {
+    setTimeout(() => { simulate(); scheduleSim(); }, 3500 + Math.random() * 2500);
+  }
+
+  /* ---------- Create-poll dialog ---------- */
+  const dlg = $('#new-dialog');
+  const form = $('#new-form');
+
+  const readOpts = () => [...form.querySelectorAll('[data-opt]')].map(i => i.value);
+
+  function renderOptInputs(vals) {
+    $('#opt-inputs').innerHTML = vals.map((v, i) => `
+      <div class="opt-input-row">
+        <input type="text" maxlength="60" placeholder="Option ${i + 1}" value="${esc(v)}" data-opt aria-label="Option ${i + 1}" autocomplete="off">
+        <button type="button" class="icon-btn" data-remove="${i}" aria-label="Remove option ${i + 1}" title="Remove" ${vals.length <= 2 ? 'disabled' : ''}>✕</button>
+      </div>`).join('');
+    $('#add-opt').disabled = vals.length >= 6;
+  }
+
+  function openNew() {
+    form.reset();
+    $('#form-error').textContent = '';
+    renderOptInputs(['', '']);
+    dlg.showModal();
+    $('#f-q').focus();
+  }
+
+  /* ---------- Events ---------- */
+  document.addEventListener('click', e => {
+    const t = e.target;
+
+    const sel = t.closest('[data-select]');
+    if (sel) {
+      ui.selectedId = sel.dataset.select;
+      renderList();
+      renderDetail();
+      if (matchMedia('(max-width: 860px)').matches) {
+        $('#detail').scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' });
+      }
+      return;
+    }
+
+    const v = t.closest('[data-vote]');
+    if (v) { vote(v.dataset.vote, v); return; }
+
+    const f = t.closest('[data-filter]');
+    if (f) {
+      ui.filter = f.dataset.filter;
+      ensureVisibleSelection();
+      renderFilters();
+      renderList();
+      renderDetail();
+      return;
+    }
+
+    if (t.closest('#new-btn') || t.closest('[data-action="new"]')) { openNew(); return; }
+    if (t.closest('[data-close]')) { dlg.close(); return; }
+
+    if (t.closest('#add-opt')) {
+      const vals = readOpts();
+      if (vals.length < 6) {
+        vals.push('');
+        renderOptInputs(vals);
+        const inputs = form.querySelectorAll('[data-opt]');
+        inputs[inputs.length - 1].focus();
+      }
+      return;
+    }
+
+    const rm = t.closest('[data-remove]');
+    if (rm) {
+      const vals = readOpts();
+      vals.splice(Number(rm.dataset.remove), 1);
+      renderOptInputs(vals);
+    }
+  });
+
+  dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); });
+
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const err = $('#form-error');
+    const q = $('#f-q').value.trim();
+    const opts = readOpts().map(s => s.trim()).filter(Boolean);
+
+    if (!q) { err.textContent = 'Give your poll a question.'; $('#f-q').focus(); return; }
+    if (opts.length < 2) { err.textContent = 'Add at least two options.'; return; }
+    if (new Set(opts.map(s => s.toLowerCase())).size !== opts.length) {
+      err.textContent = 'Options need to be different from each other.';
+      return;
+    }
+
+    const id = 'p' + Date.now().toString(36);
+    const poll = {
+      id,
+      question: q,
+      description: $('#f-d').value.trim(),
+      category: $('#f-cat').value,
+      createdAt: Date.now(),
+      options: opts.map((label, i) => ({ id: `${id}-${i}`, label, votes: 0 })),
+    };
+    state.polls.unshift(poll);
+    ui.selectedId = poll.id;
+    ui.filter = 'All';
+    ui.query = '';
+    $('#search').value = '';
+    save();
+    dlg.close();
+    renderAll();
+    toast('Poll published. Be the first to vote!');
+    burst(window.innerWidth / 2, window.innerHeight / 3);
+  });
+
+  $('#search').addEventListener('input', e => {
+    ui.query = e.target.value;
+    ensureVisibleSelection();
+    renderList();
+    renderDetail();
+  });
+
+  /* ---------- Init ---------- */
+  $('#f-cat').innerHTML = Object.keys(EMOJI).map(c => `<option>${c}</option>`).join('');
+  save();
+  renderAll();
+  scheduleSim();
+})();
+</script>
+</body>
+</html>

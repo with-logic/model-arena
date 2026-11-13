@@ -1,0 +1,1004 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Event Countdown</title>
+  <meta name="description" content="A live, animated countdown to your next event, with one-click calendar export.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #f6f7fb;
+      --muted: rgba(246, 247, 251, 0.68);
+      --line: rgba(255, 255, 255, 0.14);
+      --glass: rgba(255, 255, 255, 0.08);
+      --accent: #ffb36b;
+      --accent-2: #ff5e8a;
+      --dim: 0.45;
+      color-scheme: dark;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: #07080d;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---------- Background stage ---------- */
+    .stage {
+      position: fixed;
+      inset: 0;
+      overflow: hidden;
+      z-index: 0;
+      pointer-events: none;
+    }
+    .layer {
+      position: absolute;
+      inset: 0;
+      will-change: transform;
+    }
+    .bg-image {
+      position: absolute;
+      inset: -6%;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      transition: opacity 0.8s ease;
+    }
+    .bg-image.default {
+      background-image:
+        radial-gradient(circle at 20% 20%, rgba(255, 122, 89, 0.35), transparent 45%),
+        radial-gradient(circle at 80% 75%, rgba(123, 92, 255, 0.4), transparent 50%),
+        linear-gradient(135deg, #1a1036 0%, #0b1a2e 50%, #2a0f1f 100%);
+      background-size: 180% 180%, 180% 180%, 100% 100%;
+      animation: drift 28s ease-in-out infinite alternate;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at center, transparent 30%, rgba(4, 5, 10, 0.65) 100%),
+        rgba(6, 7, 12, var(--dim));
+      transition: background-color 0.3s ease;
+    }
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(70px);
+      opacity: 0.5;
+      mix-blend-mode: screen;
+      animation: float 18s ease-in-out infinite alternate;
+    }
+    .orb-a { width: 42vmax; height: 42vmax; left: -10vmax; top: -12vmax; background: #ff7a59; }
+    .orb-b { width: 36vmax; height: 36vmax; right: -8vmax; bottom: -10vmax; background: #7b5cff; animation-duration: 22s; animation-delay: -6s; }
+    .orb-c { width: 22vmax; height: 22vmax; left: 35%; top: 55%; background: #22d3ee; opacity: 0.3; animation-duration: 26s; animation-delay: -12s; }
+    .grain {
+      position: absolute;
+      inset: 0;
+      opacity: 0.07;
+      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    }
+
+    @keyframes drift {
+      0% { background-position: 0% 0%, 100% 100%, 0% 50%; }
+      100% { background-position: 100% 100%, 0% 0%, 100% 50%; }
+    }
+    @keyframes float {
+      0% { transform: translate3d(0, 0, 0) scale(1); }
+      100% { transform: translate3d(4vmax, 3vmax, 0) scale(1.08); }
+    }
+
+    /* ---------- Top bar ---------- */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.25rem clamp(1rem, 3vw, 2.25rem);
+      z-index: 5;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+    .brand-mark {
+      width: 22px; height: 22px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      box-shadow: 0 6px 18px -4px rgba(255, 94, 138, 0.7);
+    }
+
+    /* ---------- Hero ---------- */
+    main {
+      position: relative;
+      z-index: 1;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .content {
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      gap: 1.1rem;
+      padding: 6rem 1.5rem 3rem;
+    }
+    .content > * {
+      animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+    .content > :nth-child(2) { animation-delay: 0.08s; }
+    .content > :nth-child(3) { animation-delay: 0.16s; }
+    .content > :nth-child(4) { animation-delay: 0.24s; }
+    .content > :nth-child(5) { animation-delay: 0.36s; }
+    .content > :nth-child(6) { animation-delay: 0.44s; }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    .eyebrow {
+      margin: 0;
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    h1 {
+      margin: 0;
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-weight: 700;
+      font-size: clamp(2.4rem, 7vw, 5.25rem);
+      line-height: 1.02;
+      letter-spacing: -0.025em;
+      max-width: 16ch;
+      text-wrap: balance;
+      text-shadow: 0 4px 30px rgba(0, 0, 0, 0.45);
+      overflow-wrap: anywhere;
+    }
+    .location {
+      margin: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 1.02rem;
+      color: var(--muted);
+    }
+    .location svg { flex: none; }
+
+    /* ---------- Countdown ---------- */
+    .countdown {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+      gap: clamp(0.6rem, 2.5vw, 1.6rem);
+      margin: clamp(1.25rem, 4vh, 2.5rem) 0 0.5rem;
+    }
+    .unit {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.9rem;
+    }
+    .digits {
+      display: flex;
+      gap: 0.2em;
+      font-size: clamp(2.75rem, 10vw, 8rem);
+    }
+    .digit {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 0.74em;
+      height: 1.2em;
+      border-radius: 0.14em;
+      overflow: hidden;
+      perspective: 500px;
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+      color: #fff;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+      border: 1px solid var(--line);
+      box-shadow:
+        0 24px 50px -24px rgba(0, 0, 0, 0.75),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+    }
+    .digit::after {
+      content: "";
+      position: absolute;
+      left: 0; right: 0;
+      top: 50%;
+      height: 2px;
+      background: rgba(0, 0, 0, 0.45);
+      z-index: 3;
+      pointer-events: none;
+    }
+    .digit span {
+      grid-area: 1 / 1;
+      display: block;
+      transform-origin: 50% 50%;
+      text-shadow: 0 3px 18px rgba(0, 0, 0, 0.35);
+      backface-visibility: hidden;
+    }
+    .digit span.out {
+      animation: roll-out 0.45s cubic-bezier(0.5, 0, 0.75, 0) forwards;
+    }
+    .digit span.in {
+      animation: roll-in 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+    @keyframes roll-out {
+      to { transform: rotateX(-90deg) translateY(-0.12em); opacity: 0; }
+    }
+    @keyframes roll-in {
+      from { transform: rotateX(90deg) translateY(0.12em); opacity: 0; }
+      to { transform: none; opacity: 1; }
+    }
+    .label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      letter-spacing: 0.24em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .status {
+      min-height: 1.6em;
+      margin: 0.5rem 0 0;
+      color: var(--accent);
+      font-weight: 500;
+    }
+
+    /* ---------- Buttons ---------- */
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 0.75rem;
+      margin-top: 0.25rem;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.85rem 1.4rem;
+      font: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--ink);
+      text-decoration: none;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn:active { transform: translateY(0); }
+    .btn.primary {
+      color: #1d0b12;
+      background: linear-gradient(120deg, var(--accent), var(--accent-2));
+      box-shadow: 0 14px 34px -12px rgba(255, 94, 138, 0.75);
+    }
+    .btn.primary:hover { box-shadow: 0 18px 40px -12px rgba(255, 94, 138, 0.9); }
+    .btn.ghost {
+      background: var(--glass);
+      border-color: var(--line);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .btn.ghost:hover { background: rgba(255, 255, 255, 0.14); }
+    .btn.saved { background: #3ddc97; color: #04150d; box-shadow: 0 14px 34px -12px rgba(61, 220, 151, 0.7); }
+    :focus-visible {
+      outline: 2px solid #fff;
+      outline-offset: 3px;
+    }
+
+    /* ---------- Settings panel ---------- */
+    .scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 9;
+    }
+    .scrim.show { opacity: 1; pointer-events: auto; }
+
+    .panel {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: min(420px, 100%);
+      display: flex;
+      flex-direction: column;
+      background: rgba(14, 16, 26, 0.86);
+      backdrop-filter: blur(24px) saturate(140%);
+      -webkit-backdrop-filter: blur(24px) saturate(140%);
+      border-left: 1px solid var(--line);
+      transform: translateX(104%);
+      transition: transform 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+      z-index: 10;
+    }
+    .panel.open { transform: none; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.5rem 1.5rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-head h2 {
+      margin: 0;
+      font-family: "Space Grotesk", "Inter", sans-serif;
+      font-size: 1.25rem;
+    }
+    .icon-btn {
+      width: 36px; height: 36px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: var(--glass);
+      color: var(--ink);
+      font-size: 1.25rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+    form {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+      padding: 1.5rem;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin: 0;
+      border: 0;
+      padding: 0;
+      min-width: 0;
+    }
+    .field > span,
+    .field > legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    input[type="text"],
+    input[type="datetime-local"] {
+      width: 100%;
+      font: inherit;
+      font-size: 1rem;
+      color: var(--ink);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+      padding: 0.75rem 0.9rem;
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+    }
+    input:focus { outline: none; border-color: var(--accent); background: rgba(255, 255, 255, 0.09); }
+    input[aria-invalid="true"] { border-color: #ff7a8a; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+    .drop {
+      width: 100%;
+      min-height: 120px;
+      display: grid;
+      place-items: center;
+      padding: 0.75rem;
+      font: inherit;
+      font-size: 0.92rem;
+      color: var(--muted);
+      background: rgba(255, 255, 255, 0.03);
+      border: 1.5px dashed rgba(255, 255, 255, 0.25);
+      border-radius: 1rem;
+      cursor: pointer;
+      transition: border-color 0.2s ease, background-color 0.2s ease;
+      overflow: hidden;
+    }
+    .drop:hover, .drop.dragging {
+      border-color: var(--accent);
+      background: rgba(255, 179, 107, 0.06);
+      color: var(--ink);
+    }
+    .drop img {
+      width: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      border-radius: 0.6rem;
+    }
+    .drop u { text-decoration-color: var(--accent); text-underline-offset: 3px; }
+    .row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .row.end { justify-content: flex-end; margin-top: auto; }
+    .link {
+      padding: 0;
+      font: inherit;
+      font-size: 0.85rem;
+      color: var(--accent);
+      background: none;
+      border: 0;
+      cursor: pointer;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+    .fine { margin: 0; font-size: 0.8rem; color: var(--muted); }
+    .error { min-height: 1.3em; margin: 0; font-size: 0.9rem; color: #ff8fa3; }
+
+    /* ---------- Toast ---------- */
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 1.5rem;
+      transform: translate(-50%, 150%);
+      padding: 0.7rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 500;
+      background: rgba(20, 22, 32, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.8);
+      transition: transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
+      z-index: 20;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    .toast.show { transform: translate(-50%, 0); }
+
+    /* ---------- Responsive & motion ---------- */
+    @media (max-width: 520px) {
+      .actions .btn { flex: 1 1 100%; }
+      .topbar .btn { padding: 0.6rem 1rem; font-size: 0.875rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+      .bg-image.default { animation: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="stage" aria-hidden="true">
+    <div class="layer" data-depth="26">
+      <div class="bg-image default" id="bgImage"></div>
+    </div>
+    <div class="layer" data-depth="-14"><div class="orb orb-a"></div></div>
+    <div class="layer" data-depth="48"><div class="orb orb-b"></div></div>
+    <div class="layer" data-depth="30"><div class="orb orb-c"></div></div>
+    <div class="overlay"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Countdown</span>
+    </div>
+    <button class="btn ghost" id="openPanel" type="button" aria-controls="panel" aria-expanded="false">Customize</button>
+  </header>
+
+  <main>
+    <section class="content" aria-labelledby="eventName">
+      <p class="eyebrow" id="eventWhen">&nbsp;</p>
+      <h1 id="eventName">Event</h1>
+      <p class="location" id="eventLocation">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <span></span>
+      </p>
+
+      <div class="countdown" id="countdown" role="group" aria-label="Time remaining">
+        <div class="unit" data-unit="days"><div class="digits"></div><span class="label">Days</span></div>
+        <div class="unit" data-unit="hours"><div class="digits"></div><span class="label">Hours</span></div>
+        <div class="unit" data-unit="minutes"><div class="digits"></div><span class="label">Minutes</span></div>
+        <div class="unit" data-unit="seconds"><div class="digits"></div><span class="label">Seconds</span></div>
+      </div>
+
+      <p class="status" id="status" aria-live="polite"></p>
+
+      <div class="actions">
+        <button class="btn primary" id="saveCal" type="button">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/></svg>
+          <span>Save to Calendar</span>
+        </button>
+        <a class="btn ghost" id="gcal" href="#" target="_blank" rel="noopener">Google Calendar</a>
+      </div>
+    </section>
+  </main>
+
+  <div class="scrim" id="scrim"></div>
+
+  <aside class="panel" id="panel" aria-label="Event settings" aria-hidden="true" inert>
+    <div class="panel-head">
+      <h2>Event settings</h2>
+      <button class="icon-btn" id="closePanel" type="button" aria-label="Close settings">&times;</button>
+    </div>
+
+    <form id="eventForm" novalidate>
+      <label class="field">
+        <span>Event name</span>
+        <input type="text" id="fName" maxlength="80" placeholder="e.g. Annual Summit" autocomplete="off">
+      </label>
+
+      <label class="field">
+        <span>Date &amp; time</span>
+        <input type="datetime-local" id="fWhen">
+      </label>
+
+      <label class="field">
+        <span>Location</span>
+        <input type="text" id="fLocation" maxlength="120" placeholder="Venue, city, or link" autocomplete="off">
+      </label>
+
+      <div class="field">
+        <span>Background image</span>
+        <button class="drop" id="dropBtn" type="button">
+          <img id="preview" alt="Selected background preview" hidden>
+          <span id="dropText">Drop an image here or <u>browse</u></span>
+        </button>
+        <input type="file" id="fImage" accept="image/*" hidden>
+        <div class="row">
+          <button class="link" id="removeImage" type="button" hidden>Remove image</button>
+        </div>
+        <p class="fine">Images stay in this browser tab and are never uploaded.</p>
+      </div>
+
+      <label class="field">
+        <span>Overlay darkness <output id="dimOut">45%</output></span>
+        <input type="range" id="fDim" min="0" max="90" step="1">
+      </label>
+
+      <p class="error" id="formError" role="alert"></p>
+
+      <div class="row end">
+        <button class="btn ghost" id="resetBtn" type="button">Reset</button>
+        <button class="btn primary" type="submit">Apply</button>
+      </div>
+    </form>
+  </aside>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+  'use strict';
+
+  const KEY = 'event-countdown:v1';
+  const DURATION_MS = 2 * 60 * 60 * 1000; // assumed event length for calendar export
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const $ = (id) => document.getElementById(id);
+  const pad = (n) => String(n).padStart(2, '0');
+
+  /* ---------- State & persistence ---------- */
+
+  const toLocalInput = (d) =>
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  function defaultState() {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    d.setHours(18, 0, 0, 0);
+    return { name: 'Launch Night', location: 'The Grand Hall, Downtown', when: toLocalInput(d), dim: 45 };
+  }
+
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+      return saved && typeof saved === 'object' ? { ...defaultState(), ...saved } : defaultState();
+    } catch {
+      return defaultState();
+    }
+  }
+
+  function saveState() {
+    try { localStorage.setItem(KEY, JSON.stringify(state)); } catch { /* storage unavailable: keep working */ }
+  }
+
+  let state = loadState();
+  let target = null;
+  let bgUrl = null;
+  let lastKey = '';
+  let toastTimer = 0;
+
+  const parseWhen = (value) => {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  /* ---------- Calendar export ---------- */
+
+  const icsDate = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+
+  const icsEscape = (s) =>
+    String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+
+  // RFC 5545: lines should be folded at 75 octets; continuation lines start with a space.
+  function icsFold(line) {
+    const chars = Array.from(line);
+    const parts = [];
+    for (let i = 0; i < chars.length; i += 60) {
+      parts.push((i === 0 ? '' : ' ') + chars.slice(i, i + 60).join(''));
+    }
+    return parts.join('\r\n');
+  }
+
+  function buildICS() {
+    const name = state.name || 'Untitled event';
+    const end = new Date(target.getTime() + DURATION_MS);
+    const uid = `${crypto.randomUUID?.() ?? Date.now().toString(36) + Math.random().toString(36).slice(2)}@event-countdown`;
+    const lines = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Event Countdown//EN',
+      'CALSCALE:GREGORIAN',
+      'METHOD:PUBLISH',
+      'BEGIN:VEVENT',
+      `UID:${uid}`,
+      `DTSTAMP:${icsDate(new Date())}`,
+      `DTSTART:${icsDate(target)}`,
+      `DTEND:${icsDate(end)}`,
+      `SUMMARY:${icsEscape(name)}`,
+    ];
+    if (state.location) lines.push(`LOCATION:${icsEscape(state.location)}`);
+    lines.push(
+      'DESCRIPTION:Added with Event Countdown',
+      'BEGIN:VALARM',
+      'ACTION:DISPLAY',
+      `DESCRIPTION:${icsEscape(name)} starts in one hour`,
+      'TRIGGER:-PT1H',
+      'END:VALARM',
+      'END:VEVENT',
+      'END:VCALENDAR',
+    );
+    return lines.map(icsFold).join('\r\n') + '\r\n';
+  }
+
+  function saveToCalendar() {
+    if (!target) return;
+    const name = state.name || 'Untitled event';
+    const blob = new Blob([buildICS()], { type: 'text/calendar;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'event'}.ics`;
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    const btn = $('saveCal');
+    btn.classList.add('saved');
+    btn.querySelector('span').textContent = 'Saved to calendar file';
+    setTimeout(() => {
+      btn.classList.remove('saved');
+      btn.querySelector('span').textContent = 'Save to Calendar';
+    }, 2400);
+  }
+
+  function googleUrl() {
+    const end = new Date(target.getTime() + DURATION_MS);
+    const params = [
+      ['action', 'TEMPLATE'],
+      ['text', state.name || 'Untitled event'],
+      ['dates', `${icsDate(target)}/${icsDate(end)}`],
+      ['location', state.location || ''],
+      ['details', 'Added with Event Countdown'],
+    ];
+    return 'https://calendar.google.com/calendar/render?' +
+      params.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join('&');
+  }
+
+  /* ---------- Countdown rendering ---------- */
+
+  function createDigit(ch) {
+    const el = document.createElement('div');
+    el.className = 'digit';
+    el.dataset.v = ch;
+    const span = document.createElement('span');
+    span.className = 'cur';
+    span.textContent = ch;
+    el.append(span);
+    return el;
+  }
+
+  // Flip-clock style roll: the old glyph folds away, the new one rolls in.
+  function setDigit(el, ch) {
+    if (el.dataset.v === ch) return;
+    el.dataset.v = ch;
+    const cur = el.querySelector('.cur');
+    if (!cur || reduceMotion.matches) {
+      if (cur) cur.textContent = ch;
+      return;
+    }
+    cur.classList.remove('cur');
+    cur.classList.add('out');
+    setTimeout(() => cur.remove(), 600);
+
+    const next = document.createElement('span');
+    next.className = 'cur in';
+    next.textContent = ch;
+    el.append(next);
+    next.addEventListener('animationend', () => next.classList.remove('in'), { once: true });
+  }
+
+  function setUnit(unit, value) {
+    const wrap = document.querySelector(`[data-unit="${unit}"] .digits`);
+    const str = pad(value);
+    if (wrap.children.length !== str.length) {
+      wrap.replaceChildren(...[...str].map(createDigit));
+      return;
+    }
+    [...str].forEach((ch, i) => setDigit(wrap.children[i], ch));
+  }
+
+  function setStatus(text) {
+    const el = $('status');
+    if (el.textContent !== text) el.textContent = text;
+  }
+
+  function tick() {
+    if (!target) return;
+    const now = Date.now();
+    const remaining = target.getTime() - now;
+    const running = remaining > 0;
+    const live = !running && now - target.getTime() < DURATION_MS;
+    const secs = Math.max(0, Math.floor(remaining / 1000));
+    const key = `${secs}|${live}`;
+    if (key === lastKey) return;
+    lastKey = key;
+
+    setStatus(running ? '' : live ? 'Happening now. Enjoy it!' : 'This event has already taken place.');
+
+    setUnit('days', Math.floor(secs / 86400));
+    setUnit('hours', Math.floor((secs % 86400) / 3600));
+    setUnit('minutes', Math.floor((secs % 3600) / 60));
+    setUnit('seconds', secs % 60);
+  }
+
+  function applyEvent() {
+    target = parseWhen(state.when);
+    if (!target) {
+      state.when = defaultState().when;
+      target = parseWhen(state.when);
+    }
+    const name = state.name || 'Untitled event';
+    $('eventName').textContent = name;
+    document.title = `${name} · Countdown`;
+
+    const loc = $('eventLocation');
+    loc.hidden = !state.location;
+    loc.querySelector('span').textContent = state.location;
+
+    $('eventWhen').textContent = target.toLocaleString(undefined, {
+      weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+      hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+    });
+    $('gcal').href = googleUrl();
+    lastKey = '';
+    tick();
+  }
+
+  /* ---------- Parallax ---------- */
+
+  const layers = [...document.querySelectorAll('.stage .layer')];
+  let tx = 0, ty = 0, px = 0, py = 0;
+
+  window.addEventListener('pointermove', (e) => {
+    tx = (e.clientX / window.innerWidth) * 2 - 1;
+    ty = (e.clientY / window.innerHeight) * 2 - 1;
+  }, { passive: true });
+  window.addEventListener('mouseout', (e) => {
+    if (!e.relatedTarget) { tx = 0; ty = 0; }
+  });
+
+  function parallax() {
+    if (reduceMotion.matches) {
+      layers.forEach((l) => { l.style.transform = ''; });
+      return;
+    }
+    px += (tx - px) * 0.05;
+    py += (ty - py) * 0.05;
+    layers.forEach((l) => {
+      const depth = Number(l.dataset.depth) || 0;
+      l.style.transform = `translate3d(${(-px * depth).toFixed(2)}px, ${(-py * depth).toFixed(2)}px, 0)`;
+    });
+  }
+
+  function frame() {
+    tick();
+    parallax();
+    requestAnimationFrame(frame);
+  }
+
+  /* ---------- Background image ---------- */
+
+  function applyDim() {
+    document.documentElement.style.setProperty('--dim', (state.dim / 100).toFixed(2));
+  }
+
+  function setImage(file) {
+    if (!file || !file.type.startsWith('image/')) {
+      $('formError').textContent = 'Please choose an image file (JPG, PNG, WebP, or GIF).';
+      return;
+    }
+    $('formError').textContent = '';
+    if (bgUrl) URL.revokeObjectURL(bgUrl);
+    bgUrl = URL.createObjectURL(file);
+    const bg = $('bgImage');
+    bg.classList.remove('default');
+    bg.style.backgroundImage = `url("${bgUrl}")`;
+    $('preview').src = bgUrl;
+    $('preview').hidden = false;
+    $('dropText').textContent = 'Click or drop to replace';
+    $('removeImage').hidden = false;
+    toast('Background updated');
+  }
+
+  function removeImage() {
+    if (bgUrl) URL.revokeObjectURL(bgUrl);
+    bgUrl = null;
+    const bg = $('bgImage');
+    bg.style.backgroundImage = '';
+    bg.classList.add('default');
+    $('preview').removeAttribute('src');
+    $('preview').hidden = true;
+    $('dropText').innerHTML = 'Drop an image here or <u>browse</u>';
+    $('removeImage').hidden = true;
+    $('fImage').value = '';
+  }
+
+  /* ---------- Settings panel ---------- */
+
+  function fillForm() {
+    $('fName').value = state.name;
+    $('fLocation').value = state.location;
+    $('fWhen').value = state.when;
+    $('fDim').value = state.dim;
+    $('dimOut').textContent = `${state.dim}%`;
+  }
+
+  function openPanel() {
+    const panel = $('panel');
+    panel.classList.add('open');
+    panel.inert = false;
+    panel.setAttribute('aria-hidden', 'false');
+    $('scrim').classList.add('show');
+    $('openPanel').setAttribute('aria-expanded', 'true');
+    setTimeout(() => $('fName').focus({ preventScroll: true }), 150);
+  }
+
+  function closePanel() {
+    const panel = $('panel');
+    if (!panel.classList.contains('open')) return;
+    panel.classList.remove('open');
+    panel.inert = true;
+    panel.setAttribute('aria-hidden', 'true');
+    $('scrim').classList.remove('show');
+    $('openPanel').setAttribute('aria-expanded', 'false');
+    $('openPanel').focus({ preventScroll: true });
+  }
+
+  function toast(message) {
+    const t = $('toast');
+    t.textContent = message;
+    t.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  $('openPanel').addEventListener('click', openPanel);
+  $('closePanel').addEventListener('click', closePanel);
+  $('scrim').addEventListener('click', closePanel);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closePanel();
+  });
+  $('saveCal').addEventListener('click', saveToCalendar);
+
+  $('fDim').addEventListener('input', (e) => {
+    $('dimOut').textContent = `${e.target.value}%`;
+    state.dim = Number(e.target.value);
+    applyDim();
+  });
+
+  $('eventForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const when = $('fWhen').value;
+    const valid = when && parseWhen(when);
+    $('fWhen').setAttribute('aria-invalid', valid ? 'false' : 'true');
+    if (!valid) {
+      $('formError').textContent = 'Please choose a valid date and time.';
+      $('fWhen').focus();
+      return;
+    }
+    $('formError').textContent = '';
+    state = {
+      ...state,
+      name: $('fName').value.trim() || 'Untitled event',
+      location: $('fLocation').value.trim(),
+      when,
+      dim: Number($('fDim').value),
+    };
+    saveState();
+    applyEvent();
+    applyDim();
+    closePanel();
+    toast('Countdown updated');
+  });
+
+  $('resetBtn').addEventListener('click', () => {
+    try { localStorage.removeItem(KEY); } catch { /* ignore */ }
+    state = defaultState();
+    removeImage();
+    fillForm();
+    applyDim();
+    applyEvent();
+    $('formError').textContent = '';
+    toast('Reset to sample event');
+  });
+
+  const dropBtn = $('dropBtn');
+  dropBtn.addEventListener('click', () => $('fImage').click());
+  $('fImage').addEventListener('change', (e) => setImage(e.target.files[0]));
+  $('removeImage').addEventListener('click', removeImage);
+
+  ['dragenter', 'dragover'].forEach((type) =>
+    dropBtn.addEventListener(type, (e) => {
+      e.preventDefault();
+      dropBtn.classList.add('dragging');
+    }));
+  ['dragleave', 'drop'].forEach((type) =>
+    dropBtn.addEventListener(type, () => dropBtn.classList.remove('dragging')));
+  dropBtn.addEventListener('drop', (e) => {
+    e.preventDefault();
+    setImage(e.dataTransfer.files[0]);
+  });
+  // Prevent the browser from opening an image dropped outside the zone.
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => e.preventDefault());
+
+  /* ---------- Init ---------- */
+
+  fillForm();
+  applyDim();
+  applyEvent();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -38,6 +38,12 @@ const TW_HEX: Record<string, string> = {
   "bg-fuchsia-600": "#c026d3",
   "bg-violet-600": "#7c3aed",
   "bg-amber-600": "#d97706",
+  "bg-teal-700": "#0f766e",
+  "bg-sky-700": "#0369a1",
+  "bg-orange-600": "#ea580c",
+  "bg-rose-600": "#e11d48",
+  "bg-violet-700": "#6d28d9",
+  "bg-pink-600": "#db2777",
 };
 
 export function getModelHex(color: string): string {

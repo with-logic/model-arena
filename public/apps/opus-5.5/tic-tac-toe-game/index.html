@@ -1,0 +1,2323 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Terni Lapilli · Roman Tic-Tac-Toe</title>
+<meta name="description" content="Tic-tac-toe of the Roman Empire: marble, gilt, gladius and laurel. Play a friend or a minimax AI.">
+<meta name="theme-color" content="#ecebe7" id="metaTheme">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap">
+<script>
+/* Runs before first paint: choose the theme and generate the marble textures,
+   so the very first frame is already correct (no flash of the wrong theme). */
+(function () {
+  var root = document.documentElement;
+  var theme = null;
+  try {
+    var saved = JSON.parse(localStorage.getItem('terni-lapilli:v1') || 'null');
+    theme = saved && saved.settings && saved.settings.theme;
+  } catch (e) {}
+  if (theme !== 'day' && theme !== 'night') {
+    theme = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'night' : 'day';
+  }
+  root.setAttribute('data-theme', theme);
+  root.classList.add('is-loading');
+
+  /* Marble = fractal noise whose iso-contours become veins (via a narrow-peaked alpha table). */
+  function table(peaks, n) {
+    var out = [];
+    for (var i = 0; i < n; i++) {
+      var x = i / (n - 1), v = 0;
+      for (var j = 0; j < peaks.length; j++) {
+        var d = (x - peaks[j][0]) / peaks[j][1];
+        v += peaks[j][2] * Math.exp(-d * d);
+      }
+      out.push(Math.min(1, v).toFixed(3));
+    }
+    return out.join(' ');
+  }
+  function marble(o) {
+    var w = o.w, h = o.h, defs = '', layers = '';
+    if (o.base) {
+      defs += "<linearGradient id='b' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='" + o.base[0] + "'/><stop offset='.55' stop-color='" + o.base[1] + "'/><stop offset='1' stop-color='" + o.base[2] + "'/></linearGradient>";
+    }
+    if (o.clouds) {
+      var c = o.clouds;
+      defs += "<filter id='c' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'>" +
+        "<feTurbulence type='fractalNoise' baseFrequency='" + c.freq + "' numOctaves='4' seed='" + c.seed + "'/>" +
+        "<feColorMatrix values='0 0 0 0 " + c.rgb[0] + " 0 0 0 0 " + c.rgb[1] + " 0 0 0 0 " + c.rgb[2] + " " + c.k + " 0 0 0 " + c.off + "'/></filter>";
+      layers += "<rect x='" + (-w * .2) + "' y='" + (-h * .35) + "' width='" + (w * 1.4) + "' height='" + (h * 1.7) + "' filter='url(%23c)'/>";
+    }
+    for (var i = 0; i < o.veins.length; i++) {
+      var v = o.veins[i], id = 'v' + i;
+      defs += "<filter id='" + id + "' x='0' y='0' width='100%' height='100%' color-interpolation-filters='sRGB'>" +
+        "<feTurbulence type='fractalNoise' baseFrequency='" + v.freq + "' numOctaves='" + (v.oct || 6) + "' seed='" + v.seed + "'/>" +
+        "<feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0'/>" +
+        "<feComponentTransfer><feFuncA type='table' tableValues='" + table(v.peaks, 180) + "'/></feComponentTransfer>" +
+        "<feColorMatrix values='0 0 0 0 " + v.rgb[0] + " 0 0 0 0 " + v.rgb[1] + " 0 0 0 0 " + v.rgb[2] + " 0 0 0 " + v.a + " 0'/>" +
+        (v.blur ? "<feGaussianBlur stdDeviation='" + v.blur + "'/>" : "") + "</filter>";
+      layers += "<rect x='" + (-w * .2) + "' y='" + (-h * .35) + "' width='" + (w * 1.4) + "' height='" + (h * 1.7) + "' filter='url(%23" + id + ")'/>";
+    }
+    var svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 " + w + " " + h + "' preserveAspectRatio='xMidYMid slice'><defs>" + defs + "</defs>" +
+      (o.base ? "<rect width='" + w + "' height='" + h + "' fill='url(%23b)'/>" : "") +
+      "<g transform='rotate(" + o.rot + " " + (w / 2) + " " + (h / 2) + ")'>" + layers + "</g></svg>";
+    return 'url("data:image/svg+xml,' + svg.replace(/"/g, "'").replace(/#/g, '%23').replace(/</g, '%3C').replace(/>/g, '%3E') + '")';
+  }
+  var dayVeins = [
+    { seed: 9,  freq: '.0015 .0042', peaks: [[.47, .009, .85], [.47, .045, .09], [.575, .006, .5], [.37, .005, .32]], rgb: [.42, .42, .43], a: .52, blur: .55 },
+    { seed: 23, freq: '.003 .0085', oct: 5, peaks: [[.52, .006, .55], [.63, .005, .3]], rgb: [.62, .55, .42], a: .38 }
+  ];
+  var nightVeins = [
+    { seed: 9,  freq: '.0015 .0042', peaks: [[.47, .009, .9], [.47, .045, .1], [.575, .006, .55], [.37, .005, .35]], rgb: [.84, .80, .72], a: .55, blur: .5 },
+    { seed: 23, freq: '.003 .0085', oct: 5, peaks: [[.52, .006, .7], [.63, .005, .45]], rgb: [.86, .66, .3], a: .55 }
+  ];
+  root.style.setProperty('--marble-day', marble({
+    w: 1600, h: 1000, rot: -24, base: ['#f4f3f0', '#ecebe7', '#e1dfda'],
+    clouds: { seed: 4, freq: '.0011 .0026', rgb: [.62, .61, .6], k: 2.1, off: -.98 },
+    veins: dayVeins
+  }));
+  root.style.setProperty('--marble-night', marble({
+    w: 1600, h: 1000, rot: -24, base: ['#1c1a20', '#141217', '#0c0b0e'],
+    clouds: { seed: 4, freq: '.0011 .0026', rgb: [.30, .27, .33], k: 2.1, off: -.95 },
+    veins: nightVeins
+  }));
+  root.style.setProperty('--veins-day', marble({
+    w: 900, h: 900, rot: 32, veins: [
+      { seed: 5, freq: '.004 .009', peaks: [[.48, .012, .7], [.6, .007, .4]], rgb: [.45, .45, .46], a: .32, blur: .4 }
+    ]
+  }));
+  root.style.setProperty('--veins-night', marble({
+    w: 900, h: 900, rot: 32, veins: [
+      { seed: 5, freq: '.004 .009', peaks: [[.48, .012, .7], [.6, .007, .4]], rgb: [.86, .72, .45], a: .22, blur: .4 }
+    ]
+  }));
+})();
+</script>
+<style>
+/* =========================================================================
+   Tokens
+   ========================================================================= */
+:root {
+  --font-display: 'Cinzel', 'Trajan Pro', 'Times New Roman', serif;
+  --font-body: 'Cormorant Garamond', 'EB Garamond', Garamond, Georgia, serif;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.3, 1.4, .5, 1);
+  --banner-h: clamp(46px, 5.2vmin + 16px, 64px);
+}
+
+html[data-theme="day"] {
+  color-scheme: light;
+  --ink: #2b231b;
+  --ink-2: #5a4f43;
+  --ink-3: #85796b;
+  --paper: #ecebe7;
+  --surface: rgba(252, 251, 249, .72);
+  --surface-strong: rgba(253, 252, 250, .94);
+  --surface-line: rgba(150, 110, 35, .36);
+  --hairline: rgba(110, 90, 50, .16);
+  --gloss: rgba(255, 255, 255, .7);
+  --gold-hi: #fff4cf;
+  --gold-1: #f3d88a;
+  --gold-2: #d7aa48;
+  --gold-3: #a97b22;
+  --gold-4: #6c4c12;
+  --gold-text: #865f12;
+  --title-a: #9c7020;
+  --title-b: #5f420c;
+  --x: #a3231d;
+  --x-2: #6c120d;
+  --o: #1f4e93;
+  --o-2: #112f5e;
+  --leaf-1: #86a24b;
+  --leaf-2: #4c6a22;
+  --leaf-edge: rgba(36, 52, 14, .75);
+  --steel-1: #fbfcfd;
+  --steel-2: #c9d0d7;
+  --steel-3: #8f99a4;
+  --steel-edge: #3f464e;
+  --grip-1: #b2342b;
+  --grip-2: #6f1610;
+  --tile-1: #fdfdfc;
+  --tile-2: #e9e7e2;
+  --tile-veins: var(--veins-day);
+  --tile-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 -3px 8px rgba(90, 80, 60, .10),
+    0 1px 1px rgba(60, 45, 20, .18),
+    0 6px 14px -6px rgba(60, 45, 20, .32);
+  --tile-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, .95),
+    inset 0 -3px 8px rgba(90, 80, 60, .08),
+    0 2px 2px rgba(60, 45, 20, .14),
+    0 14px 24px -10px rgba(60, 45, 20, .42);
+  --tile-shadow-press:
+    inset 0 2px 6px rgba(60, 45, 20, .22),
+    inset 0 -1px 0 rgba(255, 255, 255, .6),
+    0 0 0 rgba(0, 0, 0, 0);
+  --band-1: #962e21;
+  --band-2: #6a1a11;
+  --well-1: #c49a45;
+  --well-2: #8a621c;
+  --focus: #6b4300;
+  --focus-ring: #24170a;
+  --focus-gap: #fffaf0;
+  --shadow-rgb: 52 40 22;
+  --glow-rgb: 215 160 60;
+  --colosseum: #6d6253;
+  --colosseum-opacity: .16;
+  --emboss: rgba(255, 255, 255, .85);
+  --dlg-scrim: rgba(40, 30, 15, .42);
+  --opt-checked: rgba(243, 216, 138, .28);
+}
+
+html[data-theme="night"] {
+  color-scheme: dark;
+  --ink: #f2e8d3;
+  --ink-2: #cbbd9f;
+  --ink-3: #958972;
+  --paper: #121015;
+  --surface: rgba(24, 21, 27, .72);
+  --surface-strong: rgba(27, 24, 31, .94);
+  --surface-line: rgba(226, 184, 92, .32);
+  --hairline: rgba(226, 184, 92, .14);
+  --gloss: rgba(255, 255, 255, .06);
+  --gold-hi: #fff2c6;
+  --gold-1: #f5d68a;
+  --gold-2: #ddb056;
+  --gold-3: #b0832c;
+  --gold-4: #6a4a10;
+  --gold-text: #e8c46e;
+  --title-a: #fbe6ac;
+  --title-b: #d2a447;
+  --x: #ff6f5c;
+  --x-2: #c93b2b;
+  --o: #80b3ff;
+  --o-2: #3f74cc;
+  --leaf-1: #b2d470;
+  --leaf-2: #6e9435;
+  --leaf-edge: rgba(20, 30, 8, .8);
+  --steel-1: #ffffff;
+  --steel-2: #cdd4dc;
+  --steel-3: #8792a0;
+  --steel-edge: #11151a;
+  --grip-1: #d9473b;
+  --grip-2: #7e1a12;
+  --tile-1: #2c2731;
+  --tile-2: #19161d;
+  --tile-veins: var(--veins-night);
+  --tile-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .07),
+    inset 0 -3px 10px rgba(0, 0, 0, .35),
+    0 1px 1px rgba(0, 0, 0, .5),
+    0 8px 16px -8px rgba(0, 0, 0, .7);
+  --tile-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, .1),
+    inset 0 -3px 10px rgba(0, 0, 0, .3),
+    0 2px 2px rgba(0, 0, 0, .5),
+    0 16px 26px -10px rgba(0, 0, 0, .85),
+    0 0 0 1px rgba(226, 184, 92, .18);
+  --tile-shadow-press:
+    inset 0 3px 8px rgba(0, 0, 0, .55),
+    inset 0 -1px 0 rgba(255, 255, 255, .05),
+    0 0 0 rgba(0, 0, 0, 0);
+  --band-1: #3f1724;
+  --band-2: #220b14;
+  --well-1: #3b2c12;
+  --well-2: #1a1309;
+  --focus: #f2cf73;
+  --focus-ring: #ffe7a6;
+  --focus-gap: #120f0a;
+  --shadow-rgb: 0 0 0;
+  --glow-rgb: 230 180 80;
+  --colosseum: #d8b467;
+  --colosseum-opacity: .085;
+  --emboss: rgba(255, 255, 255, .08);
+  --dlg-scrim: rgba(0, 0, 0, .6);
+  --opt-checked: rgba(221, 176, 86, .16);
+}
+
+/* =========================================================================
+   Base
+   ========================================================================= */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; }
+body {
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.45;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+  -webkit-tap-highlight-color: transparent;
+}
+button { font: inherit; color: inherit; }
+svg { display: block; }
+.sr-only {
+  position: absolute !important; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+
+/* =========================================================================
+   Backdrop: marble, light, Colosseum
+   ========================================================================= */
+.bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+.bg-marble { background-position: center; background-size: cover; background-repeat: no-repeat; transition: opacity .7s ease; }
+.bg-day { background-image: var(--marble-day); }
+.bg-night { background-image: var(--marble-night); opacity: 0; }
+html[data-theme="night"] .bg-day { opacity: 0; }
+html[data-theme="night"] .bg-night { opacity: 1; }
+.bg-light {
+  transition: opacity .7s ease;
+  background:
+    radial-gradient(70% 55% at 50% 0%, rgba(255, 252, 240, .55), transparent 70%),
+    radial-gradient(120% 90% at 50% 45%, transparent 55%, rgba(var(--shadow-rgb), .14) 100%);
+}
+html[data-theme="night"] .bg-light {
+  background:
+    radial-gradient(60% 45% at 50% 0%, rgba(226, 184, 92, .10), transparent 70%),
+    radial-gradient(45% 40% at 0% 100%, rgba(150, 30, 30, .16), transparent 70%),
+    radial-gradient(45% 40% at 100% 100%, rgba(150, 30, 30, .16), transparent 70%),
+    radial-gradient(120% 90% at 50% 45%, transparent 50%, rgba(0, 0, 0, .55) 100%);
+}
+.bg-colosseum {
+  top: auto;
+  height: min(46vh, 52vw);
+  color: var(--colosseum);
+  opacity: var(--colosseum-opacity);
+  transition: opacity .7s ease, color .7s ease;
+  -webkit-mask-image: linear-gradient(to top, transparent 0%, #000 22%, #000 62%, transparent 100%);
+          mask-image: linear-gradient(to top, transparent 0%, #000 22%, #000 62%, transparent 100%);
+}
+.bg-colosseum svg { width: 100%; height: 100%; }
+
+/* =========================================================================
+   App shell
+   ========================================================================= */
+.app {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(300px, 1fr);
+  transition: opacity .55s ease;
+}
+.is-loading .app { opacity: 0; }
+
+/* ---------- Top bar ---------- */
+.topbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 24px;
+  padding: clamp(8px, 1.4vmin, 14px) clamp(14px, 3vw, 36px);
+  padding-top: max(clamp(8px, 1.4vmin, 14px), env(safe-area-inset-top));
+  background: linear-gradient(to bottom, var(--surface-strong), var(--surface));
+  -webkit-backdrop-filter: blur(12px) saturate(1.15);
+          backdrop-filter: blur(12px) saturate(1.15);
+  box-shadow: 0 10px 24px -18px rgba(var(--shadow-rgb), .6);
+}
+.topbar::after {
+  content: "";
+  position: absolute; left: 0; right: 0; bottom: -2px; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-3) 14%, var(--gold-1) 50%, var(--gold-3) 86%, transparent);
+  opacity: .85;
+}
+.brand { display: flex; align-items: center; gap: clamp(10px, 1.4vmin, 14px); min-width: 0; }
+.crest {
+  flex: none;
+  width: clamp(40px, 3.4vmin + 18px, 58px);
+  aspect-ratio: 1;
+  filter: drop-shadow(0 2px 3px rgba(var(--shadow-rgb), .35));
+}
+.crest svg { width: 100%; height: 100%; }
+.brand-text { min-width: 0; }
+.brand-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(19px, 1vw + 1vmin + 8px, 32px);
+  line-height: 1;
+  letter-spacing: .07em;
+  white-space: nowrap;
+  color: var(--title-b);
+  background: linear-gradient(180deg, var(--title-a) 10%, var(--title-b) 90%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 1px 0 var(--emboss));
+}
+.brand-sub {
+  margin: 4px 0 0;
+  font-style: italic;
+  font-weight: 500;
+  font-size: clamp(14px, .5vw + 11px, 17px);
+  line-height: 1.1;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.actions { display: flex; gap: 10px; flex: none; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 clamp(12px, 1.2vw, 18px);
+  border: 1px solid var(--surface-line);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, var(--gloss), transparent 60%),
+    var(--surface-strong);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(12.5px, .35vw + 10px, 15px);
+  letter-spacing: .04em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+          user-select: none;
+  box-shadow:
+    inset 0 1px 0 var(--gloss),
+    0 1px 2px rgba(var(--shadow-rgb), .14),
+    0 6px 14px -9px rgba(var(--shadow-rgb), .55);
+  transition: transform .18s var(--ease-out), box-shadow .22s var(--ease-out), border-color .22s ease, background-color .22s ease;
+}
+.btn::before {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: -1;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 246, 214, .55) 50%, transparent 70%);
+  transform: translateX(-110%);
+  transition: transform .65s var(--ease-out);
+  pointer-events: none;
+}
+.btn svg { width: 18px; height: 18px; flex: none; }
+.btn-primary {
+  border-color: var(--gold-4);
+  color: #2e1f04;
+  background: linear-gradient(180deg, var(--gold-hi) 0%, var(--gold-1) 22%, var(--gold-2) 62%, var(--gold-3) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, .7),
+    inset 0 -2px 4px rgba(108, 76, 18, .35),
+    0 1px 2px rgba(var(--shadow-rgb), .2),
+    0 8px 18px -10px rgba(var(--glow-rgb), .9);
+}
+@media (hover: hover) {
+  .btn:hover {
+    transform: translateY(-1px);
+    border-color: var(--gold-2);
+    box-shadow:
+      inset 0 1px 0 var(--gloss),
+      0 2px 4px rgba(var(--shadow-rgb), .14),
+      0 12px 22px -12px rgba(var(--shadow-rgb), .7);
+  }
+  .btn-primary:hover {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, .7),
+      inset 0 -2px 4px rgba(108, 76, 18, .35),
+      0 2px 4px rgba(var(--shadow-rgb), .2),
+      0 12px 26px -10px rgba(var(--glow-rgb), 1);
+  }
+  .btn:hover::before { transform: translateX(110%); }
+}
+.btn:active {
+  transform: translateY(1px) scale(.975);
+  box-shadow: inset 0 2px 5px rgba(var(--shadow-rgb), .25), 0 0 0 rgba(0, 0, 0, 0);
+  transition-duration: .06s;
+}
+.btn:focus-visible, .icon-btn:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ---------- Banner strip (status / victory) — reserved height, never overlaps ---------- */
+.banner {
+  position: relative;
+  z-index: 1;
+  height: var(--banner-h);
+  margin-top: clamp(8px, 1.4vmin, 14px);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  padding: 0 14px;
+}
+.banner > * { grid-area: 1 / 1; }
+.plaque {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: calc(var(--banner-h) - 8px);
+  max-width: 100%;
+  padding: 0 24px 0 18px;
+  border-radius: 999px;
+  border: 1px solid var(--surface-line);
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 var(--gloss), 0 8px 20px -14px rgba(var(--shadow-rgb), .8);
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(14px, .9vmin + 9px, 19px);
+  letter-spacing: .03em;
+  white-space: nowrap;
+  transition: opacity .3s ease, transform .4s var(--ease-out), visibility 0s;
+}
+.plaque-icon { width: 1.55em; height: 1.55em; flex: none; }
+.plaque-icon svg { width: 100%; height: 100%; }
+.plaque-text { overflow: hidden; text-overflow: ellipsis; }
+.dots { display: none; gap: 3px; margin-left: -4px; align-self: flex-end; padding-bottom: .55em; }
+.dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: .25; animation: dot 1.2s ease-in-out infinite; }
+.dots i:nth-child(2) { animation-delay: .18s; }
+.dots i:nth-child(3) { animation-delay: .36s; }
+.banner.is-thinking .dots { display: inline-flex; }
+@keyframes dot { 0%, 100% { opacity: .2; } 40% { opacity: .9; } }
+
+.ribbon {
+  position: relative;
+  height: 100%;
+  max-width: calc(100% - 64px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transform: scale(.86);
+  transition: opacity .25s ease, transform .5s var(--ease-spring), visibility 0s .5s;
+  --rb-1: var(--gold-hi); --rb-2: var(--gold-1); --rb-3: var(--gold-2); --rb-4: var(--gold-3);
+  --rb-ink: #2e1f04; --rb-line: rgba(108, 76, 18, .55); --rb-tail: var(--gold-3); --rb-tail-2: var(--gold-4);
+}
+.banner[data-outcome="draw"] .ribbon {
+  --rb-1: #ffffff; --rb-2: #ecebe8; --rb-3: #cfccc6; --rb-4: #a8a39a;
+  --rb-ink: #2b2620; --rb-line: rgba(80, 70, 55, .45); --rb-tail: #9b958b; --rb-tail-2: #6f6a62;
+}
+.banner[data-outcome="defeat"] .ribbon {
+  --rb-1: #d4574a; --rb-2: #ad2c22; --rb-3: #8e1d15; --rb-4: #6a120c;
+  --rb-ink: #fbe7b5; --rb-line: rgba(243, 216, 138, .6); --rb-tail: #6a120c; --rb-tail-2: #430a06;
+}
+.ribbon-body {
+  position: relative;
+  z-index: 1;
+  height: 82%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: .6em;
+  padding: 0 clamp(18px, 2.6vw, 34px);
+  border-radius: 6px;
+  color: var(--rb-ink);
+  background: linear-gradient(180deg, var(--rb-1) 0%, var(--rb-2) 30%, var(--rb-3) 72%, var(--rb-4) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, .35),
+    inset 0 0 0 3px transparent,
+    inset 0 0 0 4px var(--rb-line),
+    0 10px 22px -10px rgba(var(--shadow-rgb), .75);
+  font-family: var(--font-display);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ribbon-body::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .6) 50%, transparent 65%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.banner.is-over .ribbon-body::after { animation: sweep 1.2s .35s var(--ease-out) forwards; }
+.ribbon-kicker { font-weight: 900; font-size: clamp(15px, 1vmin + 9px, 21px); letter-spacing: .14em; }
+.ribbon-orn { width: .9em; height: .9em; flex: none; opacity: .75; }
+.ribbon-text { font-weight: 700; font-size: clamp(13px, .8vmin + 8px, 18px); letter-spacing: .03em; overflow: hidden; text-overflow: ellipsis; }
+.tail {
+  position: absolute;
+  z-index: 0;
+  top: 38%;
+  height: 62%;
+  width: clamp(30px, 3vw + 12px, 48px);
+  background: linear-gradient(180deg, var(--rb-tail), var(--rb-tail-2));
+}
+.tail-l { left: calc(clamp(30px, 3vw + 12px, 48px) * -.62); clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 32% 50%); }
+.tail-r { right: calc(clamp(30px, 3vw + 12px, 48px) * -.62); clip-path: polygon(0 0, 100% 0, 68% 50%, 100% 100%, 0 100%); }
+.banner.is-over .plaque {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scale(.97);
+  transition: opacity .2s ease, transform .3s var(--ease-out), visibility 0s .3s;
+}
+.banner.is-over .ribbon {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity .3s ease .08s, transform .6s var(--ease-spring) .08s, visibility 0s;
+}
+@keyframes sweep { to { transform: translateX(120%); } }
+
+/* =========================================================================
+   Stage: board + scoreboard. Board is sized from the free space (container
+   query units) and capped by vmin — so it can never collide with anything.
+   ========================================================================= */
+.stage {
+  position: relative;
+  container: stage / size;
+  min-height: 0;
+}
+.arena {
+  position: absolute;
+  inset: 0;
+  --pad: clamp(10px, 2.4vmin, 30px);
+  --gap: clamp(8px, 1.6vmin, 18px);
+  --score-h: clamp(56px, 5vmin + 30px, 82px);
+  --meta-h: 26px;
+  --board: min(
+    calc(100cqw - 2 * var(--pad)),
+    calc(100cqh - 2 * var(--pad) - var(--score-h) - var(--meta-h) - 2 * var(--gap)),
+    92vmin
+  );
+  --col: calc((var(--board) - 2 * var(--gap)) / 3);
+  display: grid;
+  padding: var(--pad);
+  padding-bottom: max(var(--pad), env(safe-area-inset-bottom));
+  gap: var(--gap);
+  grid-template-columns: repeat(3, var(--col));
+  grid-template-rows: var(--score-h) var(--board) var(--meta-h);
+  grid-template-areas:
+    "x d o"
+    "b b b"
+    "m m m";
+  justify-content: center;
+  align-content: center;
+}
+.score-x { grid-area: x; }
+.score-d { grid-area: d; }
+.score-o { grid-area: o; }
+.board-frame { grid-area: b; }
+.meta { grid-area: m; }
+
+/* ---------- Score tablets ---------- */
+.score {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 6px 8px 8px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-line);
+  background: var(--surface);
+  -webkit-backdrop-filter: blur(10px);
+          backdrop-filter: blur(10px);
+  box-shadow: inset 0 1px 0 var(--gloss), 0 10px 22px -16px rgba(var(--shadow-rgb), .85);
+  overflow: hidden;
+  transition: border-color .35s ease, box-shadow .35s ease, background-color .35s ease;
+}
+.score-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(11px, .6vmin + 8px, 14px);
+  letter-spacing: .04em;
+  color: var(--ink-2);
+}
+.score-glyph { width: 1.75em; height: 1.75em; flex: none; }
+.score-glyph svg { width: 100%; height: 100%; }
+.score-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score-num {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(20px, 1.6vmin + 12px, 34px);
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.score-num.bump { animation: bump .6s var(--ease-spring); }
+@keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.32); color: var(--gold-text); } 100% { transform: scale(1); } }
+.score-roman { display: none; font-style: italic; font-weight: 500; font-size: 16px; line-height: 1; color: var(--ink-3); }
+.score-bar {
+  position: absolute;
+  left: 16%; right: 16%; bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(90deg, var(--gold-3), var(--gold-1), var(--gold-3));
+  background-size: 200% 100%;
+  transform: scaleX(0);
+  transition: transform .4s var(--ease-out);
+}
+.score.is-turn {
+  border-color: var(--gold-2);
+  box-shadow:
+    inset 0 1px 0 var(--gloss),
+    inset 0 0 0 1px rgba(var(--glow-rgb), .45),
+    0 0 0 1px rgba(var(--glow-rgb), .25),
+    0 12px 26px -14px rgba(var(--glow-rgb), .9);
+}
+.score.is-turn .score-bar { transform: scaleX(1); }
+.score.is-thinking .score-bar { animation: shimmer 1.6s linear infinite; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+.score.is-champion {
+  border-color: var(--gold-2);
+  background:
+    linear-gradient(180deg, rgba(var(--glow-rgb), .22), rgba(var(--glow-rgb), .06)),
+    var(--surface);
+}
+
+/* ---------- Round info ---------- */
+.meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .45em;
+  min-width: 0;
+  font-size: clamp(15px, .4vmin + 13px, 18px);
+  font-style: italic;
+  font-weight: 500;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.meta-round { font-family: var(--font-display); font-style: normal; font-weight: 700; font-size: .86em; letter-spacing: .05em; color: var(--gold-text); }
+.meta-desc { overflow: hidden; text-overflow: ellipsis; }
+.meta-first { display: none; }
+
+/* ---------- Board ---------- */
+.board-frame {
+  position: relative;
+  width: var(--board);
+  height: var(--board);
+  justify-self: center;
+  align-self: center;
+  border-radius: 4%;
+  box-shadow:
+    0 1px 2px rgba(var(--shadow-rgb), .3),
+    0 calc(var(--board) * .03) calc(var(--board) * .07) calc(var(--board) * -.012) rgba(var(--shadow-rgb), .55);
+  transition: box-shadow .6s ease;
+}
+.board-frame.is-won {
+  box-shadow:
+    0 1px 2px rgba(var(--shadow-rgb), .3),
+    0 calc(var(--board) * .03) calc(var(--board) * .07) calc(var(--board) * -.012) rgba(var(--shadow-rgb), .55),
+    0 0 calc(var(--board) * .08) calc(var(--board) * .005) rgba(var(--glow-rgb), .45);
+}
+.frame-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fr-rail { fill: none; stroke: var(--gold-1); stroke-width: 2.2; opacity: .9; }
+.fr-key { fill: none; stroke: var(--gold-1); stroke-width: 3.2; stroke-linejoin: miter; stroke-linecap: square; }
+.fr-box { fill: none; stroke: var(--gold-1); stroke-width: 2.2; }
+.fr-ros { fill: none; stroke: var(--gold-1); stroke-width: 2.4; }
+.fr-dot { fill: var(--gold-1); }
+
+.board {
+  position: absolute;
+  inset: 7.6%;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--board) * .02);
+}
+.row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: calc(var(--board) * .02);
+  min-height: 0;
+}
+.cell {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  min-height: 0;
+  border-radius: calc(var(--board) * .018);
+  background:
+    var(--tile-veins) var(--vx, 30%) var(--vy, 40%) / 340% 340% no-repeat,
+    radial-gradient(130% 110% at 28% 16%, var(--tile-1) 0%, var(--tile-2) 100%);
+  box-shadow: var(--tile-shadow);
+  cursor: pointer;
+  outline: none;
+  overflow: hidden;
+  -webkit-user-select: none;
+          user-select: none;
+  touch-action: manipulation;
+  transition: transform .22s var(--ease-out), box-shadow .22s var(--ease-out), opacity .45s ease, filter .45s ease;
+}
+.cell::before {
+  /* polished gold leaf, faded in on victory (gradients can't transition, opacity can) */
+  content: "";
+  position: absolute; inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(140deg, #fff4cf 0%, #f3d27e 24%, #d9aa48 52%, #b8862a 76%, #edc86c 100%);
+  box-shadow: inset 0 0 0 1px rgba(108, 76, 18, .55), inset 0 2px 0 rgba(255, 255, 255, .6), inset 0 -4px 10px rgba(108, 76, 18, .35);
+  opacity: 0;
+  transition: opacity .45s ease;
+}
+.cell::after {
+  content: "";
+  position: absolute; inset: 0;
+  z-index: 3;
+  background: linear-gradient(110deg, transparent 32%, rgba(255, 255, 255, .7) 50%, transparent 68%);
+  transform: translateX(-130%);
+  pointer-events: none;
+}
+.cell:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 3px; box-shadow: var(--tile-shadow), 0 0 0 3px var(--focus-gap); }
+.board.can-play .cell.is-empty { cursor: pointer; }
+.board:not(.can-play) .cell, .cell:not(.is-empty) { cursor: default; }
+@media (hover: hover) {
+  .board.can-play .cell.is-empty:hover { transform: translateY(-2px); box-shadow: var(--tile-shadow-hover); }
+  .board.can-play .cell.is-empty:hover .ghost { opacity: .2; }
+}
+.board.can-play .cell.is-empty:focus-visible .ghost { opacity: .26; }
+.board.can-play .cell.is-empty:active {
+  transform: translateY(1px) scale(.975);
+  box-shadow: var(--tile-shadow-press);
+  transition-duration: .06s;
+}
+.cell.is-win { box-shadow: 0 0 calc(var(--board) * .03) rgba(var(--glow-rgb), .55), 0 6px 18px -8px rgba(108, 76, 18, .7); }
+.cell.is-win::before { opacity: 1; }
+.cell.is-win::after { animation: sweep 1.1s .3s var(--ease-out) forwards; }
+.cell.is-win .mark { animation: crown .8s var(--ease-spring) .12s both; }
+@keyframes crown { 0% { transform: scale(1); } 45% { transform: scale(1.14); } 100% { transform: scale(1.04); } }
+.board.is-won .cell:not(.is-win) { filter: saturate(.55) brightness(.97); }
+.board.is-won .cell:not(.is-win) .mark { opacity: .34; }
+.board.is-draw .cell { filter: saturate(.75); }
+
+.mark, .ghost { position: absolute; inset: 12%; pointer-events: none; }
+.mark { transition: opacity .5s ease; }
+.mark svg, .ghost svg { width: 100%; height: 100%; overflow: visible; }
+.mark svg { filter: drop-shadow(0 1px 0 var(--emboss)) drop-shadow(0 calc(var(--board) * .006) calc(var(--board) * .008) rgba(var(--shadow-rgb), .32)); }
+.ghost { opacity: 0; transition: opacity .2s ease; filter: grayscale(.2); }
+.board.is-clearing .mark { opacity: 0; transform: scale(.82); transition: opacity .2s ease, transform .22s ease; }
+.board.intro .cell { animation: tile-in .7s var(--ease-out) both; animation-delay: calc(var(--n) * 45ms + 120ms); }
+@keyframes tile-in { from { opacity: 0; transform: translateY(8px) scale(.94); } to { opacity: 1; transform: none; } }
+
+/* =========================================================================
+   Glyphs
+   ========================================================================= */
+.g-std .s { fill: none; stroke-width: 11; stroke-linecap: round; }
+.g-x .s { stroke: url(#gX); }
+.g-o .s { stroke: url(#gO); }
+.g-std.anim .s { stroke-dasharray: 1 1; animation: draw .34s var(--ease-out) both; }
+.g-std.anim .s2 { animation-delay: .16s; }
+@keyframes draw { 0% { stroke-dashoffset: 1; opacity: 0; } 8% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 1; } }
+.g-o.anim .s { animation-duration: .5s; }
+
+/* Gladius (X) */
+.sw { transform-box: view-box; transform-origin: 50px 50px; }
+.sw-a { transform: rotate(45deg); }
+.sw-b { transform: rotate(-45deg); }
+.blade-l { fill: url(#gSteelL); }
+.blade-r { fill: url(#gSteelR); }
+.blade-edge { fill: none; stroke: var(--steel-edge); stroke-width: 1.1; stroke-linejoin: round; }
+.fuller { fill: none; stroke: var(--steel-3); stroke-width: .8; opacity: .8; }
+.guard, .pommel, .pommel-cap { fill: url(#gGold); stroke: var(--gold-4); stroke-width: .8; }
+.grip { fill: url(#gGrip); stroke: var(--x-2); stroke-width: .7; }
+.grip-lines { fill: none; stroke: rgba(0, 0, 0, .35); stroke-width: .8; }
+.glint { fill: #fff; opacity: 0; transform-box: view-box; transform-origin: 50px 50px; }
+.g-glad.anim .sw-a { animation: thrust-a .48s cubic-bezier(.2, .9, .3, 1.15) both; }
+.g-glad.anim .sw-b { animation: thrust-b .48s cubic-bezier(.2, .9, .3, 1.15) .09s both; }
+.g-glad.anim .glint { animation: glint .55s ease-out .42s both; }
+@keyframes thrust-a { from { transform: rotate(45deg) translateY(30px); opacity: 0; } 55% { opacity: 1; } to { transform: rotate(45deg); opacity: 1; } }
+@keyframes thrust-b { from { transform: rotate(-45deg) translateY(30px); opacity: 0; } 55% { opacity: 1; } to { transform: rotate(-45deg); opacity: 1; } }
+@keyframes glint { 0% { opacity: 0; transform: scale(.2) rotate(0); } 40% { opacity: .95; transform: scale(1) rotate(30deg); } 100% { opacity: 0; transform: scale(.5) rotate(60deg); } }
+
+/* Laurel (O) */
+.leaf { fill: url(#gLeaf); stroke: var(--leaf-edge); stroke-width: .45; transform-box: fill-box; transform-origin: 0% 50%; }
+.stem { fill: none; stroke: var(--leaf-2); stroke-width: 1.7; stroke-linecap: round; }
+.bow { fill: url(#gO); stroke: var(--o-2); stroke-width: .5; transform-box: view-box; transform-origin: 50px 80px; }
+.g-laurel.anim .stem { stroke-dasharray: 1 1; animation: draw .5s var(--ease-out) both; }
+.g-laurel.anim .leaf { animation: leaf .38s var(--ease-spring) both; animation-delay: calc(var(--i) * 34ms + 60ms); }
+.g-laurel.anim .bow { animation: bow .4s var(--ease-spring) .42s both; }
+@keyframes leaf { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes bow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* Crest */
+.crest-ring { fill: url(#gGold); }
+.crest-ring-2 { fill: none; stroke: var(--gold-4); stroke-width: 1.2; opacity: .7; }
+.crest-field { fill: url(#gCrimson); }
+.crest-leaf { fill: url(#gGold); stroke: rgba(80, 55, 10, .55); stroke-width: .4; }
+.crest-stem { fill: none; stroke: var(--gold-2); stroke-width: 1.3; }
+.crest-text { font-family: var(--font-display); font-weight: 900; font-size: 19.5px; letter-spacing: .5px; fill: url(#gGoldV); }
+.crest-bar { fill: var(--gold-1); }
+.crest-berry { fill: var(--gold-hi); }
+
+/* Draw (olive) icon */
+.olive-leaf { fill: url(#gOlive); stroke: rgba(40, 50, 30, .5); stroke-width: .5; }
+.olive-stem { fill: none; stroke: #7c7a5a; stroke-width: 2.2; stroke-linecap: round; }
+
+/* =========================================================================
+   Customize dialog
+   ========================================================================= */
+.customize {
+  width: min(620px, calc(100vw - 20px));
+  max-height: min(820px, calc(100vh - 20px));
+  max-height: min(820px, calc(100dvh - 20px));
+  padding: 0;
+  border: 0;
+  border-radius: 22px;
+  color: var(--ink);
+  background:
+    linear-gradient(var(--surface-strong), var(--surface-strong)),
+    var(--marble-day) center / cover;
+  box-shadow:
+    0 0 0 1px var(--gold-3),
+    inset 0 0 0 5px var(--surface-strong),
+    inset 0 0 0 6px var(--surface-line),
+    0 40px 90px -30px rgba(0, 0, 0, .65);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(14px) scale(.97);
+  transition: opacity .26s ease, transform .34s var(--ease-out), overlay .34s allow-discrete, display .34s allow-discrete;
+}
+html[data-theme="night"] .customize {
+  background:
+    linear-gradient(var(--surface-strong), var(--surface-strong)),
+    var(--marble-night) center / cover;
+}
+.customize[open] { opacity: 1; transform: none; }
+@starting-style { .customize[open] { opacity: 0; transform: translateY(14px) scale(.97); } }
+.customize::backdrop {
+  background: rgba(0, 0, 0, 0);
+  -webkit-backdrop-filter: blur(0);
+          backdrop-filter: blur(0);
+  transition: background-color .3s ease, backdrop-filter .3s ease, overlay .3s allow-discrete, display .3s allow-discrete;
+}
+.customize[open]::backdrop {
+  background: var(--dlg-scrim);
+  -webkit-backdrop-filter: blur(4px);
+          backdrop-filter: blur(4px);
+}
+@starting-style { .customize[open]::backdrop { background: rgba(0, 0, 0, 0); backdrop-filter: blur(0); } }
+
+.dlg { display: flex; flex-direction: column; max-height: inherit; margin: 0; }
+.dlg-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 22px 22px 14px 24px;
+}
+.dlg-crest { width: 46px; height: 46px; flex: none; filter: drop-shadow(0 2px 3px rgba(var(--shadow-rgb), .35)); }
+.dlg-crest svg { width: 100%; height: 100%; }
+.dlg-titles { flex: 1; min-width: 0; }
+.dlg-title { margin: 0; font-family: var(--font-display); font-weight: 800; font-size: 25px; line-height: 1.1; letter-spacing: .04em; color: var(--gold-text); }
+.dlg-sub { margin: 3px 0 0; font-style: italic; font-size: 17px; line-height: 1.2; color: var(--ink-2); }
+.icon-btn {
+  flex: none;
+  width: 44px; height: 44px;
+  display: grid; place-items: center;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background-color .2s ease, border-color .2s ease, color .2s ease, transform .15s ease;
+}
+.icon-btn svg { width: 20px; height: 20px; }
+@media (hover: hover) { .icon-btn:hover { background: var(--surface); border-color: var(--surface-line); color: var(--ink); } }
+.icon-btn:active { transform: scale(.94); }
+.dlg-rule { height: 1px; margin: 0 24px; background: linear-gradient(90deg, transparent, var(--gold-2), transparent); opacity: .7; flex: none; }
+
+.dlg-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px 24px 6px;
+  display: grid;
+  gap: 18px;
+}
+.group { border: 0; margin: 0; padding: 0; min-width: 0; }
+.group > legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 9px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: .04em;
+  color: var(--ink);
+}
+.group > legend + * { clear: both; }
+.seg { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.seg-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.opt { position: relative; display: block; min-width: 0; cursor: pointer; }
+.opt input {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+.opt-face {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-height: 56px;
+  height: 100%;
+  padding: 9px 12px;
+  border-radius: 14px;
+  border: 1px solid var(--surface-line);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 var(--gloss), 0 4px 10px -8px rgba(var(--shadow-rgb), .6);
+  transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .15s ease;
+}
+.opt-title { font-family: var(--font-display); font-weight: 700; font-size: 14.5px; line-height: 1.15; letter-spacing: .02em; }
+.opt-text { min-width: 0; flex: 1; }
+.opt-sub { display: block; font-style: italic; font-size: 15px; line-height: 1.15; color: var(--ink-3); margin-top: 2px; }
+.opt-tick {
+  flex: none;
+  width: 20px; height: 20px;
+  margin-left: auto;
+  border-radius: 50%;
+  border: 1.5px solid var(--surface-line);
+  display: grid; place-items: center;
+  transition: background-color .2s ease, border-color .2s ease;
+}
+.opt-tick svg { width: 12px; height: 12px; opacity: 0; transform: scale(.4); transition: opacity .2s ease, transform .3s var(--ease-spring); color: #2e1f04; }
+@media (hover: hover) { .opt:hover .opt-face { border-color: var(--gold-2); } }
+.opt:active .opt-face { transform: scale(.985); }
+.opt input:checked + .opt-face {
+  border-color: var(--gold-2);
+  background: linear-gradient(var(--opt-checked), var(--opt-checked)), var(--surface-strong);
+  box-shadow: inset 0 0 0 1px var(--gold-2), 0 8px 18px -12px rgba(var(--glow-rgb), .95);
+}
+.opt input:checked + .opt-face .opt-tick { background: linear-gradient(180deg, var(--gold-1), var(--gold-3)); border-color: var(--gold-3); }
+.opt input:checked + .opt-face .opt-tick svg { opacity: 1; transform: none; }
+.opt input:focus-visible + .opt-face { outline: 3px solid var(--focus); outline-offset: 2px; }
+.group:disabled .opt { cursor: not-allowed; }
+.group:disabled .opt-face { opacity: .45; box-shadow: none; }
+.group:disabled .opt:active .opt-face { transform: none; }
+
+.swatch {
+  width: 32px; height: 32px; flex: none;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--gold-2), 0 0 0 3px rgba(var(--shadow-rgb), .2), inset 0 1px 3px rgba(0, 0, 0, .25);
+}
+.swatch-day { background: var(--marble-day) 40% 40% / 900% auto, #ecebe7; }
+.swatch-night { background: var(--marble-night) 40% 40% / 900% auto, #141217; }
+.opt-glyphs { display: flex; gap: 2px; flex: none; }
+.opt-glyphs svg, .opt-glyph svg { width: 30px; height: 30px; }
+.opt-glyph { flex: none; }
+.opt-ico { width: 26px; height: 26px; flex: none; color: var(--gold-text); }
+.disc .opt-face { flex-direction: column; align-items: flex-start; gap: 6px; padding: 10px 12px 11px; }
+.disc .opt-tick { position: absolute; top: 10px; right: 10px; }
+.pips { display: flex; gap: 4px; }
+.pips i { width: 9px; height: 9px; transform: rotate(45deg); border: 1.5px solid var(--gold-3); border-radius: 1.5px; }
+.pips i.on { background: linear-gradient(135deg, var(--gold-1), var(--gold-3)); }
+.disc-desc { margin: 9px 2px 0; font-style: italic; font-size: 16.5px; line-height: 1.3; color: var(--ink-2); min-height: 2.6em; }
+.group:disabled + .disc-desc, .disc-desc.is-muted { color: var(--ink-3); }
+.dlg-note { margin: 0; font-size: 16px; line-height: 1.35; color: var(--ink-2); }
+.dlg-note kbd {
+  font-family: var(--font-display); font-size: 11.5px; font-weight: 700;
+  padding: 1px 6px; border-radius: 5px; border: 1px solid var(--surface-line); background: var(--surface); color: var(--ink);
+}
+.dlg-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 24px 22px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 8px;
+}
+.dlg-foot .btn { min-width: 112px; }
+
+/* =========================================================================
+   Confetti layer
+   ========================================================================= */
+#confetti { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
+
+/* =========================================================================
+   Responsive
+   ========================================================================= */
+/* Side-by-side "two legions" layout when the stage is wide */
+@container stage (min-aspect-ratio: 13/10) {
+  .arena {
+    --card-w: clamp(132px, 15cqw, 236px);
+    --board: min(
+      calc(100cqh - 2 * var(--pad)),
+      calc(100cqw - 2 * var(--pad) - 2 * var(--card-w) - 4 * var(--gap)),
+      92vmin
+    );
+    grid-template-columns: var(--card-w) var(--board) var(--card-w);
+    grid-template-rows: minmax(0, 1fr) max-content max-content minmax(0, 1fr);
+    grid-template-areas:
+      ". b ."
+      "x b o"
+      "d b m"
+      ". b .";
+    column-gap: calc(var(--gap) * 2);
+    row-gap: var(--gap);
+    align-content: stretch;
+  }
+  .score, .meta {
+    width: var(--card-w);
+    padding: clamp(10px, 2.4cqh, 22px) 12px clamp(12px, 2.6cqh, 24px);
+    border-radius: 18px;
+  }
+  .score { gap: clamp(4px, 1cqh, 10px); }
+  .score-head { flex-direction: column; gap: clamp(4px, 1cqh, 10px); font-size: clamp(12px, 1.4cqh + 4px, 16px); }
+  .score-glyph { width: clamp(30px, 7.5cqh, 64px); height: clamp(30px, 7.5cqh, 64px); }
+  .score-num { font-size: clamp(26px, 7cqh, 56px); }
+  .score-roman { display: block; font-size: clamp(14px, 1.3cqh + 8px, 19px); }
+  .score-bar { height: 4px; left: 22%; right: 22%; }
+  .meta {
+    flex-direction: column;
+    gap: 4px;
+    white-space: normal;
+    text-align: center;
+    border: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    -webkit-backdrop-filter: blur(8px);
+            backdrop-filter: blur(8px);
+  }
+  .meta-round { font-size: clamp(14px, 1.4cqh + 6px, 19px); }
+  .meta-desc { font-size: clamp(15px, 1cqh + 10px, 18px); line-height: 1.25; }
+  .meta-first {
+    display: block;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid var(--hairline);
+    font-size: clamp(14px, .8cqh + 10px, 16px);
+    line-height: 1.25;
+    color: var(--ink-3);
+  }
+  .score-x, .score-d { justify-self: end; }
+  .score-o, .meta { justify-self: start; }
+}
+
+@media (max-width: 900px) {
+  .topbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  .brand { justify-content: center; }
+  .actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(100%, 560px); margin: 0 auto; }
+  .btn { padding: 0 8px; }
+}
+@media (max-width: 680px) {
+  .brand-sub { display: none; }
+}
+@media (max-width: 440px) {
+  .btn { flex-direction: column; gap: 4px; min-height: 52px; font-size: 11.5px; letter-spacing: .02em; padding: 0 4px; }
+  .btn svg { width: 17px; height: 17px; }
+  .btn { min-width: 0; white-space: normal; }
+  .btn span { text-align: center; line-height: 1.08; }
+  .actions { gap: 8px; }
+  .seg-3 .opt-sub { display: none; }
+  .dlg-head { padding: 18px 16px 12px 18px; }
+  .dlg-body { padding: 14px 16px 6px; }
+  .dlg-foot { padding: 12px 16px 18px; }
+  .dlg-foot .btn { flex: 1; min-width: 0; font-size: 13px; flex-direction: row; min-height: 46px; }
+  .opt-face { gap: 8px; padding: 8px 10px; }
+  .disc .opt-face { padding: 9px 10px 10px; }
+  .dlg-title { font-size: 22px; }
+}
+@media (max-width: 420px) {
+  .tail { width: 26px; }
+  .tail-l { left: -16px; }
+  .tail-r { right: -16px; }
+  .ribbon { max-width: calc(100% - 36px); }
+  .ribbon-body { padding: 0 12px; gap: .45em; }
+  .ribbon-kicker { font-size: 13.5px; letter-spacing: .08em; }
+  .ribbon-text { font-size: 12.5px; letter-spacing: .01em; }
+  .nm-pre { display: none; }
+}
+@media (max-width: 360px) {
+  .ribbon-orn { display: none; }
+  .btn { font-size: 10.5px; letter-spacing: 0; }
+  .actions { gap: 6px; }
+}
+@media (max-width: 520px) {
+  .seg:not(.seg-3) .opt-face { flex-direction: column; justify-content: center; text-align: center; gap: 7px; padding: 14px 10px 12px; }
+  .seg:not(.seg-3) .opt-text { flex: none; }
+  .opt-sub { font-size: 14.5px; }
+  .opt-tick { position: absolute; top: 8px; right: 8px; margin: 0; width: 18px; height: 18px; }
+  .disc .opt-face { align-items: center; text-align: center; gap: 8px; padding: 14px 6px 12px; }
+  .disc .opt-title { font-size: 12.5px; letter-spacing: 0; }
+  .disc .opt-tick { top: 7px; right: 7px; width: 16px; height: 16px; }
+  .dlg-sub { font-size: 16px; }
+}
+/* Short landscape screens (phones on their side): keep the header to one slim row */
+@media (max-height: 540px) and (min-width: 600px) {
+  .topbar { flex-direction: row; align-items: center; padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: 6px; }
+  .brand { justify-content: flex-start; }
+  .brand-sub { display: none; }
+  .crest { width: 36px; }
+  .brand-title { font-size: 19px; }
+  .actions { display: flex; width: auto; margin: 0; gap: 8px; }
+  .btn { flex-direction: row; min-height: 38px; padding: 0 12px; font-size: 12.5px; }
+  .btn svg { width: 16px; height: 16px; }
+  :root { --banner-h: 42px; }
+  .banner { margin-top: 6px; }
+  .app { grid-template-rows: auto auto minmax(240px, 1fr); }
+}
+
+/* =========================================================================
+   Motion preferences
+   ========================================================================= */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .45s; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    transition-delay: 0ms !important;
+  }
+  .dots { display: none !important; }
+}
+</style>
+<noscript><style>.is-loading .app { opacity: 1; }</style></noscript>
+</head>
+<body>
+
+<div class="bg bg-marble bg-day" aria-hidden="true"></div>
+<div class="bg bg-marble bg-night" aria-hidden="true"></div>
+<div class="bg bg-light" aria-hidden="true"></div>
+<div class="bg bg-colosseum" id="colosseum" aria-hidden="true"></div>
+
+<!-- Shared paint servers (userSpaceOnUse so they work on any glyph, including straight strokes) -->
+<svg class="defs" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="gX" gradientUnits="userSpaceOnUse" x1="20" y1="18" x2="80" y2="84">
+      <stop offset="0" style="stop-color:var(--x)"/><stop offset="1" style="stop-color:var(--x-2)"/>
+    </linearGradient>
+    <linearGradient id="gO" gradientUnits="userSpaceOnUse" x1="22" y1="16" x2="78" y2="86">
+      <stop offset="0" style="stop-color:var(--o)"/><stop offset="1" style="stop-color:var(--o-2)"/>
+    </linearGradient>
+    <linearGradient id="gSteelL" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--steel-2)"/><stop offset=".55" style="stop-color:var(--steel-1)"/><stop offset="1" style="stop-color:var(--steel-1)"/>
+    </linearGradient>
+    <linearGradient id="gSteelR" gradientUnits="objectBoundingBox" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--steel-2)"/><stop offset="1" style="stop-color:var(--steel-3)"/>
+    </linearGradient>
+    <linearGradient id="gGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--gold-hi)"/><stop offset=".35" style="stop-color:var(--gold-1)"/><stop offset=".7" style="stop-color:var(--gold-2)"/><stop offset="1" style="stop-color:var(--gold-3)"/>
+    </linearGradient>
+    <linearGradient id="gGoldV" gradientUnits="userSpaceOnUse" x1="0" y1="48" x2="0" y2="70">
+      <stop offset="0" style="stop-color:var(--gold-hi)"/><stop offset=".45" style="stop-color:var(--gold-1)"/><stop offset="1" style="stop-color:var(--gold-2)"/>
+    </linearGradient>
+    <linearGradient id="gGrip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" style="stop-color:var(--grip-2)"/><stop offset=".45" style="stop-color:var(--grip-1)"/><stop offset="1" style="stop-color:var(--grip-2)"/>
+    </linearGradient>
+    <linearGradient id="gLeaf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" style="stop-color:var(--leaf-1)"/><stop offset="1" style="stop-color:var(--leaf-2)"/>
+    </linearGradient>
+    <linearGradient id="gOlive" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#b9bd98"/><stop offset="1" stop-color="#7d8460"/>
+    </linearGradient>
+    <radialGradient id="gCrimson" cx=".42" cy=".36" r=".7">
+      <stop offset="0" stop-color="#b2342a"/><stop offset=".6" stop-color="#7d1912"/><stop offset="1" stop-color="#4f0c08"/>
+    </radialGradient>
+  </defs>
+</svg>
+
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="crest" id="crest" aria-hidden="true"></span>
+      <div class="brand-text">
+        <h1 class="brand-title">Terni Lapilli</h1>
+        <p class="brand-sub">The Roman game of three in a row</p>
+      </div>
+    </div>
+    <nav class="actions" aria-label="Game">
+      <button class="btn btn-primary" id="btnNew" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6M16 16l4 4M19 21l2-2"/><path d="M9.5 6.5 13 3h3v3l-3.5 3.5"/><path d="m5 14 4 4M7 17l-3 3M3 19l2 2"/></svg>
+        <span>New Round</span>
+      </button>
+      <button class="btn" id="btnCustomize" type="button" aria-haspopup="dialog" aria-controls="customize">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        <span>Customize</span>
+      </button>
+      <button class="btn" id="btnReset" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.7-6.4L3 8"/><path d="M3 3v5h5"/></svg>
+        <span>Reset Scores</span>
+      </button>
+    </nav>
+  </header>
+
+  <div class="banner" id="banner" data-outcome="none">
+    <div class="plaque" id="plaque">
+      <span class="plaque-icon" id="plaqueIcon" aria-hidden="true"></span>
+      <span class="plaque-text" id="plaqueText">Your move</span>
+      <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+    </div>
+    <div class="ribbon" id="ribbon">
+      <span class="tail tail-l" aria-hidden="true"></span>
+      <span class="tail tail-r" aria-hidden="true"></span>
+      <div class="ribbon-body">
+        <span class="ribbon-kicker" id="ribbonKicker">Victoria</span>
+        <svg class="ribbon-orn" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 6.2 3.8 10 5 6.2 6.2 5 10 3.8 6.2 0 5 3.8 3.8Z" fill="currentColor"/></svg>
+        <span class="ribbon-text" id="ribbonText">Player X triumphs</span>
+      </div>
+    </div>
+  </div>
+  <p class="sr-only" id="live" role="status" aria-live="polite" aria-atomic="true"></p>
+
+  <main class="stage" id="stage">
+    <div class="arena">
+      <h2 class="sr-only">Scoreboard</h2>
+      <div class="score score-x" id="cardX">
+        <div class="score-head"><span class="score-glyph" data-glyph="X" aria-hidden="true"></span><span class="score-name" id="nameX">Player X</span></div>
+        <div class="score-num" id="numX">0</div>
+        <div class="score-roman" id="romX" aria-hidden="true">nulla</div>
+        <span class="score-bar" aria-hidden="true"></span>
+      </div>
+      <div class="score score-d" id="cardD">
+        <div class="score-head"><span class="score-glyph" id="drawGlyph" aria-hidden="true"></span><span class="score-name">Draws</span></div>
+        <div class="score-num" id="numD">0</div>
+        <div class="score-roman" id="romD" aria-hidden="true">nulla</div>
+      </div>
+      <div class="score score-o" id="cardO">
+        <div class="score-head"><span class="score-glyph" data-glyph="O" aria-hidden="true"></span><span class="score-name" id="nameO">Player O</span></div>
+        <div class="score-num" id="numO">0</div>
+        <div class="score-roman" id="romO" aria-hidden="true">nulla</div>
+        <span class="score-bar" aria-hidden="true"></span>
+      </div>
+
+      <div class="board-frame" id="frame">
+        <svg class="frame-art" id="frameArt" viewBox="0 0 1000 1000" aria-hidden="true" focusable="false"></svg>
+        <div class="board intro" id="board" role="grid" aria-label="Game board, 3 by 3" aria-describedby="kbdHelp">
+          <div class="row" role="row">
+            <div class="cell is-empty" role="gridcell" data-i="0" style="--n:0" tabindex="0"></div>
+            <div class="cell is-empty" role="gridcell" data-i="1" style="--n:1" tabindex="-1"></div>
+            <div class="cell is-empty" role="gridcell" data-i="2" style="--n:2" tabindex="-1"></div>
+          </div>
+          <div class="row" role="row">
+            <div class="cell is-empty" role="gridcell" data-i="3" style="--n:1" tabindex="-1"></div>
+            <div class="cell is-empty" role="gridcell" data-i="4" style="--n:2" tabindex="-1"></div>
+            <div class="cell is-empty" role="gridcell" data-i="5" style="--n:3" tabindex="-1"></div>
+          </div>
+          <div class="row" role="row">
+            <div class="cell is-empty" role="gridcell" data-i="6" style="--n:2" tabindex="-1"></div>
+            <div class="cell is-empty" role="gridcell" data-i="7" style="--n:3" tabindex="-1"></div>
+            <div class="cell is-empty" role="gridcell" data-i="8" style="--n:4" tabindex="-1"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meta" id="meta">
+        <span class="meta-round" id="metaRound">Round I</span>
+        <span class="meta-desc" id="metaDesc">against Machina, pragmatic</span>
+        <span class="meta-first" id="metaFirst">You open each round</span>
+      </div>
+    </div>
+  </main>
+</div>
+
+<p id="kbdHelp" class="sr-only">Arrow keys move between squares. Enter or Space places your mark. Number keys 1 to 9 play a square directly.</p>
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<dialog class="customize" id="customize" aria-labelledby="dlgTitle" aria-describedby="dlgSub">
+  <form method="dialog" class="dlg" id="dlgForm">
+    <div class="dlg-head">
+      <span class="dlg-crest" id="dlgCrest" aria-hidden="true"></span>
+      <div class="dlg-titles">
+        <h2 class="dlg-title" id="dlgTitle">Customize</h2>
+        <p class="dlg-sub" id="dlgSub">Theme and glyphs preview live. Apply to keep them.</p>
+      </div>
+      <button class="icon-btn" type="button" data-dismiss aria-label="Close without applying">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="dlg-rule" aria-hidden="true"></div>
+
+    <div class="dlg-body">
+      <fieldset class="group">
+        <legend>Theme</legend>
+        <div class="seg">
+          <label class="opt"><input type="radio" name="theme" value="day">
+            <span class="opt-face"><span class="swatch swatch-day" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">Marble Day</span><span class="opt-sub">Carrara and gilt</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+          <label class="opt"><input type="radio" name="theme" value="night">
+            <span class="opt-face"><span class="swatch swatch-night" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">Night Legion</span><span class="opt-sub">Black marble by torchlight</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Glyphs</legend>
+        <div class="seg">
+          <label class="opt"><input type="radio" name="glyphs" value="standard">
+            <span class="opt-face"><span class="opt-glyphs" data-preview="standard" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">Standard</span><span class="opt-sub">X and O</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+          <label class="opt"><input type="radio" name="glyphs" value="roman">
+            <span class="opt-face"><span class="opt-glyphs" data-preview="roman" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">Gladius &amp; Laurel</span><span class="opt-sub">Swords for X, wreath for O</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>Mode</legend>
+        <div class="seg">
+          <label class="opt"><input type="radio" name="mode" value="pvp">
+            <span class="opt-face"><svg class="opt-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3.2"/><path d="M2.5 19c.6-3.3 2.8-5 5.5-5s4.9 1.7 5.5 5"/><circle cx="16.5" cy="7" r="2.6"/><path d="M15 12.6c.5-.1 1-.1 1.5-.1 2.6 0 4.5 1.6 5 4.5"/></svg><span class="opt-text"><span class="opt-title">2 players</span><span class="opt-sub">Share this screen</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+          <label class="opt"><input type="radio" name="mode" value="ai">
+            <span class="opt-face"><svg class="opt-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 7V4M9.5 3.5h5"/><circle cx="9" cy="12.5" r="1.3" fill="currentColor"/><circle cx="15" cy="12.5" r="1.3" fill="currentColor"/><path d="M9.5 16h5M2 12v3M22 12v3"/></svg><span class="opt-text"><span class="opt-title">vs AI</span><span class="opt-sub">You are X, Machina is O</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <fieldset class="group">
+        <legend>First move</legend>
+        <div class="seg">
+          <label class="opt"><input type="radio" name="first" value="X">
+            <span class="opt-face"><span class="opt-glyph" data-first="X" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">X opens</span><span class="opt-sub" id="firstSubX">Player X moves first</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+          <label class="opt"><input type="radio" name="first" value="O">
+            <span class="opt-face"><span class="opt-glyph" data-first="O" aria-hidden="true"></span><span class="opt-text"><span class="opt-title">O opens</span><span class="opt-sub" id="firstSubO">Player O moves first</span></span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div>
+        <fieldset class="group" id="discGroup" aria-describedby="discDesc">
+          <legend>AI discipline</legend>
+          <div class="seg seg-3 disc">
+            <label class="opt"><input type="radio" name="discipline" value="perfect">
+              <span class="opt-face"><span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i class="on"></i></span><span class="opt-title">Perfect</span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+            </label>
+            <label class="opt"><input type="radio" name="discipline" value="pragmatic">
+              <span class="opt-face"><span class="pips" aria-hidden="true"><i class="on"></i><i class="on"></i><i></i></span><span class="opt-title">Pragmatic</span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+            </label>
+            <label class="opt"><input type="radio" name="discipline" value="reckless">
+              <span class="opt-face"><span class="pips" aria-hidden="true"><i class="on"></i><i></i><i></i></span><span class="opt-title">Reckless</span><span class="opt-tick" aria-hidden="true"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2.5 6.2 2.3 2.3 4.7-5"/></svg></span></span>
+            </label>
+          </div>
+        </fieldset>
+        <p class="disc-desc" id="discDesc"></p>
+      </div>
+
+      <p class="dlg-note">Changing mode, first move or discipline starts a new round. Scores are kept. On the board, use the arrow keys and <kbd>Enter</kbd>, or press <kbd>1</kbd>–<kbd>9</kbd>.</p>
+    </div>
+
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-dismiss>Cancel</button>
+      <button class="btn btn-primary" type="submit" value="apply">Apply</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ======================================================================
+     Constants & persistent state
+     ====================================================================== */
+  const STORE = 'terni-lapilli:v1';
+  const HUMAN = 'X';
+  const AI = 'O';
+  const LINES = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [0, 3, 6], [1, 4, 7], [2, 5, 8], [0, 4, 8], [2, 4, 6]];
+  const DISCIPLINES = {
+    perfect:   { depth: 9, blunder: 0,    weighted: false, label: 'Perfect',   desc: 'Full minimax search. It never loses, so a draw is the best you can do.' },
+    pragmatic: { depth: 2, blunder: 0.12, weighted: true,  label: 'Pragmatic', desc: 'Takes every win and blocks open threats, but cannot see a fork coming.' },
+    reckless:  { depth: 1, blunder: 0.45, weighted: false, label: 'Reckless',  desc: 'Grabs a win when it notices one and often ignores your threats.' },
+  };
+  const ENUMS = {
+    theme: ['day', 'night'],
+    glyphs: ['standard', 'roman'],
+    mode: ['pvp', 'ai'],
+    first: ['X', 'O'],
+    discipline: ['perfect', 'pragmatic', 'reckless'],
+  };
+  const DEFAULTS = {
+    theme: document.documentElement.dataset.theme === 'night' ? 'night' : 'day',
+    glyphs: 'roman',
+    mode: 'ai',
+    first: 'X',
+    discipline: 'pragmatic',
+  };
+
+  let settings = { ...DEFAULTS };
+  let scores = { X: 0, O: 0, D: 0 };
+  let round = 1;
+
+  const state = {
+    board: Array(9).fill(null),
+    turn: 'X',
+    over: null,      // null | 'X' | 'O' | 'draw'
+    line: null,      // winning indices
+    moves: 0,
+    thinking: false,
+    clearing: false,
+  };
+  let aiTimer = 0;
+  let clearTimer = 0;
+  let focusIdx = 4;
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const other = (m) => (m === 'X' ? 'O' : 'X');
+  const fx = (n) => +n.toFixed(2);
+
+  const els = {
+    root: document.documentElement,
+    metaTheme: $('#metaTheme'),
+    banner: $('#banner'),
+    plaqueIcon: $('#plaqueIcon'),
+    plaqueText: $('#plaqueText'),
+    ribbonKicker: $('#ribbonKicker'),
+    ribbonText: $('#ribbonText'),
+    live: $('#live'),
+    frame: $('#frame'),
+    board: $('#board'),
+    cells: $$('.cell'),
+    card: { X: $('#cardX'), O: $('#cardO'), D: $('#cardD') },
+    name: { X: $('#nameX'), O: $('#nameO') },
+    num: { X: $('#numX'), O: $('#numO'), D: $('#numD') },
+    rom: { X: $('#romX'), O: $('#romO'), D: $('#romD') },
+    metaRound: $('#metaRound'),
+    metaDesc: $('#metaDesc'),
+    metaFirst: $('#metaFirst'),
+    dialog: $('#customize'),
+    form: $('#dlgForm'),
+    discGroup: $('#discGroup'),
+    discDesc: $('#discDesc'),
+  };
+
+  /* ======================================================================
+     Persistence
+     ====================================================================== */
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE) || 'null');
+      if (!saved) return;
+      if (saved.settings) {
+        for (const key of Object.keys(ENUMS)) {
+          if (ENUMS[key].includes(saved.settings[key])) settings[key] = saved.settings[key];
+        }
+      }
+      if (saved.scores) {
+        for (const k of ['X', 'O', 'D']) scores[k] = Math.max(0, Math.floor(+saved.scores[k] || 0));
+      }
+      if (saved.round) round = Math.max(1, Math.floor(+saved.round || 1));
+    } catch (e) { /* storage unavailable: play without persistence */ }
+  }
+  function save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ settings, scores, round })); } catch (e) { /* ignore */ }
+  }
+
+  /* ======================================================================
+     Roman numerals (with "nulla" for zero, as Roman scribes wrote it)
+     ====================================================================== */
+  function roman(n) {
+    if (n <= 0) return 'nulla';
+    if (n >= 4000) return String(n);
+    const map = [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']];
+    let out = '';
+    for (const [v, s] of map) while (n >= v) { out += s; n -= v; }
+    return out;
+  }
+
+  /* ======================================================================
+     Artwork: laurel, glyphs, crest, frame, Colosseum
+     ====================================================================== */
+  const rad = (d) => (d * Math.PI) / 180;
+
+  function leafPath(L, W) {
+    return `M0 0C${fx(L * .28)} ${fx(-W)} ${fx(L * .72)} ${fx(-W * .9)} ${fx(L)} 0C${fx(L * .72)} ${fx(W * .9)} ${fx(L * .28)} ${fx(W)} 0 0Z`;
+  }
+  function leaf(x, y, ang, L, W, i, cls) {
+    return `<g transform="translate(${fx(x)} ${fx(y)}) rotate(${fx(ang)})"><path class="${cls}" style="--i:${i}" d="${leafPath(L, W)}"/></g>`;
+  }
+  /* One branch of a wreath: an arc from `from`° to `to`° with paired leaves
+     leaning outward/inward from the stem, shrinking toward the tip. */
+  function branch(o) {
+    const { cx, cy, r, from, to, pairs, L, W, leafCls, stemCls, berries } = o;
+    const dir = Math.sign(to - from);
+    const pt = (a) => [cx + r * Math.cos(rad(a)), cy + r * Math.sin(rad(a))];
+    const [sx, sy] = pt(from);
+    const [ex, ey] = pt(to);
+    const large = Math.abs(to - from) > 180 ? 1 : 0;
+    const sweep = dir > 0 ? 1 : 0;
+    let out = `<path class="${stemCls}" pathLength="1" d="M${fx(sx)} ${fx(sy)}A${r} ${r} 0 ${large} ${sweep} ${fx(ex)} ${fx(ey)}"/>`;
+    let i = 0;
+    for (let k = 0; k < pairs; k++) {
+      for (const side of [1, -1]) {
+        const t = (k + (side === 1 ? .3 : .78)) / pairs;
+        const a = from + (to - from) * Math.min(t, .97);
+        const [x, y] = pt(a);
+        const s = 1 - t * .36;
+        const tangent = a + 90 * dir;
+        const ang = tangent - side * dir * 40;
+        out += leaf(x, y, ang, L * s, W * s, i++, leafCls);
+        if (berries && side === 1 && k % 2 === 1) {
+          const [bx, by] = pt(a + 2.5 * dir);
+          const nx = bx + Math.cos(rad(a)) * (W * 1.2);
+          const ny = by + Math.sin(rad(a)) * (W * 1.2);
+          out += `<circle class="crest-berry" cx="${fx(nx)}" cy="${fx(ny)}" r="${fx(W * .32)}"/>`;
+        }
+      }
+    }
+    out += leaf(ex, ey, to + 90 * dir, L * .6, W * .62, i++, leafCls);
+    return out;
+  }
+  function wreath(o) {
+    return branch({ ...o, from: 90 + o.gap, to: 90 + o.gap + o.span }) +
+           branch({ ...o, from: 90 - o.gap, to: 90 - o.gap - o.span });
+  }
+
+  function sword() {
+    return `<path class="blade-l" d="M50 5 44.7 19Q43.1 26 43.9 34 44.7 46 44 62H50Z"/>
+      <path class="blade-r" d="M50 5 55.3 19Q56.9 26 56.1 34 55.3 46 56 62H50Z"/>
+      <path class="blade-edge" d="M50 5 55.3 19Q56.9 26 56.1 34 55.3 46 56 62H44Q44.7 46 43.9 34 43.1 26 44.7 19Z"/>
+      <path class="fuller" d="M50 13V58"/>
+      <rect class="guard" x="37.5" y="61" width="25" height="6.6" rx="3.3"/>
+      <rect class="grip" x="45.5" y="67" width="9" height="17" rx="2.6"/>
+      <path class="grip-lines" d="M45.8 71.3h8.4M45.8 75.5h8.4M45.8 79.7h8.4"/>
+      <ellipse class="pommel" cx="50" cy="88.6" rx="7.8" ry="5.2"/>
+      <circle class="pommel-cap" cx="50" cy="94.4" r="2.1"/>`;
+  }
+
+  const glyphCache = new Map();
+  function glyph(mark, style, anim) {
+    const key = `${mark}|${style}|${anim ? 1 : 0}`;
+    if (glyphCache.has(key)) return glyphCache.get(key);
+    const a = anim ? ' anim' : '';
+    let svg;
+    if (style === 'roman' && mark === 'X') {
+      svg = `<svg class="g g-glad${a}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <g class="sw sw-a">${sword()}</g><g class="sw sw-b">${sword()}</g>
+        <path class="glint" d="M50 39.5 51.6 48.4 60.5 50 51.6 51.6 50 60.5 48.4 51.6 39.5 50 48.4 48.4Z"/></svg>`;
+    } else if (style === 'roman' && mark === 'O') {
+      const w = wreath({ cx: 50, cy: 49, r: 30.5, gap: 8, span: 146, pairs: 6, L: 14.5, W: 4.7, leafCls: 'leaf', stemCls: 'stem' });
+      svg = `<svg class="g g-laurel${a}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">${w}
+        <g class="bow">
+          <path d="M50 80.5C44.5 73.6 35.6 74.8 38.2 81.7 40 86.2 46.2 83.6 50 80.5Z"/>
+          <path d="M50 80.5C55.5 73.6 64.4 74.8 61.8 81.7 60 86.2 53.8 83.6 50 80.5Z"/>
+          <path d="M49.4 81.2C47.6 86 45 90 41.4 94.6L45.9 93.2 46.3 97.4C48.5 92.4 49.8 87 50.6 81.2Z"/>
+          <path d="M50.6 81.2C52.4 86 55 90 58.6 94.6L54.1 93.2 53.7 97.4C51.5 92.4 50.2 87 49.4 81.2Z"/>
+          <ellipse cx="50" cy="80.6" rx="3.1" ry="2.8"/>
+        </g></svg>`;
+    } else if (mark === 'X') {
+      svg = `<svg class="g g-std g-x${a}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <path class="s s1" pathLength="1" d="M26 26 74 74"/><path class="s s2" pathLength="1" d="M74 26 26 74"/></svg>`;
+    } else {
+      svg = `<svg class="g g-std g-o${a}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <path class="s" pathLength="1" d="M50 22A28 28 0 1 1 49.99 22Z"/></svg>`;
+    }
+    glyphCache.set(key, svg);
+    return svg;
+  }
+
+  function crestSVG() {
+    const w = wreath({ cx: 60, cy: 61, r: 42.5, gap: 9, span: 150, pairs: 7, L: 11.5, W: 3.7, leafCls: 'crest-leaf', stemCls: 'crest-stem', berries: true });
+    return `<svg viewBox="0 0 120 120" aria-hidden="true" focusable="false">
+      <circle class="crest-ring" cx="60" cy="60" r="58.5"/>
+      <circle class="crest-ring-2" cx="60" cy="60" r="55"/>
+      <circle class="crest-field" cx="60" cy="60" r="53"/>
+      ${w}
+      <rect class="crest-bar" x="35" y="46.5" width="50" height="1.6" rx=".8"/>
+      <rect class="crest-bar" x="35" y="72.5" width="50" height="1.6" rx=".8"/>
+      <text class="crest-text" x="60" y="67.6" text-anchor="middle">SPQR</text>
+      <path class="crest-bar" d="M60 30.5 62 35.2 67 35.6 63.2 38.8 64.4 43.6 60 41 55.6 43.6 56.8 38.8 53 35.6 58 35.2Z"/>
+    </svg>`;
+  }
+
+  function oliveSVG() {
+    let leaves = '';
+    const pts = [[30, 70, -100, 1], [36, 62, -20, 1], [44, 55, -110, 1], [52, 47, -15, 1], [60, 40, -115, .95], [68, 33, -20, .9], [74, 27, -50, .8]];
+    pts.forEach(([x, y, a, s], i) => { leaves += leaf(x, y, a, 17 * s, 5 * s, i, 'olive-leaf'); });
+    return `<svg viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+      <path class="olive-stem" d="M22 80C38 66 58 46 78 24"/>${leaves}
+      <circle cx="41" cy="66" r="4" fill="#4f5136"/><circle cx="63" cy="46" r="3.6" fill="#4f5136"/></svg>`;
+  }
+
+  /* Greek-key (meander) band generator: `map` turns (along, across) into x/y. */
+  function meander(len, n, h, map) {
+    const u = len / (4 * n);
+    const g = h / 2;
+    const pts = [[0, 2 * g]];
+    for (let k = 0; k < n; k++) {
+      const a = 4 * u * k;
+      pts.push([a, 0], [a + 3 * u, 0], [a + 3 * u, g], [a + u, g], [a + u, 2 * g], [a + 4 * u, 2 * g]);
+    }
+    return 'M' + pts.map(([a, c]) => map(a, c).map(fx).join(' ')).join('L');
+  }
+  function buildFrame() {
+    const n = 28, len = 904, h = 16;
+    const keys =
+      meander(len, n, h, (a, c) => [48 + a, 23 + c]) +
+      meander(len, n, h, (a, c) => [952 - a, 977 - c]) +
+      meander(len, n, h, (a, c) => [23 + c, 952 - a]) +
+      meander(len, n, h, (a, c) => [977 - c, 48 + a]);
+    const corners = [[31, 31], [969, 31], [31, 969], [969, 969]].map(([x, y]) =>
+      `<rect class="fr-box" x="${x - 14}" y="${y - 14}" width="28" height="28"/><circle class="fr-ros" cx="${x}" cy="${y}" r="7.5"/><circle class="fr-dot" cx="${x}" cy="${y}" r="2.8"/>`).join('');
+    $('#frameArt').innerHTML = `
+      <defs>
+        <linearGradient id="frRim" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style="stop-color:var(--gold-hi)"/><stop offset=".16" style="stop-color:var(--gold-1)"/>
+          <stop offset=".38" style="stop-color:var(--gold-3)"/><stop offset=".55" style="stop-color:var(--gold-1)"/>
+          <stop offset=".78" style="stop-color:var(--gold-4)"/><stop offset="1" style="stop-color:var(--gold-2)"/>
+        </linearGradient>
+        <linearGradient id="frBand" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" style="stop-color:var(--band-1)"/><stop offset="1" style="stop-color:var(--band-2)"/>
+        </linearGradient>
+        <linearGradient id="frWell" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style="stop-color:var(--well-1)"/><stop offset="1" style="stop-color:var(--well-2)"/>
+        </linearGradient>
+      </defs>
+      <rect width="1000" height="1000" rx="40" fill="url(#frRim)"/>
+      <rect x="12" y="12" width="976" height="976" rx="30" fill="url(#frBand)"/>
+      <rect class="fr-rail" x="17" y="17" width="966" height="966" rx="6"/>
+      <rect class="fr-rail" x="45" y="45" width="910" height="910" rx="3"/>
+      <path class="fr-key" d="${keys}"/>
+      ${corners}
+      <rect x="50" y="50" width="900" height="900" rx="16" fill="url(#frRim)"/>
+      <rect x="56" y="56" width="888" height="888" rx="12" fill="url(#frWell)"/>`;
+  }
+
+  /* The Colosseum's outer wall as an orthographic view of a cylinder:
+     bays foreshorten toward the edges, the upper tiers break off on the left. */
+  function buildColosseum() {
+    const W = 1600, H = 500, cx = 800, R = 980;
+    const bay = Math.PI / 34;
+    const maxT = Math.asin(Math.min(1, (W / 2 + 40) / R));
+    const X = (t) => cx + R * Math.sin(t);
+    const tiers = [
+      { top: 350, bot: 500, open: [366, 500], ruin: -1.2 },
+      { top: 222, bot: 338, open: [234, 328], ruin: -.86, parapet: true },
+      { top: 100, bot: 210, open: [112, 200], ruin: -.5, parapet: true },
+      { top: 18, bot: 90, attic: true, ruin: -.3 },
+    ];
+    const cornices = [[338, 350, -1.2], [210, 222, -.86], [90, 100, -.5], [8, 18, -.3]];
+    let facade = '', cols = '', bands = '';
+    const k0 = Math.ceil(-maxT / bay) - 1, k1 = Math.floor(maxT / bay) + 1;
+
+    for (const tier of tiers) {
+      const t0 = Math.max(-maxT - bay, tier.ruin);
+      const xs = X(t0), h = tier.bot - tier.top;
+      // outer shape with a stepped, broken left edge
+      let d = `M${fx(W + 20)} ${tier.top}H${fx(xs + 26)}V${fx(tier.top + h * .28)}H${fx(xs + 12)}V${fx(tier.top + h * .62)}H${fx(xs)}V${tier.bot}H${fx(W + 20)}Z`;
+      for (let k = k0; k <= k1; k++) {
+        const ta = k * bay, tb = (k + 1) * bay;
+        if (ta < t0 + bay * .45 || ta > maxT + bay) continue;
+        const xa = X(ta), xb = X(tb), w = xb - xa;
+        if (tier.attic) {
+          if (k % 2 === 0) {
+            const wx = xa + w * .36, ww = w * .28;
+            d += `M${fx(wx)} ${tier.top + 22}h${fx(ww)}v22h${fx(-ww)}Z`;
+          }
+          cols += `<rect x="${fx(xa - w * .05)}" y="${tier.top}" width="${fx(w * .1)}" height="${h}"/>`;
+          continue;
+        }
+        const o0 = xa + w * .19, o1 = xb - w * .19;
+        const rx = (o1 - o0) / 2, ry = R * bay * .31;
+        const [ot, ob] = tier.open;
+        const spring = ot + ry;
+        d += `M${fx(o0)} ${ob}V${fx(spring)}A${fx(rx)} ${fx(ry)} 0 0 1 ${fx(o1)} ${fx(spring)}V${ob}Z`;
+        cols += `<rect x="${fx(xa - w * .065)}" y="${tier.top}" width="${fx(w * .13)}" height="${h}"/>`;
+      }
+      facade += `<path d="${d}" fill-rule="evenodd"/>`;
+    }
+    for (const [y0, y1, ruin] of cornices) {
+      const xs = X(Math.max(-maxT - bay, ruin));
+      bands += `<rect x="${fx(xs - 6)}" y="${y0}" width="${fx(W + 30 - xs)}" height="${y1 - y0}"/>`;
+    }
+    bands += `<rect x="0" y="494" width="${W}" height="6"/>`;
+    $('#colosseum').innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMax slice" aria-hidden="true" focusable="false">
+      <g fill="currentColor"><g opacity=".6">${facade}</g><g opacity=".9">${cols}</g><g>${bands}</g></g></svg>`;
+  }
+
+  /* ======================================================================
+     AI: minimax with alpha-beta pruning; disciplines handicap it with a
+     search-depth horizon and a chance of a careless move.
+     ====================================================================== */
+  function evaluate(b) {
+    for (const line of LINES) {
+      const [a, c, d] = line;
+      if (b[a] && b[a] === b[c] && b[a] === b[d]) return { mark: b[a], line };
+    }
+    return b.every(Boolean) ? { mark: 'draw', line: null } : null;
+  }
+  function minimax(b, toMove, me, depth, maxDepth, alpha, beta) {
+    const r = evaluate(b);
+    if (r) return r.mark === 'draw' ? 0 : r.mark === me ? 10 - depth : depth - 10;
+    if (depth >= maxDepth) return 0;
+    const maximizing = toMove === me;
+    let best = maximizing ? -Infinity : Infinity;
+    for (let i = 0; i < 9; i++) {
+      if (b[i]) continue;
+      b[i] = toMove;
+      const s = minimax(b, other(toMove), me, depth + 1, maxDepth, alpha, beta);
+      b[i] = null;
+      if (maximizing) { if (s > best) best = s; if (s > alpha) alpha = s; }
+      else { if (s < best) best = s; if (s < beta) beta = s; }
+      if (beta <= alpha) break;
+    }
+    return best;
+  }
+  const POS_WEIGHT = [3, 1, 3, 1, 5, 1, 3, 1, 3];
+  function chooseMove(b, me, disciplineKey) {
+    const d = DISCIPLINES[disciplineKey] || DISCIPLINES.perfect;
+    const empty = [];
+    for (let i = 0; i < 9; i++) if (!b[i]) empty.push(i);
+    if (empty.length === 0) return -1;
+    if (d.blunder && Math.random() < d.blunder) return empty[Math.floor(Math.random() * empty.length)];
+    const work = b.slice();
+    let best = -Infinity, cands = [];
+    for (const i of empty) {
+      work[i] = me;
+      const s = minimax(work, other(me), me, 1, d.depth, -Infinity, Infinity);
+      work[i] = null;
+      if (s > best) { best = s; cands = [i]; } else if (s === best) cands.push(i);
+    }
+    if (!d.weighted) return cands[Math.floor(Math.random() * cands.length)];
+    const total = cands.reduce((t, i) => t + POS_WEIGHT[i], 0);
+    let roll = Math.random() * total;
+    for (const i of cands) { roll -= POS_WEIGHT[i]; if (roll <= 0) return i; }
+    return cands[cands.length - 1];
+  }
+
+  /* ======================================================================
+     Confetti — a single canvas, particles drawn with 2D context.
+     Gilt ribbons, spinning coins and laurel leaves.
+     ====================================================================== */
+  const confetti = (() => {
+    const canvas = $('#confetti');
+    const ctx = canvas.getContext('2d');
+    let parts = [], raf = 0, last = 0, w = 0, h = 0, dpr = 1;
+
+    function resize() {
+      dpr = Math.min(2, window.devicePixelRatio || 1);
+      w = window.innerWidth; h = window.innerHeight;
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    window.addEventListener('resize', () => { if (raf) resize(); });
+
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+    function spawn(x, y, angle, spread, speed, palette) {
+      const a = rad(angle + rand(-spread, spread));
+      const v = speed * rand(.55, 1.15);
+      const r = Math.random();
+      const kind = r < .55 ? 'ribbon' : r < .8 ? 'coin' : 'leaf';
+      parts.push({
+        kind, x, y,
+        vx: Math.cos(a) * v, vy: Math.sin(a) * v,
+        rot: rand(0, Math.PI * 2), vr: rand(-.2, .2),
+        flip: rand(0, Math.PI * 2), vf: rand(.08, .22),
+        wob: rand(0, Math.PI * 2), vw: rand(.03, .09),
+        size: kind === 'coin' ? rand(3.2, 5.4) : kind === 'leaf' ? rand(6, 9) : rand(5, 8),
+        color: kind === 'leaf' ? pick(['#7d9a45', '#5f7f2c', '#9cbb5c']) : pick(palette),
+        life: rand(170, 250), age: 0,
+      });
+    }
+
+    function fire(origin, palette) {
+      if (reduceMotion.matches) return;
+      resize();
+      const { x, y } = origin;
+      for (let i = 0; i < 80; i++) spawn(x, y, -90, 80, 13, palette);
+      for (let i = 0; i < 60; i++) spawn(-10, h * .82, -58, 16, 21, palette);
+      for (let i = 0; i < 60; i++) spawn(w + 10, h * .82, -122, 16, 21, palette);
+      if (!raf) { last = performance.now(); raf = requestAnimationFrame(step); }
+    }
+
+    function fade() {
+      for (const p of parts) p.life = Math.min(p.life, p.age + 18);
+    }
+
+    function draw(p, alpha) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      const flip = Math.cos(p.flip);
+      ctx.scale(1, Math.abs(flip) < .08 ? .08 : flip);
+      ctx.fillStyle = p.color;
+      if (p.kind === 'ribbon') {
+        ctx.fillRect(-p.size * .45, -p.size, p.size * .9, p.size * 2);
+        ctx.fillStyle = 'rgba(255,255,255,.35)';
+        ctx.fillRect(-p.size * .45, -p.size, p.size * .25, p.size * 2);
+      } else if (p.kind === 'coin') {
+        ctx.beginPath(); ctx.arc(0, 0, p.size, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(110,78,18,.55)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = 'rgba(255,248,220,.55)';
+        ctx.beginPath(); ctx.arc(-p.size * .3, -p.size * .3, p.size * .35, 0, Math.PI * 2); ctx.fill();
+      } else {
+        const L = p.size * 1.6, W = p.size * .55;
+        ctx.beginPath();
+        ctx.moveTo(-L / 2, 0);
+        ctx.quadraticCurveTo(0, -W * 1.6, L / 2, 0);
+        ctx.quadraticCurveTo(0, W * 1.6, -L / 2, 0);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    function step(now) {
+      const dt = Math.min(2.5, (now - last) / 16.667);
+      last = now;
+      ctx.clearRect(0, 0, w, h);
+      const drag = Math.pow(.982, dt);
+      parts = parts.filter((p) => p.age < p.life && p.y < h + 40);
+      for (const p of parts) {
+        p.age += dt;
+        p.vx *= drag; p.vy = p.vy * drag + .36 * dt;
+        if (p.vy > 4.2) p.vy = 4.2;
+        p.wob += p.vw * dt;
+        p.x += (p.vx + Math.sin(p.wob) * .9) * dt;
+        p.y += p.vy * dt;
+        p.rot += p.vr * dt;
+        p.flip += p.vf * dt;
+        const remain = p.life - p.age;
+        draw(p, Math.max(0, Math.min(1, remain / 40)));
+      }
+      if (parts.length) raf = requestAnimationFrame(step);
+      else { raf = 0; ctx.clearRect(0, 0, w, h); }
+    }
+    return { fire, fade };
+  })();
+
+  /* ======================================================================
+     Labels & copy
+     ====================================================================== */
+  function displayName(mark) {
+    if (settings.mode === 'ai') return mark === HUMAN ? 'You' : 'Machina';
+    if (settings.glyphs === 'roman') return mark === 'X' ? 'Gladius' : 'Laurel';
+    return `Player ${mark}`;
+  }
+  /* Same as displayName, but the "Player " prefix can be dropped on narrow screens. */
+  function nameHTML(mark) {
+    if (settings.mode === 'pvp' && settings.glyphs !== 'roman') return `<span class="nm-pre">Player </span>${mark}`;
+    return displayName(mark);
+  }
+  function cellName(i) {
+    return `row ${Math.floor(i / 3) + 1}, column ${(i % 3) + 1}`;
+  }
+  function turnText() {
+    if (settings.mode === 'ai') return state.turn === HUMAN ? 'Your move' : 'Machina deliberates';
+    return `${displayName(state.turn)} to move`;
+  }
+  function turnPrompt() {
+    if (settings.mode === 'ai') return state.turn === HUMAN ? 'Your move.' : 'Machina is thinking.';
+    return `${displayName(state.turn)} to move.`;
+  }
+
+  /* ======================================================================
+     Rendering
+     ====================================================================== */
+  function canHumanPlay() {
+    return !state.over && !state.thinking && !state.clearing && !(settings.mode === 'ai' && state.turn === AI);
+  }
+
+  function renderCell(i, animate) {
+    const cell = els.cells[i];
+    const mark = state.board[i];
+    const playable = canHumanPlay();
+    const key = mark ? `m|${mark}|${settings.glyphs}` : `g|${state.turn}|${settings.glyphs}`;
+    if (cell.dataset.key !== key) {
+      cell.innerHTML = mark
+        ? `<span class="mark">${glyph(mark, settings.glyphs, animate && !reduceMotion.matches)}</span>`
+        : `<span class="ghost" aria-hidden="true">${glyph(state.turn, settings.glyphs, false)}</span>`;
+      cell.dataset.key = key;
+    }
+    const win = !!(state.line && state.line.includes(i));
+    cell.classList.toggle('is-empty', !mark);
+    cell.classList.toggle('is-win', win);
+    let label = `${cellName(i).replace(/^r/, 'R')}: ${mark || 'empty'}`;
+    if (win) label += ', winning line';
+    cell.setAttribute('aria-label', label);
+    if (mark || !playable) cell.setAttribute('aria-disabled', 'true');
+    else cell.removeAttribute('aria-disabled');
+  }
+
+  function renderBoard(animateIdx = -1) {
+    for (let i = 0; i < 9; i++) renderCell(i, i === animateIdx);
+    const b = els.board;
+    b.classList.toggle('can-play', canHumanPlay());
+    b.classList.toggle('is-won', state.over === 'X' || state.over === 'O');
+    b.classList.toggle('is-draw', state.over === 'draw');
+    b.setAttribute('aria-busy', state.thinking ? 'true' : 'false');
+    els.frame.classList.toggle('is-won', state.over === 'X' || state.over === 'O');
+  }
+
+  function renderStatus() {
+    const banner = els.banner;
+    if (state.over) {
+      let kicker, text, outcome;
+      if (state.over === 'draw') {
+        kicker = 'Pax'; text = 'Honours shared'; outcome = 'draw';
+      } else if (settings.mode === 'ai') {
+        if (state.over === HUMAN) { kicker = 'Victoria'; text = 'You triumph'; outcome = 'win'; }
+        else { kicker = 'Clades'; text = 'Machina prevails'; outcome = 'defeat'; }
+      } else {
+        kicker = 'Victoria'; text = `${nameHTML(state.over)} triumphs`; outcome = 'win';
+      }
+      els.ribbonKicker.textContent = kicker;
+      els.ribbonText.innerHTML = text;
+      banner.dataset.outcome = outcome;
+      banner.classList.add('is-over');
+    } else {
+      banner.classList.remove('is-over');
+      banner.dataset.outcome = 'none';
+      els.plaqueText.textContent = turnText();
+      const iconKey = `${state.turn}|${settings.glyphs}`;
+      if (els.plaqueIcon.dataset.key !== iconKey) {
+        els.plaqueIcon.innerHTML = glyph(state.turn, settings.glyphs, false);
+        els.plaqueIcon.dataset.key = iconKey;
+      }
+    }
+    banner.classList.toggle('is-thinking', !!state.thinking && !state.over);
+  }
+
+  function renderScores(bumpKey) {
+    for (const k of ['X', 'O', 'D']) {
+      els.num[k].textContent = String(scores[k]);
+      els.rom[k].textContent = roman(scores[k]);
+    }
+    for (const m of ['X', 'O']) {
+      els.name[m].innerHTML = nameHTML(m);
+      const glyphHost = els.card[m].querySelector('.score-glyph');
+      const gk = `${m}|${settings.glyphs}`;
+      if (glyphHost.dataset.key !== gk) { glyphHost.innerHTML = glyph(m, settings.glyphs, false); glyphHost.dataset.key = gk; }
+      const isTurn = !state.over && state.turn === m;
+      els.card[m].classList.toggle('is-turn', isTurn);
+      els.card[m].classList.toggle('is-thinking', isTurn && state.thinking);
+      els.card[m].classList.toggle('is-champion', state.over === m);
+      els.card[m].setAttribute('aria-label', `${displayName(m)} (${m}): ${scores[m]} ${scores[m] === 1 ? 'win' : 'wins'}${isTurn ? ', to move' : ''}`);
+    }
+    els.card.D.classList.toggle('is-champion', state.over === 'draw');
+    els.card.D.setAttribute('aria-label', `Draws: ${scores.D}`);
+    for (const k of ['X', 'O', 'D']) els.card[k].setAttribute('role', 'group');
+    if (bumpKey && !reduceMotion.matches) {
+      const n = els.num[bumpKey];
+      n.classList.remove('bump'); void n.offsetWidth; n.classList.add('bump');
+    }
+  }
+
+  function renderMeta() {
+    els.metaRound.innerHTML = `Round ${roman(round)}<span class="sr-only"> (${round})</span>`;
+    let desc;
+    if (settings.mode === 'ai') {
+      desc = `against Machina, ${DISCIPLINES[settings.discipline].label.toLowerCase()}`;
+    } else {
+      desc = settings.glyphs === 'roman' ? 'Gladius against Laurel' : 'two players, one board';
+    }
+    els.metaDesc.textContent = desc;
+    const opener = settings.mode === 'ai' ? (settings.first === HUMAN ? 'You' : 'Machina') : displayName(settings.first);
+    els.metaFirst.textContent = `${opener} ${opener === 'You' ? 'open' : 'opens'} each round`;
+  }
+
+  function renderAll() {
+    renderBoard();
+    renderStatus();
+    renderScores();
+    renderMeta();
+  }
+
+  let announceTimer = 0;
+  function announce(msg) {
+    clearTimeout(announceTimer);
+    els.live.textContent = '';
+    announceTimer = setTimeout(() => { els.live.textContent = msg; }, 60);
+  }
+
+  /* ======================================================================
+     Game flow
+     ====================================================================== */
+  function place(i) {
+    const mark = state.turn;
+    state.board[i] = mark;
+    state.moves++;
+    const result = evaluate(state.board);
+    if (result) { finish(result, i); return; }
+    state.turn = other(mark);
+    renderBoard(i);
+    renderStatus();
+    renderScores();
+    const who = settings.mode === 'ai' ? (mark === HUMAN ? 'You take' : 'Machina takes') : `${displayName(mark)} takes`;
+    announce(`${who} ${cellName(i)}. ${turnPrompt()}`);
+    queueAI();
+  }
+
+  function humanPlay(i) {
+    if (!canHumanPlay() || state.board[i]) return;
+    place(i);
+  }
+
+  function queueAI() {
+    if (settings.mode !== 'ai' || state.over || state.turn !== AI) return;
+    state.thinking = true;
+    renderBoard(); renderStatus(); renderScores();
+    const delay = reduceMotion.matches ? 280 : 480 + Math.random() * 380;
+    clearTimeout(aiTimer);
+    aiTimer = setTimeout(() => {
+      aiTimer = 0;
+      state.thinking = false;
+      if (state.over || state.turn !== AI) { renderAll(); return; }
+      const i = chooseMove(state.board, AI, settings.discipline);
+      if (i >= 0) place(i);
+    }, delay);
+  }
+
+  function finish(result, lastIdx) {
+    state.over = result.mark;
+    state.line = result.line;
+    state.thinking = false;
+    const key = result.mark === 'draw' ? 'D' : result.mark;
+    scores[key]++;
+    save();
+    renderBoard(lastIdx);
+    renderStatus();
+    renderScores(key);
+
+    let msg;
+    if (result.mark === 'draw') msg = 'The board is full. It is a draw.';
+    else if (settings.mode === 'ai') msg = result.mark === HUMAN ? 'Victory! You win with three in a row.' : 'Machina wins with three in a row.';
+    else msg = `Victory! ${displayName(result.mark)} wins with three in a row.`;
+    announce(`${msg} Score: X ${scores.X}, O ${scores.O}, draws ${scores.D}. Choose New Round to play again.`);
+
+    const celebrate = result.mark !== 'draw' && (settings.mode === 'pvp' || result.mark === HUMAN);
+    if (celebrate) {
+      // wait for the mark to land before the celebration
+      setTimeout(() => {
+        if (state.over !== result.mark) return;
+        const rects = result.line.map((i) => els.cells[i].getBoundingClientRect());
+        const x = rects.reduce((t, r) => t + r.left + r.width / 2, 0) / 3;
+        const y = rects.reduce((t, r) => t + r.top + r.height / 2, 0) / 3;
+        const team = result.mark === 'X' ? ['#b3261e', '#d9473a'] : ['#2a5aa6', '#4f7fcc'];
+        confetti.fire({ x, y }, ['#fff1c4', '#f3d88a', '#e0b04f', '#c99a34', '#a97b22', '#fbf8f2', ...team]);
+      }, reduceMotion.matches ? 0 : 380);
+    }
+  }
+
+  function startRound() {
+    state.board.fill(null);
+    state.turn = settings.first;
+    state.over = null;
+    state.line = null;
+    state.moves = 0;
+    state.thinking = false;
+    state.clearing = false;
+    els.board.classList.remove('is-clearing');
+    renderAll();
+    announce(`Round ${round}. ${turnPrompt()}`);
+    queueAI();
+  }
+
+  function newRound() {
+    clearTimeout(aiTimer); aiTimer = 0;
+    state.thinking = false;
+    confetti.fade();
+    if (state.clearing) return; // already transitioning to a fresh board
+    if (state.moves > 0) {
+      round++;
+      save();
+      if (!reduceMotion.matches) {
+        state.clearing = true;
+        renderBoard(); renderStatus(); renderScores();
+        els.board.classList.add('is-clearing');
+        clearTimeout(clearTimer);
+        clearTimer = setTimeout(startRound, 230);
+        return;
+      }
+    }
+    startRound();
+  }
+
+  function resetScores() {
+    scores = { X: 0, O: 0, D: 0 };
+    round = 1;
+    save();
+    renderScores();
+    renderMeta();
+    announce('Scores reset to zero.');
+  }
+
+  /* ======================================================================
+     Board input: pointer + keyboard (roving tabindex grid)
+     ====================================================================== */
+  function focusCell(i) {
+    focusIdx = i;
+    els.cells.forEach((c, j) => { c.tabIndex = j === i ? 0 : -1; });
+    els.cells[i].focus();
+  }
+  els.cells.forEach((cell, i) => {
+    cell.addEventListener('click', () => {
+      focusIdx = i;
+      els.cells.forEach((c, j) => { c.tabIndex = j === i ? 0 : -1; });
+      humanPlay(i);
+    });
+  });
+  els.board.addEventListener('keydown', (e) => {
+    const cell = e.target.closest('.cell');
+    if (!cell || e.altKey || e.metaKey) return;
+    const i = +cell.dataset.i, r = Math.floor(i / 3), c = i % 3;
+    let next = null;
+    switch (e.key) {
+      case 'ArrowUp': next = r > 0 ? i - 3 : i; break;
+      case 'ArrowDown': next = r < 2 ? i + 3 : i; break;
+      case 'ArrowLeft': next = c > 0 ? i - 1 : i; break;
+      case 'ArrowRight': next = c < 2 ? i + 1 : i; break;
+      case 'Home': next = e.ctrlKey ? 0 : r * 3; break;
+      case 'End': next = e.ctrlKey ? 8 : r * 3 + 2; break;
+      case 'Enter': case ' ': case 'Spacebar':
+        e.preventDefault(); humanPlay(i); return;
+      default:
+        if (/^[1-9]$/.test(e.key) && !e.ctrlKey) {
+          e.preventDefault();
+          const j = +e.key - 1;
+          focusCell(j);
+          humanPlay(j);
+        }
+        return;
+    }
+    e.preventDefault();
+    focusCell(next);
+  });
+
+  /* ======================================================================
+     Theme
+     ====================================================================== */
+  function applyTheme(theme) {
+    const root = els.root;
+    if (root.dataset.theme === theme) return;
+    const swap = () => {
+      root.dataset.theme = theme;
+      els.metaTheme.setAttribute('content', theme === 'night' ? '#141217' : '#ecebe7');
+    };
+    if (document.startViewTransition && !reduceMotion.matches && !document.hidden) {
+      try { document.startViewTransition(swap); return; } catch (e) { /* fall through */ }
+    }
+    swap();
+  }
+
+  /* ======================================================================
+     Customize dialog
+     ====================================================================== */
+  let snapshot = null;
+
+  function writeForm(s) {
+    for (const key of Object.keys(ENUMS)) {
+      const input = els.form.querySelector(`input[name="${key}"][value="${s[key]}"]`);
+      if (input) input.checked = true;
+    }
+    syncDialog();
+  }
+  function readForm() {
+    const out = { ...settings };
+    for (const key of Object.keys(ENUMS)) {
+      const input = els.form.querySelector(`input[name="${key}"]:checked`);
+      if (input) out[key] = input.value;
+    }
+    return out;
+  }
+  function syncDialog() {
+    const f = readForm();
+    els.discGroup.disabled = f.mode !== 'ai';
+    els.discDesc.textContent = f.mode === 'ai'
+      ? DISCIPLINES[f.discipline].desc
+      : 'Applies only when playing against the AI.';
+    els.discDesc.classList.toggle('is-muted', f.mode !== 'ai');
+    $$('[data-first]', els.form).forEach((host) => { host.innerHTML = glyph(host.dataset.first, f.glyphs, false); });
+    $('#firstSubX').textContent = f.mode === 'ai' ? 'You move first' : 'Player X moves first';
+    $('#firstSubO').textContent = f.mode === 'ai' ? 'Machina moves first' : 'Player O moves first';
+  }
+
+  function openCustomize() {
+    snapshot = { ...settings };
+    writeForm(settings);
+    els.dialog.returnValue = '';
+    els.dialog.showModal();
+    const checked = els.form.querySelector('input[name="theme"]:checked');
+    if (checked) checked.focus({ preventScroll: true });
+  }
+
+  els.form.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.name === 'theme') { settings.theme = t.value; applyTheme(t.value); }
+    if (t.name === 'glyphs') { settings.glyphs = t.value; renderAll(); }
+    syncDialog();
+  });
+
+  els.dialog.addEventListener('close', () => {
+    if (!snapshot) return;
+    const before = snapshot;
+    snapshot = null;
+    if (els.dialog.returnValue === 'apply') {
+      const next = readForm();
+      const restart = next.mode !== before.mode || next.first !== before.first ||
+        (next.mode === 'ai' && next.discipline !== before.discipline);
+      settings = next;
+      save();
+      applyTheme(settings.theme);
+      if (restart) newRound();
+      else renderAll();
+      announce(restart ? 'Settings applied. A new round begins.' : 'Settings applied.');
+    } else {
+      settings = { ...before };
+      applyTheme(settings.theme);
+      renderAll();
+    }
+    $('#btnCustomize').focus({ preventScroll: true });
+  });
+
+  /* ======================================================================
+     Wiring
+     ====================================================================== */
+  $$('[data-dismiss]', els.form).forEach((btn) => btn.addEventListener('click', () => els.dialog.close('cancel')));
+  $('#btnNew').addEventListener('click', newRound);
+  $('#btnCustomize').addEventListener('click', openCustomize);
+  $('#btnReset').addEventListener('click', resetScores);
+
+  /* ======================================================================
+     Boot
+     ====================================================================== */
+  load();
+  els.root.dataset.theme = settings.theme;
+  els.metaTheme.setAttribute('content', settings.theme === 'night' ? '#141217' : '#ecebe7');
+
+  $('#crest').innerHTML = crestSVG();
+  $('#dlgCrest').innerHTML = crestSVG();
+  $('#drawGlyph').innerHTML = oliveSVG();
+  $$('[data-preview]').forEach((host) => {
+    const st = host.dataset.preview;
+    host.innerHTML = glyph('X', st, false) + glyph('O', st, false);
+  });
+  buildFrame();
+  buildColosseum();
+  els.cells.forEach((c) => {
+    c.style.setProperty('--vx', `${Math.round(Math.random() * 100)}%`);
+    c.style.setProperty('--vy', `${Math.round(Math.random() * 100)}%`);
+  });
+
+  state.turn = settings.first;
+  renderAll();
+  els.live.textContent = '';
+
+  const reveal = () => {
+    els.root.classList.remove('is-loading');
+    queueAI();
+    setTimeout(() => els.board.classList.remove('intro'), 1400);
+  };
+  const fontsReady = document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve();
+  Promise.race([fontsReady, new Promise((r) => setTimeout(r, 1500))]).then(() => requestAnimationFrame(reveal));
+})();
+</script>
+</body>
+</html>

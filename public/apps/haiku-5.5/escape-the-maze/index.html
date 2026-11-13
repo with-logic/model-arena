@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="description" content="Escape the Maze: a randomly generated maze. Find the shortest route from start to the gold gate before the clock wins." />
+<title>Escape the Maze</title>
+<style>
+  :root {
+    --bg-0: #070b18;
+    --bg-1: #111a33;
+    --panel: rgba(18, 26, 50, 0.8);
+    --panel-hover: #1d2a4d;
+    --panel-border: rgba(120, 150, 220, 0.2);
+    --text: #e8eefc;
+    --muted: #8795b8;
+    --teal: #4fd1c5;
+    --gold: #f6c453;
+    --violet: #a78bfa;
+    --danger: #f87171;
+    --ok: #4ade80;
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(900px 600px at 12% -10%, rgba(79, 209, 197, 0.14), transparent 60%),
+      radial-gradient(900px 700px at 100% 0%, rgba(167, 139, 250, 0.16), transparent 60%),
+      linear-gradient(180deg, var(--bg-1), var(--bg-0));
+    background-attachment: fixed;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    width: min(1000px, 100%);
+    margin: 0 auto;
+    padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
+  }
+
+  /* ---------- Header ---------- */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 1.3rem;
+    letter-spacing: -0.01em;
+  }
+  .brand-mark {
+    width: 30px;
+    height: 30px;
+    border-radius: 9px;
+    background: conic-gradient(from 200deg, var(--teal), var(--violet), var(--gold), var(--teal));
+    display: grid;
+    place-items: center;
+    box-shadow: 0 6px 20px rgba(79, 209, 197, 0.25);
+  }
+  .brand-mark::after {
+    content: "";
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    background: var(--bg-0);
+  }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 6px 12px;
+    min-width: 86px;
+  }
+  .stat span {
+    display: block;
+    font-size: 0.66rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+  .stat b {
+    display: block;
+    font-variant-numeric: tabular-nums;
+    font-size: 1.05rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  /* ---------- Board ---------- */
+  .board {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #board {
+    display: block;
+    border-radius: 16px;
+    box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--panel-border);
+    touch-action: none;
+  }
+
+  /* ---------- Footer / controls ---------- */
+  .footer {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .seg {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+  }
+  .seg button {
+    font: inherit;
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--muted);
+    background: transparent;
+    border: 0;
+    border-radius: 9px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+  }
+  .seg button:hover { color: var(--text); }
+  .seg button[aria-pressed="true"] {
+    background: linear-gradient(135deg, var(--teal), #3b82f6);
+    color: #03141a;
+    font-weight: 700;
+  }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 12px;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: transform 0.08s, background 0.2s, opacity 0.2s;
+  }
+  .btn:hover:not(:disabled) { background: var(--panel-hover); }
+  .btn:active:not(:disabled) { transform: translateY(1px) scale(0.99); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn.primary {
+    background: linear-gradient(135deg, var(--gold), #f59e0b);
+    color: #2a1a00;
+    border-color: transparent;
+    box-shadow: 0 8px 24px -8px rgba(245, 158, 11, 0.6);
+  }
+  .btn.primary:hover:not(:disabled) { background: linear-gradient(135deg, #ffd76e, #f7ad1f); }
+  button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+  .status {
+    text-align: center;
+    font-size: 0.92rem;
+    color: var(--muted);
+    min-height: 1.3em;
+  }
+
+  .dpad {
+    display: none;
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(2, 56px);
+    gap: 8px;
+    justify-content: center;
+  }
+  @media (hover: none) and (pointer: coarse) {
+    .dpad { display: grid; }
+  }
+  .dpad button {
+    font-size: 1.2rem;
+    color: var(--text);
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 16px;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .dpad button:active { background: var(--panel-hover); }
+  .dpad .up    { grid-column: 2; grid-row: 1; }
+  .dpad .left  { grid-column: 1; grid-row: 2; }
+  .dpad .down  { grid-column: 2; grid-row: 2; }
+  .dpad .right { grid-column: 3; grid-row: 2; }
+
+  /* ---------- Win overlay ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(4, 7, 16, 0.6);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+    z-index: 10;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .card {
+    width: min(430px, 100%);
+    background: linear-gradient(180deg, #17213f, #0f1730);
+    border: 1px solid var(--panel-border);
+    border-radius: 22px;
+    padding: 26px;
+    box-shadow: 0 40px 100px -30px rgba(0, 0, 0, 0.8);
+    transform: translateY(14px) scale(0.98);
+    transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+  }
+  .overlay.show .card { transform: none; }
+  .best-badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #2a1a00;
+    background: linear-gradient(135deg, var(--gold), #f59e0b);
+    border-radius: 999px;
+    padding: 4px 10px;
+    margin-bottom: 10px;
+  }
+  .card h2 {
+    margin: 0;
+    font-size: 1.85rem;
+    letter-spacing: -0.02em;
+  }
+  .card .sub {
+    color: var(--muted);
+    margin: 6px 0 18px;
+    font-size: 0.95rem;
+  }
+  table.breakdown {
+    width: 100%;
+    border-collapse: collapse;
+    font-variant-numeric: tabular-nums;
+  }
+  .breakdown td {
+    padding: 8px 0;
+    border-bottom: 1px dashed rgba(135, 149, 184, 0.22);
+  }
+  .breakdown td:last-child { text-align: right; font-weight: 600; }
+  .breakdown td small { display: block; color: var(--muted); font-weight: 400; font-size: 0.78rem; }
+  .breakdown .pos { color: var(--ok); }
+  .breakdown .neg { color: var(--danger); }
+  .breakdown tr.total td {
+    border-bottom: none;
+    padding-top: 14px;
+    font-size: 1.3rem;
+    color: var(--gold);
+  }
+  .card .actions { margin-top: 22px; justify-content: flex-end; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .overlay, .card, .btn { transition: none; }
+  }
+  @media (max-width: 520px) {
+    .app { padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); gap: 10px; }
+    .brand { font-size: 1.1rem; }
+    .stat { min-width: 0; flex: 1; padding: 5px 8px; }
+    .stat b { font-size: 0.95rem; }
+    .stats { width: 100%; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Escape the Maze</div>
+    <div class="stats">
+      <div class="stat"><span>Time</span><b id="time">0:00.0</b></div>
+      <div class="stat"><span>Moves</span><b id="moves">0</b></div>
+      <div class="stat" title="Length of the shortest route"><span>Par</span><b id="par">–</b></div>
+      <div class="stat" title="Your best score on this size"><span>Best</span><b id="best">–</b></div>
+    </div>
+  </header>
+
+  <section class="board" id="boardWrap">
+    <canvas id="board" role="img" aria-label="Maze. Move the avatar with arrow keys or WASD to reach the gold gate."></canvas>
+  </section>
+
+  <footer class="footer">
+    <div class="controls">
+      <div class="seg" role="group" aria-label="Maze size">
+        <button type="button" data-size="small" aria-pressed="false">Small</button>
+        <button type="button" data-size="medium" aria-pressed="false">Medium</button>
+        <button type="button" data-size="large" aria-pressed="false">Large</button>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn" id="hintBtn">Reveal path (−150)</button>
+        <button type="button" class="btn primary" id="replayBtn">↻ Replay</button>
+      </div>
+    </div>
+    <div class="dpad" role="group" aria-label="Touch controls">
+      <button type="button" class="up" data-dir="0" aria-label="Move up">▲</button>
+      <button type="button" class="left" data-dir="3" aria-label="Move left">◀</button>
+      <button type="button" class="down" data-dir="2" aria-label="Move down">▼</button>
+      <button type="button" class="right" data-dir="1" aria-label="Move right">▶</button>
+    </div>
+    <div class="status" id="status" aria-live="polite"></div>
+  </footer>
+</main>
+
+<div class="overlay" id="winOverlay" aria-hidden="true">
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="winTitle">
+    <span class="best-badge" id="bestBadge" hidden>★ New best</span>
+    <h2 id="winTitle">Escaped!</h2>
+    <p class="sub" id="winSub"></p>
+    <table class="breakdown"><tbody id="breakdown"></tbody></table>
+    <div class="actions">
+      <button type="button" class="btn" id="closeBtn">View maze</button>
+      <button type="button" class="btn primary" id="playAgainBtn">Play again</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- Configuration ----------
+  const SIZES = {
+    small:  { n: 11, label: 'Small' },
+    medium: { n: 21, label: 'Medium' },
+    large:  { n: 31, label: 'Large' },
+  };
+  // Wall bits: a cell's walls are a bitmask; a set bit means the wall is present.
+  const DIRS = [
+    { dx: 0,  dy: -1, bit: 1, opp: 4 }, // 0: up
+    { dx: 1,  dy: 0,  bit: 2, opp: 8 }, // 1: right
+    { dx: 0,  dy: 1,  bit: 4, opp: 1 }, // 2: down
+    { dx: -1, dy: 0,  bit: 8, opp: 2 }, // 3: left
+  ];
+  const KEY_TO_DIR = {
+    ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3,
+    w: 0, d: 1, s: 2, a: 3, W: 0, D: 1, S: 2, A: 3,
+  };
+  const HINT_COST = 150;
+  const BASE_SCORE = 1000;
+  const PATH_BONUS_MAX = 500;
+  const PATH_BONUS_PER_EXTRA_STEP = 15;
+  const TIME_PENALTY_PER_SEC = 2;
+  const STORAGE_PREFIX = 'escape-the-maze:';
+  const KEY_REPEAT_MS = 85;
+
+  // ---------- DOM ----------
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('board');
+  const ctx = canvas.getContext('2d');
+  const boardEl = $('boardWrap');
+  const hud = { time: $('time'), moves: $('moves'), par: $('par'), best: $('best') };
+  const hintBtn = $('hintBtn');
+  const statusEl = $('status');
+  const overlay = $('winOverlay');
+
+  // ---------- State ----------
+  let game = null;          // current maze + player state
+  let view = null;          // layout metrics for the canvas
+  let staticLayer = null;   // pre-rendered maze (walls, floor, start marker)
+  let particles = [];
+  let shownTime = '';
+  let winTimer = 0;
+  let lastKeyAt = 0;
+  let lastFrame = performance.now();
+  let swipe = null;
+
+  // ---------- Utilities ----------
+  const rand = (n) => Math.floor(Math.random() * n);
+
+  function fmtTime(ms) {
+    const tenths = Math.floor(ms / 100);
+    const totalSec = Math.floor(tenths / 10);
+    const m = Math.floor(totalSec / 60);
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${m}:${s}.${tenths % 10}`;
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    c.beginPath();
+    c.moveTo(x + r, y);
+    c.arcTo(x + w, y, x + w, y + h, r);
+    c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r);
+    c.arcTo(x, y, x + w, y, r);
+    c.closePath();
+  }
+
+  function readJSON(key) {
+    try { return JSON.parse(localStorage.getItem(STORAGE_PREFIX + key)); } catch (_) { return null; }
+  }
+  function writeJSON(key, value) {
+    try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value)); } catch (_) { /* storage unavailable */ }
+  }
+
+  // ---------- Maze generation (recursive backtracker => perfect maze) ----------
+  function generateMaze(n) {
+    const grid = new Uint8Array(n * n).fill(15);
+    const seen = new Uint8Array(n * n);
+    const stack = [0];
+    seen[0] = 1;
+    while (stack.length) {
+      const cur = stack[stack.length - 1];
+      const x = cur % n;
+      const y = (cur / n) | 0;
+      const open = DIRS.filter((d) => {
+        const nx = x + d.dx;
+        const ny = y + d.dy;
+        return nx >= 0 && ny >= 0 && nx < n && ny < n && !seen[ny * n + nx];
+      });
+      if (open.length === 0) {
+        stack.pop();
+        continue;
+      }
+      const d = open[rand(open.length)];
+      const next = (y + d.dy) * n + (x + d.dx);
+      grid[cur] &= ~d.bit;
+      grid[next] &= ~d.opp;
+      seen[next] = 1;
+      stack.push(next);
+    }
+    return grid;
+  }
+
+  // BFS over open passages. Returns the cell indices from `from` to `to`, inclusive.
+  function shortestPath(grid, n, from, to) {
+    const prev = new Int32Array(n * n).fill(-1);
+    const seen = new Uint8Array(n * n);
+    const queue = [from];
+    seen[from] = 1;
+    for (let i = 0; i < queue.length; i++) {
+      const cur = queue[i];
+      if (cur === to) break;
+      const x = cur % n;
+      const y = (cur / n) | 0;
+      for (const d of DIRS) {
+        if (grid[cur] & d.bit) continue;
+        const nx = x + d.dx;
+        const ny = y + d.dy;
+        if (nx < 0 || ny < 0 || nx >= n || ny >= n) continue;
+        const nxt = ny * n + nx;
+        if (seen[nxt]) continue;
+        seen[nxt] = 1;
+        prev[nxt] = cur;
+        queue.push(nxt);
+      }
+    }
+    if (!seen[to]) return [];
+    const path = [];
+    for (let c = to; c !== -1; c = prev[c]) {
+      path.push(c);
+      if (c === from) break;
+    }
+    return path.reverse();
+  }
+
+  // ---------- Game lifecycle ----------
+  function newGame(key) {
+    const { n } = SIZES[key];
+    const grid = generateMaze(n);
+    const goal = n * n - 1;
+    const solution = shortestPath(grid, n, 0, goal);
+
+    game = {
+      key,
+      n,
+      grid,
+      goal,
+      par: solution.length - 1,
+      pos: 0,
+      moves: 0,
+      visited: new Uint8Array(n * n),
+      disp: { x: 0.5, y: 0.5 },   // rendered avatar position (cell units, centre-based)
+      facing: 1,
+      bump: 0,
+      started: false,
+      won: false,
+      startTime: 0,
+      finalMs: 0,
+      hintUsed: false,
+      hintOn: false,
+      hintPath: [],
+      result: null,
+      isBest: false,
+    };
+    game.visited[0] = 1;
+    particles = [];
+    clearTimeout(winTimer);
+    hideWin();
+    shownTime = '';
+    hud.time.textContent = fmtTime(0);
+    try { localStorage.setItem(STORAGE_PREFIX + 'size', key); } catch (_) { /* ignore */ }
+    setActiveSize(key);
+    layout();
+    refreshUi();
+  }
+
+  function tryMove(di) {
+    if (!game || game.won) return;
+    const now = performance.now();
+    const d = DIRS[di];
+    const cur = game.pos;
+    const x = cur % game.n;
+    const y = (cur / game.n) | 0;
+    const nx = x + d.dx;
+    const ny = y + d.dy;
+    game.facing = di;
+
+    const blocked = (game.grid[cur] & d.bit) || nx < 0 || ny < 0 || nx >= game.n || ny >= game.n;
+    if (blocked) {
+      game.bump = 1;  // little "bonk" feedback against the wall
+      return;
+    }
+
+    if (!game.started) {
+      game.started = true;
+      game.startTime = now;
+    }
+    game.pos = ny * game.n + nx;
+    game.moves++;
+    game.visited[game.pos] = 1;
+    if (game.hintOn) game.hintPath = shortestPath(game.grid, game.n, game.pos, game.goal);
+    if (game.pos === game.goal) finish(now);
+    refreshUi();
+  }
+
+  function revealHint() {
+    if (!game || game.won || game.hintUsed) return;
+    game.hintUsed = true;
+    game.hintOn = true;
+    game.hintPath = shortestPath(game.grid, game.n, game.pos, game.goal);
+    refreshUi();
+  }
+
+  function finish(now) {
+    game.won = true;
+    game.finalMs = now - game.startTime;
+
+    const extra = Math.max(0, game.moves - game.par);
+    const pathBonus = Math.max(0, PATH_BONUS_MAX - extra * PATH_BONUS_PER_EXTRA_STEP);
+    const timePenalty = Math.round((game.finalMs / 1000) * TIME_PENALTY_PER_SEC);
+    const hintPenalty = game.hintUsed ? HINT_COST : 0;
+    const total = Math.max(0, BASE_SCORE + pathBonus - timePenalty - hintPenalty);
+    game.result = { extra, pathBonus, timePenalty, hintPenalty, total, perfect: extra === 0 };
+
+    const prev = readJSON('best:' + game.key);
+    game.isBest = !prev || total > prev.score;
+    if (game.isBest) writeJSON('best:' + game.key, { score: total, ms: game.finalMs });
+
+    burst();
+    winTimer = setTimeout(showWin, 550);
+  }
+
+  // ---------- Overlay ----------
+  function addRow(tbody, label, note, value, cls) {
+    const tr = document.createElement('tr');
+    if (cls === 'total') tr.className = 'total';
+    const tdLabel = document.createElement('td');
+    tdLabel.textContent = label;
+    if (note) {
+      const small = document.createElement('small');
+      small.textContent = note;
+      tdLabel.appendChild(small);
+    }
+    const tdValue = document.createElement('td');
+    tdValue.textContent = value;
+    if (cls === 'pos' || cls === 'neg') tdValue.className = cls;
+    tr.append(tdLabel, tdValue);
+    tbody.appendChild(tr);
+  }
+
+  function showWin() {
+    if (!game || !game.won) return;
+    const r = game.result;
+    const secs = (game.finalMs / 1000).toFixed(1);
+
+    $('winTitle').textContent = r.perfect ? 'Perfect escape!' : 'Escaped!';
+    $('winSub').textContent =
+      `${SIZES[game.key].label} maze cleared in ${fmtTime(game.finalMs)} with ${game.moves} moves.`;
+    $('bestBadge').hidden = !game.isBest;
+
+    const tbody = $('breakdown');
+    tbody.replaceChildren();
+    addRow(tbody, 'Base score', '', `+${BASE_SCORE}`, 'pos');
+    addRow(
+      tbody,
+      'Shortest-path bonus',
+      r.perfect ? 'Perfect route, matched par' : `${r.extra} extra step${r.extra === 1 ? '' : 's'} over par`,
+      `+${r.pathBonus}`,
+      'pos'
+    );
+    addRow(tbody, 'Time', `${secs}s at ${TIME_PENALTY_PER_SEC} pts/sec`, `−${r.timePenalty}`, 'neg');
+    if (r.hintPenalty) addRow(tbody, 'Path reveal', 'Hint used', `−${r.hintPenalty}`, 'neg');
+    addRow(tbody, 'Total', '', `${r.total}`, 'total');
+
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    $('playAgainBtn').focus({ preventScroll: true });
+  }
+
+  function hideWin() {
+    overlay.classList.remove('show');
+    overlay.setAttribute('aria-hidden', 'true');
+  }
+
+  // ---------- UI refresh ----------
+  function setActiveSize(key) {
+    document.querySelectorAll('[data-size]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(b.dataset.size === key));
+    });
+  }
+
+  function refreshUi() {
+    if (!game) return;
+    hud.moves.textContent = String(game.moves);
+    hud.par.textContent = String(game.par);
+    const best = readJSON('best:' + game.key);
+    hud.best.textContent = best ? String(best.score) : '–';
+
+    hintBtn.disabled = game.won || game.hintUsed;
+    hintBtn.textContent = game.hintUsed ? 'Path revealed' : `Reveal path (−${HINT_COST})`;
+
+    if (game.won) {
+      statusEl.textContent = `Escaped with ${game.result.total} points. Press Replay for a fresh maze.`;
+    } else if (!game.started) {
+      statusEl.textContent = 'Press an arrow key or WASD to start the clock.';
+    } else {
+      statusEl.textContent = `Reach the gold gate. Par is ${game.par} steps.`;
+    }
+  }
+
+  // ---------- Layout & rendering ----------
+  function layout() {
+    if (!game) return;
+    const rect = boardEl.getBoundingClientRect();
+    const size = Math.max(200, Math.floor(Math.min(rect.width, rect.height)));
+    const dpr = window.devicePixelRatio || 1;
+
+    canvas.style.width = size + 'px';
+    canvas.style.height = size + 'px';
+    canvas.width = Math.round(size * dpr);
+    canvas.height = Math.round(size * dpr);
+
+    const margin = Math.max(8, size * 0.025);
+    view = { size, dpr, margin, cell: (size - margin * 2) / game.n };
+
+    staticLayer = document.createElement('canvas');
+    staticLayer.width = canvas.width;
+    staticLayer.height = canvas.height;
+    drawStatic(staticLayer.getContext('2d'));
+  }
+
+  function drawStatic(c) {
+    const { n, grid } = game;
+    const { size, dpr, margin: M, cell } = view;
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Floor
+    c.fillStyle = '#0d1530';
+    roundRect(c, 0, 0, size, size, 16);
+    c.fill();
+    c.fillStyle = 'rgba(255, 255, 255, 0.015)';
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        if ((x + y) & 1) c.fillRect(M + x * cell, M + y * cell, cell, cell);
+      }
+    }
+
+    // Walls (one stroked path for speed)
+    c.lineWidth = Math.max(2, cell * 0.11);
+    c.lineCap = 'round';
+    c.strokeStyle = '#cfe0ff';
+    c.shadowColor = 'rgba(125, 170, 255, 0.55)';
+    c.shadowBlur = cell * 0.4;
+    c.beginPath();
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const w = grid[y * n + x];
+        const x0 = M + x * cell;
+        const y0 = M + y * cell;
+        const x1 = x0 + cell;
+        const y1 = y0 + cell;
+        if (w & 1) { c.moveTo(x0, y0); c.lineTo(x1, y0); }
+        if (w & 8) { c.moveTo(x0, y0); c.lineTo(x0, y1); }
+        if (y === n - 1 && (w & 4)) { c.moveTo(x0, y1); c.lineTo(x1, y1); }
+        if (x === n - 1 && (w & 2)) { c.moveTo(x1, y0); c.lineTo(x1, y1); }
+      }
+    }
+    c.stroke();
+    c.shadowBlur = 0;
+
+    // Start marker
+    const sx = M + 0.5 * cell;
+    c.beginPath();
+    c.arc(sx, sx, cell * 0.24, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(74, 222, 128, 0.16)';
+    c.fill();
+    c.lineWidth = Math.max(2, cell * 0.06);
+    c.strokeStyle = '#4ade80';
+    c.stroke();
+  }
+
+  function draw(now) {
+    const { n, goal, visited } = game;
+    const { dpr, margin: M, cell } = view;
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(staticLayer, 0, 0);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Visited trail
+    ctx.fillStyle = 'rgba(79, 209, 197, 0.16)';
+    for (let i = 0; i < visited.length; i++) {
+      if (!visited[i]) continue;
+      const x = i % n;
+      const y = (i / n) | 0;
+      roundRect(ctx, M + x * cell + cell * 0.2, M + y * cell + cell * 0.2, cell * 0.6, cell * 0.6, cell * 0.15);
+      ctx.fill();
+    }
+
+    // Shortest-route hint (dashed, animated)
+    if (game.hintOn && game.hintPath.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      game.hintPath.forEach((idx, i) => {
+        const px = M + ((idx % n) + 0.5) * cell;
+        const py = M + (((idx / n) | 0) + 0.5) * cell;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      });
+      ctx.strokeStyle = 'rgba(167, 139, 250, 0.9)';
+      ctx.lineWidth = Math.max(2, cell * 0.16);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.setLineDash([cell * 0.2, cell * 0.22]);
+      ctx.lineDashOffset = -now / 50;
+      ctx.shadowColor = 'rgba(167, 139, 250, 0.8)';
+      ctx.shadowBlur = cell * 0.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Goal gate (pulsing gold)
+    const gcx = M + ((goal % n) + 0.5) * cell;
+    const gcy = M + (((goal / n) | 0) + 0.5) * cell;
+    const pulse = 0.5 + 0.5 * Math.sin(now / 260);
+    const gs = cell * (0.42 + 0.04 * pulse);
+    ctx.save();
+    ctx.shadowColor = 'rgba(246, 196, 83, 0.95)';
+    ctx.shadowBlur = cell * (0.5 + 0.5 * pulse);
+    ctx.fillStyle = '#f6c453';
+    roundRect(ctx, gcx - gs / 2, gcy - gs / 2, gs, gs, cell * 0.12);
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#2a1a00';
+    roundRect(ctx, gcx - gs * 0.2, gcy - gs * 0.2, gs * 0.4, gs * 0.4, cell * 0.05);
+    ctx.fill();
+
+    // Avatar
+    const dir = DIRS[game.facing];
+    const off = game.bump * cell * 0.18;
+    const ax = M + game.disp.x * cell + dir.dx * off;
+    const ay = M + game.disp.y * cell + dir.dy * off;
+    const r = cell * 0.3;
+    ctx.save();
+    ctx.shadowColor = 'rgba(79, 209, 197, 0.9)';
+    ctx.shadowBlur = cell * 0.6;
+    const grd = ctx.createRadialGradient(ax - r * 0.35, ay - r * 0.35, r * 0.1, ax, ay, r);
+    grd.addColorStop(0, '#c8fff6');
+    grd.addColorStop(0.45, '#4fd1c5');
+    grd.addColorStop(1, '#2563eb');
+    ctx.fillStyle = grd;
+    ctx.beginPath();
+    ctx.arc(ax, ay, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Eyes look in the direction of travel
+    const perpX = -dir.dy;
+    const perpY = dir.dx;
+    for (const side of [-1, 1]) {
+      const ex = ax + dir.dx * r * 0.25 + perpX * r * 0.42 * side;
+      const ey = ay + dir.dy * r * 0.25 + perpY * r * 0.42 * side;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(ex, ey, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#0b1020';
+      ctx.beginPath();
+      ctx.arc(ex + dir.dx * r * 0.08, ey + dir.dy * r * 0.08, r * 0.11, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Confetti
+    for (const p of particles) {
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life));
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function burst() {
+    const { margin: M, cell, size } = view;
+    const cx = M + (game.n - 0.5) * cell;
+    const cy = M + (game.n - 0.5) * cell;
+    const colors = ['#f6c453', '#4fd1c5', '#a78bfa', '#f472b6', '#ffffff'];
+    for (let i = 0; i < 120; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = size * (0.3 + Math.random() * 0.7);
+      particles.push({
+        x: cx,
+        y: cy,
+        vx: Math.cos(a) * sp,
+        vy: Math.sin(a) * sp - size * 0.4,
+        r: 2 + Math.random() * 3,
+        color: colors[i % colors.length],
+        life: 1,
+      });
+    }
+  }
+
+  function stepParticles(dt) {
+    if (!particles.length) return;
+    const gravity = view.size * 1.4;
+    for (const p of particles) {
+      p.vy += gravity * dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.vx *= 1 - 1.2 * dt;
+      p.life -= dt * 0.5;
+    }
+    particles = particles.filter((p) => p.life > 0);
+  }
+
+  function updateTimer(now) {
+    let ms = 0;
+    if (game.started) ms = game.won ? game.finalMs : now - game.startTime;
+    const txt = fmtTime(ms);
+    if (txt !== shownTime) {
+      shownTime = txt;
+      hud.time.textContent = txt;
+    }
+  }
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    lastFrame = now;
+    if (game && view) {
+      // Ease the rendered avatar toward its logical cell
+      const tx = (game.pos % game.n) + 0.5;
+      const ty = ((game.pos / game.n) | 0) + 0.5;
+      const k = 1 - Math.exp(-dt * 22);
+      game.disp.x += (tx - game.disp.x) * k;
+      game.disp.y += (ty - game.disp.y) * k;
+      game.bump *= Math.exp(-dt * 20);
+      stepParticles(dt);
+      updateTimer(now);
+      draw(now);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- Input ----------
+  window.addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const di = KEY_TO_DIR[e.key];
+    if (di === undefined) return;
+    e.preventDefault();
+    const now = performance.now();
+    if (e.repeat && now - lastKeyAt < KEY_REPEAT_MS) return;
+    lastKeyAt = now;
+    tryMove(di);
+  });
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.pointerType !== 'touch') return;
+    swipe = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x;
+    const dy = e.clientY - swipe.y;
+    swipe = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 24) return;
+    if (Math.abs(dx) > Math.abs(dy)) tryMove(dx > 0 ? 1 : 3);
+    else tryMove(dy > 0 ? 2 : 0);
+  });
+  canvas.addEventListener('pointercancel', () => { swipe = null; });
+
+  document.querySelectorAll('[data-dir]').forEach((btn) => {
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      tryMove(Number(btn.dataset.dir));
+    });
+  });
+
+  document.querySelectorAll('[data-size]').forEach((btn) => {
+    btn.addEventListener('click', () => newGame(btn.dataset.size));
+  });
+  hintBtn.addEventListener('click', revealHint);
+  $('replayBtn').addEventListener('click', () => newGame(game.key));
+  $('playAgainBtn').addEventListener('click', () => newGame(game.key));
+  $('closeBtn').addEventListener('click', hideWin);
+
+  let resizeRaf = 0;
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(resizeRaf);
+    resizeRaf = requestAnimationFrame(layout);
+  });
+
+  // ---------- Boot ----------
+  let initial = 'medium';
+  try {
+    const saved = localStorage.getItem(STORAGE_PREFIX + 'size');
+    if (SIZES[saved]) initial = saved;
+  } catch (_) { /* ignore */ }
+
+  newGame(initial);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

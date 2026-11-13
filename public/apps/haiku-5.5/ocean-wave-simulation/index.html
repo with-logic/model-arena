@@ -1,0 +1,892 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Ocean Wave Simulation</title>
+<style>
+  :root {
+    --accent: #8fe3ec;
+    --ink: #eaf8fb;
+    --muted: rgba(234, 248, 251, 0.6);
+    --line: rgba(255, 255, 255, 0.12);
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: #0b1d2a;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+  #ocean { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+  .vignette {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0) 55%, rgba(2,10,18,0.38) 100%);
+  }
+  #nogl {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    padding: 40px; text-align: center; font-size: 15px; color: var(--muted); background: #0b1d2a;
+  }
+  #panel {
+    position: fixed; top: 24px; left: 24px; width: 300px;
+    max-height: calc(100vh - 48px); overflow-y: auto;
+    padding: 22px 22px 18px; border-radius: 20px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(16, 40, 58, 0.56), rgba(8, 24, 37, 0.46));
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    transition: opacity 0.6s ease, transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+    scrollbar-width: thin;
+  }
+  #panel.collapsed { opacity: 0; transform: translateX(-18px); pointer-events: none; }
+  #panel h1 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0.2px; }
+  #panel header p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+  .group { margin-top: 20px; }
+  .group h2 {
+    margin: 0; font-size: 10.5px; font-weight: 600; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--accent);
+  }
+  .row { margin-top: 12px; }
+  .row .top { display: flex; justify-content: space-between; font-size: 13px; }
+  .row .top span:last-child { color: var(--muted); font-variant-numeric: tabular-nums; }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 4px; margin: 10px 0 0; border-radius: 4px; outline: none; cursor: pointer;
+    background: linear-gradient(90deg, var(--accent) var(--p, 50%), rgba(255,255,255,0.16) var(--p, 50%));
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 15px; height: 15px; border-radius: 50%;
+    background: #f2feff; box-shadow: 0 0 0 4px rgba(143,227,236,0.18), 0 2px 8px rgba(0,0,0,0.35);
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; border: 0; border-radius: 50%;
+    background: #f2feff; box-shadow: 0 0 0 4px rgba(143,227,236,0.18);
+  }
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 10px; }
+  .preset {
+    padding: 8px 6px; border-radius: 11px; border: 1px solid var(--line);
+    background: rgba(143,227,236,0.07); color: var(--ink); font: inherit; font-size: 12px;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .preset:hover { background: rgba(143,227,236,0.18); }
+  .preset:last-child { grid-column: span 2; }
+  .toggle { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; cursor: pointer; }
+  .toggle input { accent-color: #8fe3ec; width: 16px; height: 16px; margin: 0; }
+  footer {
+    margin-top: 18px; display: flex; justify-content: space-between; align-items: center;
+    font-size: 11px; color: var(--muted);
+  }
+  kbd { font: inherit; padding: 1px 5px; border: 1px solid var(--line); border-radius: 5px; }
+  #hide {
+    background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-size: 11px;
+    cursor: pointer; text-decoration: underline;
+  }
+  #show {
+    position: fixed; top: 24px; left: 24px; padding: 8px 14px; border-radius: 999px;
+    border: 1px solid var(--line); background: rgba(8, 24, 37, 0.5);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    color: var(--ink); font: inherit; font-size: 12px; cursor: pointer;
+  }
+  #hud {
+    position: fixed; left: 26px; bottom: 22px; pointer-events: none;
+    text-shadow: 0 1px 12px rgba(0,0,0,0.35);
+  }
+  #hud .bf { font-size: 15px; font-weight: 600; }
+  #hud .st { margin-top: 3px; font-size: 12px; color: rgba(234,248,251,0.82); font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="ocean" aria-label="Animated ocean surface"></canvas>
+<div class="vignette"></div>
+<div id="nogl" hidden></div>
+
+<aside id="panel" aria-label="Simulation controls">
+  <header>
+    <h1>Ocean Wave Simulation</h1>
+    <p>Gerstner sea with analytic normals and live sky lighting</p>
+  </header>
+  <div id="controls"></div>
+  <section class="group">
+    <h2>Presets</h2>
+    <div class="presets" id="presets"></div>
+  </section>
+  <section class="group">
+    <h2>Playback</h2>
+    <label class="toggle"><span>Drift camera forward</span><input type="checkbox" id="drift" checked></label>
+    <label class="toggle"><span>Pause motion</span><input type="checkbox" id="pause"></label>
+  </section>
+  <footer>
+    <span><kbd>Space</kbd> pause &nbsp;·&nbsp; <kbd>H</kbd> hide</span>
+    <button id="hide" type="button">Hide panel</button>
+  </footer>
+</aside>
+<button id="show" type="button" hidden>Controls</button>
+
+<div id="hud">
+  <div class="bf" id="bf"></div>
+  <div class="st" id="st"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- constants ----------
+  const NW = 14;            // Gerstner wave components
+  const GRID = 512;         // vertices per side of the water patch
+  const SIZE = 220;         // patch size in metres
+  const CELL = SIZE / GRID; // vertex spacing; origin is snapped to this so waves stay put in world space
+  const GRAVITY = 9.81;
+  const FOV_Y = 55 * Math.PI / 180;
+  const CAM_HEIGHT = 4.2;
+
+  const canvas = document.getElementById('ocean');
+  const errBox = document.getElementById('nogl');
+
+  const gl = canvas.getContext('webgl2', {
+    antialias: true, alpha: false, depth: true, powerPreference: 'high-performance'
+  });
+  if (!gl) {
+    errBox.textContent = 'This simulation needs WebGL 2, which this browser does not provide.';
+    errBox.hidden = false;
+    return;
+  }
+
+  // ---------- shaders ----------
+  // Shared prelude: wave uniforms, noise, filmic tone map and a procedural sky.
+  const COMMON = `
+#define NW 14
+uniform float uTime;
+uniform vec3 uCamPos;
+uniform vec2 uWaveDir[NW];
+uniform float uWaveK[NW];
+uniform float uWaveA[NW];
+uniform float uWaveQ[NW];
+uniform float uWaveW[NW];
+uniform float uWavePhi[NW];
+uniform vec3 uSunDir, uSunColor, uMoonDir;
+uniform float uSunVis, uMoonVis, uNight, uCloud;
+uniform vec3 uZenith, uHorizon, uCloudCol;
+uniform vec3 uDeep, uShallow, uLightDir, uLightColor, uAmbient;
+uniform float uWind, uHeight, uExposure;
+uniform vec2 uWindVec;
+
+float hash21(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i);
+  float b = hash21(i + vec2(1.0, 0.0));
+  float c = hash21(i + vec2(0.0, 1.0));
+  float d = hash21(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 p) {
+  float s = 0.0;
+  float a = 0.5;
+  for (int i = 0; i < 4; i++) {
+    s += a * vnoise(p);
+    p = mat2(1.6, 1.2, -1.2, 1.6) * p;
+    a *= 0.5;
+  }
+  return s;
+}
+
+vec3 finish(vec3 c) {
+  c = max(c, vec3(0.0));
+  c = clamp((c * (2.51 * c + 0.03)) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+  return pow(c, vec3(1.0 / 2.2));
+}
+
+vec3 skyColor(vec3 d) {
+  float h = clamp(d.y, 0.0, 1.0);
+  vec3 col = mix(uHorizon, uZenith, pow(h, 0.55));
+
+  float sd = max(dot(d, uSunDir), 0.0);
+  col += uSunColor * uSunVis * (0.25 * pow(sd, 8.0) + 0.5 * pow(sd, 120.0));
+  col += uSunColor * uSunVis * 30.0 * smoothstep(0.99955, 0.9998, sd);
+
+  float md = max(dot(d, uMoonDir), 0.0);
+  col += vec3(0.7, 0.8, 1.0) * uMoonVis * (1.2 * smoothstep(0.9990, 0.9994, md) + 0.03 * pow(md, 16.0));
+
+  if (uNight > 0.01 && d.y > 0.0) {
+    vec2 g = d.xz / (d.y + 0.03) * 110.0;
+    vec2 id = floor(g);
+    float r = hash21(id);
+    vec2 off = vec2(hash21(id + 7.31), hash21(id + 3.17)) - 0.5;
+    float dd = length(fract(g) - 0.5 - off * 0.6);
+    float star = step(0.975, r) * (1.0 - smoothstep(0.0, 0.12, dd));
+    star *= 0.6 + 0.4 * sin(uTime * (1.5 + 4.0 * r) + r * 60.0);
+    col += vec3(star) * uNight * smoothstep(0.02, 0.3, d.y) * 1.2;
+  }
+
+  if (d.y > 0.0) {
+    vec2 cp = d.xz / (d.y + 0.12) * 1.3 + vec2(uTime * 0.012, uTime * 0.004);
+    float c = fbm(cp);
+    float thr = mix(0.72, 0.44, uCloud);
+    float cl = smoothstep(thr, thr + 0.2, c) * smoothstep(0.0, 0.25, d.y);
+    vec3 lit = uCloudCol + uSunColor * uSunVis * 0.35 * pow(sd, 6.0);
+    col = mix(col, lit, cl * 0.92);
+  }
+  return col;
+}
+`;
+
+  const HEAD = '#version 300 es\nprecision highp float;\n';
+
+  const OCEAN_VS = `
+in vec2 aGrid;
+uniform vec2 uOrigin;
+uniform float uSize;
+uniform mat4 uViewProj;
+out vec2 vWorld;
+out vec3 vPos;
+
+void main() {
+  vec2 p0 = uOrigin + (aGrid - 0.5) * uSize;
+  vec3 d = vec3(0.0);
+  for (int i = 0; i < NW; i++) {
+    float th = uWaveK[i] * dot(uWaveDir[i], p0) - uWaveW[i] * uTime + uWavePhi[i];
+    float c = cos(th);
+    float s = sin(th);
+    float A = uWaveA[i];
+    d.x += uWaveQ[i] * A * uWaveDir[i].x * c;
+    d.z += uWaveQ[i] * A * uWaveDir[i].y * c;
+    d.y += A * s;
+  }
+  vec3 P = vec3(p0.x, 0.0, p0.y) + d;
+  vWorld = p0;
+  vPos = P;
+  gl_Position = uViewProj * vec4(P, 1.0);
+}
+`;
+
+  const OCEAN_FS = `
+in vec2 vWorld;
+in vec3 vPos;
+out vec4 fragColor;
+
+// Analytic Gerstner normal and Jacobian (folding indicator used for foam).
+void gerstner(vec2 p, out vec3 N, out float J) {
+  float nx = 0.0;
+  float ny = 0.0;
+  float nz = 0.0;
+  float dxx = 0.0;
+  float dzz = 0.0;
+  float dxz = 0.0;
+  for (int i = 0; i < NW; i++) {
+    vec2 D = uWaveDir[i];
+    float k = uWaveK[i];
+    float A = uWaveA[i];
+    float Q = uWaveQ[i];
+    float th = k * dot(D, p) - uWaveW[i] * uTime + uWavePhi[i];
+    float c = cos(th);
+    float s = sin(th);
+    float kA = k * A;
+    nx -= D.x * kA * c;
+    nz -= D.y * kA * c;
+    ny -= Q * kA * s;
+    float qks = Q * kA * s;
+    dxx -= qks * D.x * D.x;
+    dzz -= qks * D.y * D.y;
+    dxz -= qks * D.x * D.y;
+  }
+  N = normalize(vec3(nx, 1.0 + ny, nz));
+  J = (1.0 + dxx) * (1.0 + dzz) - dxz * dxz;
+}
+
+// Capillary ripple height, stretched along the wind and drifting with it.
+float rippleH(vec2 p) {
+  vec2 across = vec2(-uWindVec.y, uWindVec.x);
+  vec2 q = vec2(dot(p, uWindVec), dot(p, across));
+  return fbm(vec2(q.x * 0.22 - uTime * 0.6, q.y * 1.3));
+}
+
+void main() {
+  vec2 p = vWorld;
+  vec3 Ng;
+  float J;
+  gerstner(p, Ng, J);
+
+  float dist = length(vPos - uCamPos);
+
+  // Perturb the normal with wind-driven ripples (fades with distance to avoid shimmer).
+  float e = 0.05;
+  float h0 = rippleH(p);
+  float gx = (rippleH(p + vec2(e, 0.0)) - h0) / e;
+  float gz = (rippleH(p + vec2(0.0, e)) - h0) / e;
+  float rip = (0.015 + 0.16 * uWind) * (1.0 - smoothstep(15.0, 70.0, dist));
+  vec3 N = normalize(vec3(Ng.x - gx * rip, Ng.y, Ng.z - gz * rip));
+
+  vec3 V = normalize(uCamPos - vPos);
+  vec3 L = uLightDir;
+  float NdV = clamp(dot(N, V), 0.0, 1.0);
+  float fres = 0.02 + 0.98 * pow(1.0 - NdV, 5.0);
+
+  vec3 R = reflect(-V, N);
+  vec3 reflCol = skyColor(normalize(vec3(R.x, max(R.y, 0.02), R.z)));
+
+  // Body colour: deep water, brightening towards crests, plus backlit translucency.
+  float crest = clamp(vPos.y / (uHeight * 0.5 + 0.2) * 0.5 + 0.5, 0.0, 1.0);
+  vec3 body = mix(uDeep, uShallow, crest * 0.8);
+  float NdL = max(dot(N, L), 0.0);
+  body *= uAmbient + uLightColor * NdL;
+  float back = pow(clamp(dot(V, normalize(-L + N * 0.6)), 0.0, 1.0), 4.0);
+  body += uShallow * uLightColor * back * crest * 0.7;
+
+  vec3 H = normalize(L + V + vec3(0.0001, 0.0, 0.0));
+  float nh = max(dot(N, H), 0.0);
+  float spec = pow(nh, 700.0) * 5.0 + pow(nh, 90.0) * 0.06;
+
+  vec3 col = mix(body, reflCol, fres) + uLightColor * spec;
+
+  // Foam: where the surface folds (J < 1) and wind-driven whitecaps.
+  float thr = mix(0.80, 0.52, uWind);
+  float foamJ = 1.0 - smoothstep(thr - 0.35, thr, J);
+  float brk = fbm(p * 0.16 + uWindVec * uTime * 0.04);
+  foamJ *= smoothstep(0.28, 0.62, brk);
+
+  vec2 across = vec2(-uWindVec.y, uWindVec.x);
+  vec2 q = vec2(dot(p, uWindVec), dot(p, across));
+  float streak = fbm(vec2(q.x * 0.06 - uTime * 0.3, q.y * 0.7));
+  float capMask = smoothstep(0.15, 0.5, uWind) * smoothstep(-0.2, 0.6, vPos.y / (uHeight + 0.2));
+  float cap = smoothstep(0.56 - 0.08 * uWind, 0.82, streak) * capMask;
+  float foam = clamp(foamJ + cap * 0.9, 0.0, 1.0) * (1.0 - 0.5 * smoothstep(35.0, 90.0, dist));
+  vec3 foamCol = vec3(0.92, 0.95, 0.97) * (uAmbient * 1.4 + uLightColor * NdL * 0.45 + 0.08);
+  col = mix(col, foamCol, foam * 0.9);
+
+  // Atmospheric haze towards the horizon.
+  float fog = smoothstep(40.0, 95.0, dist);
+  col = mix(col, uHorizon, fog);
+
+  fragColor = vec4(finish(col * uExposure), 1.0);
+}
+`;
+
+  const SKY_VS = `
+const vec2 CORNERS[3] = vec2[3](vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+out vec2 vNdc;
+void main() {
+  vNdc = CORNERS[gl_VertexID];
+  gl_Position = vec4(vNdc, 0.0, 1.0);
+}
+`;
+
+  const SKY_FS = `
+in vec2 vNdc;
+out vec4 fragColor;
+uniform vec3 uFwd, uRight, uUp;
+uniform float uTanHalf, uAspect;
+void main() {
+  vec3 d = normalize(uFwd + vNdc.x * uAspect * uTanHalf * uRight + vNdc.y * uTanHalf * uUp);
+  fragColor = vec4(finish(skyColor(d) * uExposure), 1.0);
+}
+`;
+
+  function compile(type, src) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+      throw new Error(gl.getShaderInfoLog(sh));
+    }
+    return sh;
+  }
+
+  // Links a program and collects the location of every uniform it declares.
+  function link(vsBody, fsBody) {
+    const vsSrc = HEAD + COMMON + vsBody;
+    const fsSrc = HEAD + COMMON + fsBody;
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl.VERTEX_SHADER, vsSrc));
+    gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, fsSrc));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(prog));
+    }
+    const loc = {};
+    const re = /uniform\s+\w+\s+([^;]+);/g;
+    const all = vsSrc + fsSrc;
+    let m;
+    while ((m = re.exec(all))) {
+      for (const part of m[1].split(',')) {
+        const name = part.trim().replace(/\[.*\]$/, '');
+        if (name) loc[name] = gl.getUniformLocation(prog, name);
+      }
+    }
+    return { prog, loc };
+  }
+
+  // ---------- math helpers ----------
+  const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm3 = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  function lookAt(e, c, u) {
+    const z = norm3(sub3(e, c));
+    const x = norm3(cross(u, z));
+    const y = cross(z, x);
+    return new Float32Array([
+      x[0], y[0], z[0], 0,
+      x[1], y[1], z[1], 0,
+      x[2], y[2], z[2], 0,
+      -dot3(x, e), -dot3(y, e), -dot3(z, e), 1
+    ]);
+  }
+
+  function perspective(fovy, aspect, n, f) {
+    const t = 1 / Math.tan(fovy / 2);
+    return new Float32Array([
+      t / aspect, 0, 0, 0,
+      0, t, 0, 0,
+      0, 0, (f + n) / (n - f), -1,
+      0, 0, (2 * f * n) / (n - f), 0
+    ]);
+  }
+
+  function mul4(a, b) {
+    const o = new Float32Array(16);
+    for (let c = 0; c < 4; c++) {
+      for (let r = 0; r < 4; r++) {
+        let s = 0;
+        for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k];
+        o[c * 4 + r] = s;
+      }
+    }
+    return o;
+  }
+
+  function mulberry32(seed) {
+    let a = seed;
+    return function () {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ---------- controls ----------
+  const CONTROLS = {
+    wind:   { label: 'Wind speed',      min: 0,  max: 30, step: 0.1,  value: 9,    fmt: v => v.toFixed(1) + ' m/s' },
+    height: { label: 'Wave height',     min: 0,  max: 4,  step: 0.05, value: 1.5,  fmt: v => v.toFixed(2) + ' m' },
+    dir:    { label: 'Wind direction',  min: 0,  max: 360, step: 1,   value: 110,  fmt: v => Math.round(v) + '°' },
+    time:   { label: 'Time of day',     min: 0,  max: 24, step: 0.05, value: 15,   fmt: v => fmtTime(v) },
+    light:  { label: 'Light intensity', min: 0,  max: 2,  step: 0.01, value: 1,    fmt: v => Math.round(v * 100) + '%' },
+    clouds: { label: 'Cloud cover',     min: 0,  max: 1,  step: 0.01, value: 0.45, fmt: v => Math.round(v * 100) + '%' }
+  };
+  const GROUPS = [
+    { title: 'Wind & waves',   keys: ['wind', 'height', 'dir'] },
+    { title: 'Lighting & sky', keys: ['time', 'light', 'clouds'] }
+  ];
+  const PRESETS = {
+    'Calm morning':     { wind: 3.5, height: 0.5, dir: 95,  time: 7.2,  light: 1.0,  clouds: 0.35 },
+    'Breezy afternoon': { wind: 9,   height: 1.5, dir: 115, time: 15,   light: 1.0,  clouds: 0.45 },
+    'Golden hour':      { wind: 7,   height: 1.1, dir: 150, time: 17.5, light: 1.05, clouds: 0.55 },
+    'Storm':            { wind: 24,  height: 3.4, dir: 70,  time: 12.5, light: 0.7,  clouds: 0.95 },
+    'Moonlit night':    { wind: 4.5, height: 0.7, dir: 130, time: 22.8, light: 1.2,  clouds: 0.2 }
+  };
+  const BEAUFORT = [
+    [0.3, 'Calm'], [1.6, 'Light air'], [3.4, 'Light breeze'], [5.5, 'Gentle breeze'],
+    [8.0, 'Moderate breeze'], [10.8, 'Fresh breeze'], [13.9, 'Strong breeze'], [17.2, 'Near gale'],
+    [20.8, 'Gale'], [24.5, 'Strong gale'], [28.5, 'Storm'], [32.7, 'Violent storm']
+  ];
+
+  function fmtTime(h) {
+    const hh = Math.floor(h) % 24;
+    const mm = Math.floor((h - Math.floor(h)) * 60);
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+
+  function beaufort(ms) {
+    for (let i = 0; i < BEAUFORT.length; i++) {
+      if (ms < BEAUFORT[i][0]) return { n: i, name: BEAUFORT[i][1] };
+    }
+    return { n: 12, name: 'Hurricane' };
+  }
+
+  const target = {};
+  const cur = {};
+  for (const key in CONTROLS) target[key] = cur[key] = CONTROLS[key].value;
+
+  // ---------- palette & environment ----------
+  // Each entry: [day, dusk, night] colours, blended by time-of-day weights.
+  const PAL = {
+    zenith:  [[0.13, 0.34, 0.70], [0.26, 0.22, 0.42], [0.006, 0.012, 0.035]],
+    horizon: [[0.66, 0.80, 0.90], [0.98, 0.60, 0.42], [0.05, 0.06, 0.10]],
+    deep:    [[0.012, 0.13, 0.20], [0.045, 0.08, 0.13], [0.002, 0.01, 0.025]],
+    shallow: [[0.03, 0.36, 0.38], [0.20, 0.26, 0.24], [0.01, 0.04, 0.06]],
+    cloud:   [[1.00, 0.98, 0.95], [1.00, 0.70, 0.55], [0.10, 0.12, 0.20]],
+    sun:     [[1.00, 0.95, 0.86], [1.00, 0.52, 0.24], [0.45, 0.55, 0.80]]
+  };
+
+  function blend(key, wd, wk, wn) {
+    const [d, k, n] = PAL[key];
+    const s = wd + wk + wn;
+    return [0, 1, 2].map(i => (d[i] * wd + k[i] * wk + n[i] * wn) / s);
+  }
+
+  function environment(tod, light, clouds) {
+    const a = (tod - 6) / 12 * Math.PI;
+    const sun = norm3([-Math.cos(a), Math.sin(a), -1.1]);
+    const moon = norm3([-sun[0] * 0.7, Math.max(-sun[1], 0.45), -0.9]);
+    const elev = sun[1];
+
+    const dayW = smooth(-0.02, 0.22, elev);
+    const nightW = 1 - smooth(-0.2, 0.0, elev);
+    const duskW = Math.exp(-(elev * elev) / 0.012);
+
+    const sunC = blend('sun', dayW, duskW, 0);
+    const sunStrength = 2.6 * dayW + 1.2 * duskW;
+    const moonC = PAL.sun[2];
+    const moonStrength = 0.35 * nightW;
+    const lightColor = [0, 1, 2].map(i => sunC[i] * sunStrength + moonC[i] * moonStrength);
+
+    const lt = smooth(-0.06, 0.06, elev);
+    const lightDir = norm3([0, 1, 2].map(i => moon[i] + (sun[i] - moon[i]) * lt));
+
+    const horizon = blend('horizon', dayW, duskW, nightW);
+    const zenith = blend('zenith', dayW, duskW, nightW);
+    const amb = 0.12 + 0.28 * dayW + 0.10 * duskW + 0.25 * nightW;
+    const ambient = [0, 1, 2].map(i => (horizon[i] * 0.5 + zenith[i] * 0.5) * amb);
+
+    const cloudC = blend('cloud', dayW, duskW, nightW).map(c => c * (1 - 0.45 * clouds));
+
+    return {
+      sun, moon, sunC, sunVis: smooth(-0.03, 0.03, elev), nightW,
+      lightDir, lightColor, ambient, horizon, zenith,
+      deep: blend('deep', dayW, duskW, nightW),
+      shallow: blend('shallow', dayW, duskW, nightW),
+      cloudC,
+      exposure: 0.9 * light
+    };
+  }
+
+  // ---------- Gerstner wave components ----------
+  const rng = mulberry32(7351);
+  const WAVES = [];
+  let baseSum = 0;
+  for (let i = 0; i < NW; i++) {
+    const f = i / (NW - 1);                                   // 0 = shortest wave, 1 = longest
+    const lambda = 3.2 * Math.pow(72 / 3.2, f) * (0.94 + 0.12 * rng());
+    const base = Math.pow(lambda, 0.9);
+    WAVES.push({ lambda, k: 2 * Math.PI / lambda, phi: rng() * 2 * Math.PI, spread: rng() * 2 - 1, short: 1 - f, base });
+    baseSum += base;
+  }
+
+  const wave = {
+    dirs: new Float32Array(NW * 2),
+    k: new Float32Array(NW),
+    A: new Float32Array(NW),
+    Q: new Float32Array(NW),
+    W: new Float32Array(NW),
+    phi: new Float32Array(WAVES.map(w => w.phi))
+  };
+
+  // Maps wind and height onto wave amplitudes, steepness, direction spread and speed.
+  // Returns the dominant wave period in seconds.
+  function computeWaves(wn, H, dirRad) {
+    const speedMul = 1 + 0.35 * wn;
+    const Qs = (0.3 + 0.55 * wn) * Math.min(1, H / 0.8);  // total steepness budget (sum of Q*k*A <= Qs < 1)
+    const sea = H * 0.55;
+    let domA = -1;
+    let domT = 0;
+    for (let i = 0; i < NW; i++) {
+      const w = WAVES[i];
+      const boost = 1 + 0.9 * wn * w.short;                  // strong wind feeds short waves
+      const A = Math.max(1e-4, sea * (w.base / baseSum) * boost);
+      const ang = dirRad + w.spread * (0.12 + 0.9 * wn * (0.4 + 0.6 * w.short));
+      wave.dirs[2 * i] = Math.cos(ang);
+      wave.dirs[2 * i + 1] = Math.sin(ang);
+      wave.k[i] = w.k;
+      wave.A[i] = A;
+      wave.Q[i] = Qs / (NW * w.k * A);
+      wave.W[i] = Math.sqrt(GRAVITY * w.k) * speedMul;      // deep-water dispersion
+      if (A > domA) { domA = A; domT = 2 * Math.PI / wave.W[i]; }
+    }
+    return domT;
+  }
+
+  // ---------- GPU resources ----------
+  const oceanP = link(OCEAN_VS, OCEAN_FS);
+  const skyP = link(SKY_VS, SKY_FS);
+
+  const grid = new Float32Array((GRID + 1) * (GRID + 1) * 2);
+  let o = 0;
+  for (let j = 0; j <= GRID; j++) {
+    for (let i = 0; i <= GRID; i++) {
+      grid[o++] = i / GRID;
+      grid[o++] = j / GRID;
+    }
+  }
+  const indices = new Uint32Array(GRID * GRID * 6);
+  o = 0;
+  const row = GRID + 1;
+  for (let j = 0; j < GRID; j++) {
+    for (let i = 0; i < GRID; i++) {
+      const a = j * row + i, b = a + 1, c = a + row, d = c + 1;
+      indices[o++] = a; indices[o++] = c; indices[o++] = b;
+      indices[o++] = b; indices[o++] = c; indices[o++] = d;
+    }
+  }
+
+  const oceanVAO = gl.createVertexArray();
+  gl.bindVertexArray(oceanVAO);
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, grid, gl.STATIC_DRAW);
+  const aLoc = gl.getAttribLocation(oceanP.prog, 'aGrid');
+  gl.enableVertexAttribArray(aLoc);
+  gl.vertexAttribPointer(aLoc, 2, gl.FLOAT, false, 0, 0);
+  const ebo = gl.createBuffer();
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ebo);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+  gl.bindVertexArray(null);
+  const idxCount = indices.length;
+
+  const emptyVAO = gl.createVertexArray();
+
+  gl.disable(gl.CULL_FACE);
+
+  // ---------- UI ----------
+  const controlsEl = document.getElementById('controls');
+  const presetsEl = document.getElementById('presets');
+  const panel = document.getElementById('panel');
+  const showBtn = document.getElementById('show');
+  const hideBtn = document.getElementById('hide');
+  const driftCb = document.getElementById('drift');
+  const pauseCb = document.getElementById('pause');
+  const bfEl = document.getElementById('bf');
+  const stEl = document.getElementById('st');
+
+  const sliders = {};
+  const readouts = {};
+  const dragging = {};
+
+  function fillSlider(input) {
+    const pct = (Number(input.value) - Number(input.min)) / (Number(input.max) - Number(input.min)) * 100;
+    input.style.setProperty('--p', pct + '%');
+  }
+
+  for (const group of GROUPS) {
+    const sec = document.createElement('section');
+    sec.className = 'group';
+    const h = document.createElement('h2');
+    h.textContent = group.title;
+    sec.appendChild(h);
+    for (const key of group.keys) {
+      const def = CONTROLS[key];
+      const rowEl = document.createElement('div');
+      rowEl.className = 'row';
+      const top = document.createElement('div');
+      top.className = 'top';
+      const name = document.createElement('label');
+      name.textContent = def.label;
+      name.htmlFor = 's-' + key;
+      const val = document.createElement('span');
+      top.append(name, val);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.id = 's-' + key;
+      input.min = def.min;
+      input.max = def.max;
+      input.step = def.step;
+      input.value = def.value;
+      input.addEventListener('pointerdown', () => { dragging[key] = true; });
+      input.addEventListener('input', () => {
+        target[key] = cur[key] = parseFloat(input.value);
+        fillSlider(input);
+      });
+      rowEl.append(top, input);
+      sec.append(rowEl);
+      sliders[key] = input;
+      readouts[key] = val;
+      fillSlider(input);
+    }
+    controlsEl.append(sec);
+  }
+  window.addEventListener('pointerup', () => { for (const k in dragging) dragging[k] = false; });
+
+  for (const [name, p] of Object.entries(PRESETS)) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'preset';
+    b.textContent = name;
+    b.addEventListener('click', () => { Object.assign(target, p); b.blur(); });
+    presetsEl.append(b);
+  }
+
+  function setPanel(open) {
+    panel.classList.toggle('collapsed', !open);
+    showBtn.hidden = open;
+  }
+  hideBtn.addEventListener('click', () => setPanel(false));
+  showBtn.addEventListener('click', () => setPanel(true));
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyH') {
+      setPanel(panel.classList.contains('collapsed'));
+    } else if (e.code === 'Space') {
+      e.preventDefault();
+      pauseCb.checked = !pauseCb.checked;
+      if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    }
+  });
+
+  // ---------- uniforms ----------
+  function setCommon(L, s) {
+    gl.uniform1f(L.uTime, s.time);
+    gl.uniform3fv(L.uCamPos, s.cam);
+    gl.uniform2fv(L.uWaveDir, wave.dirs);
+    gl.uniform1fv(L.uWaveK, wave.k);
+    gl.uniform1fv(L.uWaveA, wave.A);
+    gl.uniform1fv(L.uWaveQ, wave.Q);
+    gl.uniform1fv(L.uWaveW, wave.W);
+    gl.uniform1fv(L.uWavePhi, wave.phi);
+    gl.uniform3fv(L.uSunDir, s.env.sun);
+    gl.uniform3fv(L.uSunColor, s.env.sunC);
+    gl.uniform1f(L.uSunVis, s.env.sunVis);
+    gl.uniform3fv(L.uMoonDir, s.env.moon);
+    gl.uniform1f(L.uMoonVis, s.env.nightW);
+    gl.uniform1f(L.uNight, s.env.nightW);
+    gl.uniform1f(L.uCloud, s.clouds);
+    gl.uniform3fv(L.uZenith, s.env.zenith);
+    gl.uniform3fv(L.uHorizon, s.env.horizon);
+    gl.uniform3fv(L.uCloudCol, s.env.cloudC);
+    gl.uniform3fv(L.uDeep, s.env.deep);
+    gl.uniform3fv(L.uShallow, s.env.shallow);
+    gl.uniform3fv(L.uLightDir, s.env.lightDir);
+    gl.uniform3fv(L.uLightColor, s.env.lightColor);
+    gl.uniform3fv(L.uAmbient, s.env.ambient);
+    gl.uniform1f(L.uWind, s.wn);
+    gl.uniform2fv(L.uWindVec, s.windVec);
+    gl.uniform1f(L.uHeight, s.height);
+    gl.uniform1f(L.uExposure, s.env.exposure);
+  }
+
+  // ---------- main loop ----------
+  let last = performance.now();
+  let simT = 0;
+  let camZ = 0;
+  const EASE_RATE = 4;
+
+  function frame(now) {
+    requestAnimationFrame(frame);
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    const k = 1 - Math.exp(-dt * EASE_RATE);
+
+    // Ease displayed values toward their targets; sliders show the eased value unless the user is dragging.
+    for (const key in CONTROLS) {
+      cur[key] += (target[key] - cur[key]) * k;
+      if (!dragging[key]) {
+        sliders[key].value = cur[key];
+        fillSlider(sliders[key]);
+      }
+      const txt = CONTROLS[key].fmt(cur[key]);
+      if (readouts[key].textContent !== txt) readouts[key].textContent = txt;
+    }
+
+    const paused = pauseCb.checked;
+    const drift = driftCb.checked;
+    const wn = Math.min(1, Math.max(0, cur.wind / 30));
+    const dirRad = cur.dir * Math.PI / 180;
+    const domPeriod = computeWaves(wn, cur.height, dirRad);
+    const env = environment(cur.time, cur.light, cur.clouds);
+
+    if (!paused) {
+      simT += dt;
+      if (drift) camZ -= dt * (1.0 + 1.2 * wn);
+    }
+
+    // Camera: gentle sway and bob, looking slightly downward so the horizon sits near 40% from the top.
+    const eye = [2.5 * Math.sin(simT * 0.04), CAM_HEIGHT + 0.12 * Math.sin(simT * 0.7), camZ];
+    const yaw = 0.05 * Math.sin(simT * 0.05);
+    const fwd = norm3([Math.sin(yaw), -0.1, -1]);
+    const right = norm3(cross(fwd, [0, 1, 0]));
+    const up = cross(right, fwd);
+    const center = [eye[0] + fwd[0] * 10, eye[1] + fwd[1] * 10, eye[2] + fwd[2] * 10];
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+    const w = Math.max(1, Math.round(canvas.clientWidth * dpr));
+    const h = Math.max(1, Math.round(canvas.clientHeight * dpr));
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    const aspect = w / h;
+    const view = lookAt(eye, center, [0, 1, 0]);
+    const proj = perspective(FOV_Y, aspect, 0.1, 400);
+    const viewProj = mul4(proj, view);
+
+    // Snap the water patch to the vertex grid so the wave field never swims with the camera.
+    const originX = Math.round(eye[0] / CELL) * CELL;
+    const originZ = Math.round(camZ / CELL) * CELL;
+
+    const state = {
+      time: simT,
+      cam: eye,
+      env,
+      clouds: cur.clouds,
+      wn,
+      windVec: [Math.cos(dirRad), Math.sin(dirRad)],
+      height: cur.height
+    };
+
+    gl.viewport(0, 0, w, h);
+    gl.clearDepth(1.0);
+    gl.clear(gl.DEPTH_BUFFER_BIT);
+
+    // Sky pass (full-screen, no depth).
+    gl.disable(gl.DEPTH_TEST);
+    gl.depthMask(false);
+    gl.useProgram(skyP.prog);
+    setCommon(skyP.loc, state);
+    gl.uniform3fv(skyP.loc.uFwd, fwd);
+    gl.uniform3fv(skyP.loc.uRight, right);
+    gl.uniform3fv(skyP.loc.uUp, up);
+    gl.uniform1f(skyP.loc.uTanHalf, Math.tan(FOV_Y / 2));
+    gl.uniform1f(skyP.loc.uAspect, aspect);
+    gl.bindVertexArray(emptyVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // Ocean pass.
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthMask(true);
+    gl.useProgram(oceanP.prog);
+    setCommon(oceanP.loc, state);
+    gl.uniformMatrix4fv(oceanP.loc.uViewProj, false, viewProj);
+    gl.uniform2f(oceanP.loc.uOrigin, originX, originZ);
+    gl.uniform1f(oceanP.loc.uSize, SIZE);
+    gl.bindVertexArray(oceanVAO);
+    gl.drawElements(gl.TRIANGLES, idxCount, gl.UNSIGNED_INT, 0);
+    gl.bindVertexArray(null);
+
+    // HUD.
+    const bf = beaufort(cur.wind);
+    const bfText = 'Beaufort ' + bf.n + ' · ' + bf.name;
+    const stText = 'Wind ' + cur.wind.toFixed(1) + ' m/s · Waves ' + cur.height.toFixed(2) +
+      ' m · Period ' + domPeriod.toFixed(1) + ' s';
+    if (bfEl.textContent !== bfText) bfEl.textContent = bfText;
+    if (stEl.textContent !== stText) stEl.textContent = stText;
+  }
+
+  setPanel(true);
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

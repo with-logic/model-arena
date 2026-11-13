@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Custom QR Code Generator</title>
+<style>
+  :root{
+    --bg:#f4f5f9; --panel:#ffffff; --ink:#14161f; --muted:#6b7084; --line:#e4e6ef;
+    --accent:#5b4bff; --accent2:#8a5bff; --accent-soft:#eeebff; --radius:18px;
+    --shadow:0 1px 2px rgba(20,22,40,.05),0 12px 40px -12px rgba(40,40,100,.18);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d0e14; --panel:#161823; --ink:#eef0f7; --muted:#8d92a8; --line:#262939;
+      --accent:#7c6dff; --accent2:#a88bff; --accent-soft:#25214a;
+      --shadow:0 1px 2px rgba(0,0,0,.4),0 20px 50px -20px rgba(0,0,0,.7);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); min-height:100vh;
+    background-image:radial-gradient(900px 500px at 15% -10%,rgba(124,109,255,.16),transparent 60%),
+                     radial-gradient(700px 450px at 100% 110%,rgba(255,120,150,.10),transparent 60%);
+    background-attachment:fixed;
+    -webkit-font-smoothing:antialiased;
+  }
+  header{max-width:1200px;margin:0 auto;padding:28px 28px 0;display:flex;align-items:center;gap:12px}
+  .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:grid;place-items:center;box-shadow:0 6px 16px -4px var(--accent)}
+  .logo svg{width:20px;height:20px}
+  h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}
+  header span.sub{color:var(--muted);font-size:13px;margin-left:auto}
+  main{max-width:1200px;margin:0 auto;padding:22px 28px 48px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(340px,.9fr);gap:24px;align-items:start}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+
+  /* preview */
+  .preview{padding:28px;display:flex;flex-direction:column;align-items:center;gap:20px;position:sticky;top:20px}
+  .stage{
+    width:100%;max-width:560px;aspect-ratio:1;border-radius:14px;position:relative;overflow:hidden;
+    background-color:#fff;
+    background-image:linear-gradient(45deg,#e9eaf0 25%,transparent 25%,transparent 75%,#e9eaf0 75%),
+                     linear-gradient(45deg,#e9eaf0 25%,transparent 25%,transparent 75%,#e9eaf0 75%);
+    background-size:20px 20px;background-position:0 0,10px 10px;
+    box-shadow:0 0 0 1px var(--line),0 24px 50px -24px rgba(30,30,80,.45);
+  }
+  .stage canvas{width:100%;height:100%;display:block;transition:opacity .15s}
+  .stage.empty canvas,.stage.error canvas{opacity:.07}
+  .overlay{position:absolute;inset:0;display:none;place-items:center;text-align:center;padding:30px;color:#333;font-size:15px;line-height:1.5}
+  .stage.empty .overlay,.stage.error .overlay{display:grid}
+  .stage.error .overlay{color:#b42318}
+  .meta{font-size:12.5px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap;justify-content:center;min-height:20px}
+  .meta b{color:var(--ink);font-weight:600}
+  .meta i{opacity:.4;font-style:normal}
+  .actions{display:flex;gap:10px;width:100%;max-width:560px}
+  button{font:inherit;cursor:pointer}
+  .btn{flex:1;border:0;border-radius:12px;padding:14px 18px;font-weight:600;font-size:15px;display:flex;align-items:center;justify-content:center;gap:8px;transition:transform .1s,box-shadow .2s,opacity .2s}
+  .btn.primary{color:#fff;background:linear-gradient(135deg,var(--accent),var(--accent2));box-shadow:0 10px 24px -8px var(--accent)}
+  .btn.primary:hover{transform:translateY(-1px)}
+  .btn.primary:active{transform:none}
+  .btn.ghost{flex:0 0 auto;background:var(--accent-soft);color:var(--accent)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+  .btn svg{width:18px;height:18px}
+
+  /* controls */
+  .controls{padding:8px 24px 24px}
+  section{padding:18px 0;border-bottom:1px solid var(--line)}
+  section:last-child{border-bottom:0;padding-bottom:0}
+  label.h,.h{display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:650;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px}
+  .h small{text-transform:none;letter-spacing:0;font-weight:500;font-size:12px}
+  textarea{
+    width:100%;min-height:92px;resize:vertical;font:inherit;font-size:15px;line-height:1.5;color:var(--ink);
+    background:var(--bg);border:1.5px solid transparent;border-radius:12px;padding:12px 14px;outline:none;transition:border .15s,background .15s
+  }
+  textarea:focus,.hex:focus{border-color:var(--accent);background:var(--panel)}
+  .row{display:flex;gap:12px}
+  .row>*{flex:1;min-width:0}
+  .colorfield{display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:12px;padding:6px 6px 6px 6px;border:1.5px solid transparent}
+  .colorfield .lab{font-size:11.5px;color:var(--muted);position:absolute}
+  .swatch{width:36px;height:36px;border-radius:9px;border:0;padding:0;position:relative;overflow:hidden;flex:none;box-shadow:inset 0 0 0 1px rgba(128,128,128,.35)}
+  .swatch input{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);border:0;padding:0;cursor:pointer;opacity:0}
+  .swatch span{position:absolute;inset:0}
+  .cf-text{display:flex;flex-direction:column;min-width:0;flex:1}
+  .cf-text em{font-style:normal;font-size:11px;color:var(--muted);line-height:1.2}
+  .hex{font:inherit;font-size:14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:transparent;border:0;outline:none;color:var(--ink);width:100%;padding:0;text-transform:uppercase;border-radius:4px}
+  .presets{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+  .preset{width:34px;height:34px;border-radius:50%;border:2px solid var(--panel);box-shadow:0 0 0 1px var(--line);padding:0;position:relative;overflow:hidden;transition:transform .12s}
+  .preset:hover{transform:scale(1.12)}
+  .preset.on{box-shadow:0 0 0 2px var(--accent)}
+  .preset i{position:absolute;inset:0}
+  .preset b{position:absolute;inset:9px;border-radius:50%}
+  .toggles{display:grid;gap:10px;margin-top:14px}
+  .toggle{display:flex;align-items:center;justify-content:space-between;font-size:14px;cursor:pointer;user-select:none}
+  .toggle input{display:none}
+  .sw{width:38px;height:22px;border-radius:99px;background:var(--line);position:relative;transition:background .2s;flex:none}
+  .sw:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:transform .2s}
+  .toggle input:checked+.sw{background:var(--accent)}
+  .toggle input:checked+.sw:after{transform:translateX(16px)}
+  .seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;background:var(--bg);border-radius:12px;padding:4px;gap:2px}
+  .seg button{border:0;background:transparent;color:var(--muted);padding:9px 6px;border-radius:9px;font-size:13.5px;font-weight:550;display:flex;flex-direction:column;align-items:center;gap:5px;transition:.15s}
+  .seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.15)}
+  .seg svg{width:22px;height:22px}
+  .seg.text button{flex-direction:row;justify-content:center}
+  .slider{display:flex;align-items:center;gap:14px}
+  .slider+.slider{margin-top:14px}
+  .slider .name{font-size:14px;width:92px;flex:none}
+  .slider output{font-size:13px;color:var(--muted);width:62px;text-align:right;font-variant-numeric:tabular-nums}
+  input[type=range]{flex:1;-webkit-appearance:none;appearance:none;height:5px;border-radius:9px;background:var(--line);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--accent);border:3px solid var(--panel);box-shadow:0 0 0 1px var(--accent),0 2px 6px rgba(0,0,0,.25);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);border:3px solid var(--panel);box-shadow:0 0 0 1px var(--accent);cursor:pointer}
+  .warn{display:none;margin-top:12px;font-size:12.5px;line-height:1.45;color:#9a5b00;background:rgba(255,170,0,.14);border-radius:10px;padding:9px 12px}
+  .warn.show{display:block}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.4}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,30px);background:#14161f;color:#fff;padding:11px 18px;border-radius:12px;font-size:14px;opacity:0;pointer-events:none;transition:.25s;box-shadow:0 12px 30px rgba(0,0,0,.35);z-index:9}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  @media (max-width:900px){
+    main{grid-template-columns:1fr;padding:16px}
+    .preview{position:static;padding:18px}
+    header{padding:20px 16px 0}
+    header span.sub{display:none}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo"><svg viewBox="0 0 24 24" fill="#fff"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h3v3h-3zm5 0h3v3h-3zm-2 3h3v3h-3zm-3 2h3v3h-3z"/></svg></div>
+  <h1>Custom QR Code Generator</h1>
+  <span class="sub">Runs entirely in your browser</span>
+</header>
+
+<main>
+  <div class="card preview">
+    <div class="stage empty" id="stage">
+      <canvas id="canvas" width="1000" height="1000" aria-label="QR code preview"></canvas>
+      <div class="overlay" id="overlay">Type something to generate a QR code</div>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="actions">
+      <button class="btn primary" id="download" disabled>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11m0 0l-4.5-4.5M12 15l4.5-4.5M5 20h14"/></svg>
+        Download PNG
+      </button>
+      <button class="btn ghost" id="copy" disabled title="Copy image to clipboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h9"/></svg>
+        Copy
+      </button>
+    </div>
+  </div>
+
+  <div class="card controls">
+    <section>
+      <label class="h" for="text">Content <small id="count"></small></label>
+      <textarea id="text" placeholder="Paste a URL or type any text…" spellcheck="false">https://example.com</textarea>
+    </section>
+
+    <section>
+      <div class="h">Colors</div>
+      <div class="row">
+        <div class="colorfield">
+          <span class="swatch"><span id="fgSw"></span><input type="color" id="fgPick" aria-label="Foreground color"></span>
+          <span class="cf-text"><em>Foreground</em><input class="hex" id="fgHex" maxlength="7" spellcheck="false"></span>
+        </div>
+        <div class="colorfield" id="bgField">
+          <span class="swatch"><span id="bgSw"></span><input type="color" id="bgPick" aria-label="Background color"></span>
+          <span class="cf-text"><em>Background</em><input class="hex" id="bgHex" maxlength="7" spellcheck="false"></span>
+        </div>
+      </div>
+      <div class="presets" id="presets"></div>
+      <div class="toggles">
+        <label class="toggle">Gradient foreground<input type="checkbox" id="grad"><span class="sw"></span></label>
+        <div id="gradRow" style="display:none">
+          <div class="colorfield">
+            <span class="swatch"><span id="fg2Sw"></span><input type="color" id="fg2Pick" aria-label="Gradient end color"></span>
+            <span class="cf-text"><em>Gradient end</em><input class="hex" id="fg2Hex" maxlength="7" spellcheck="false"></span>
+          </div>
+        </div>
+        <label class="toggle">Custom eye color<input type="checkbox" id="eyeCustom"><span class="sw"></span></label>
+        <div id="eyeRow" style="display:none">
+          <div class="colorfield">
+            <span class="swatch"><span id="eyeSw"></span><input type="color" id="eyePick" aria-label="Eye color"></span>
+            <span class="cf-text"><em>Corner eyes</em><input class="hex" id="eyeHex" maxlength="7" spellcheck="false"></span>
+          </div>
+        </div>
+        <label class="toggle">Transparent background<input type="checkbox" id="transp"><span class="sw"></span></label>
+      </div>
+      <div class="warn" id="warn"></div>
+    </section>
+
+    <section>
+      <div class="h">Style</div>
+      <div class="seg" id="styleSeg">
+        <button data-v="square" class="on"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8"/><rect x="13" y="3" width="8" height="8"/><rect x="3" y="13" width="8" height="8"/><rect x="13" y="13" width="8" height="8"/></svg>Square</button>
+        <button data-v="rounded"><svg viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="3"/><rect x="13" y="3" width="8" height="8" rx="3"/><rect x="3" y="13" width="8" height="8" rx="3"/><rect x="13" y="13" width="8" height="8" rx="3"/></svg>Rounded</button>
+        <button data-v="dots"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="7" cy="7" r="4"/><circle cx="17" cy="7" r="4"/><circle cx="7" cy="17" r="4"/><circle cx="17" cy="17" r="4"/></svg>Dots</button>
+      </div>
+    </section>
+
+    <section>
+      <div class="h">Error correction <small id="eccNote">Recovers ~15%</small></div>
+      <div class="seg text" id="eccSeg">
+        <button data-v="L">Low</button><button data-v="M" class="on">Medium</button><button data-v="Q">Quartile</button><button data-v="H">High</button>
+      </div>
+      <div class="hint">Higher levels survive damage but make the code denser.</div>
+    </section>
+
+    <section>
+      <div class="slider"><span class="name">Quiet zone</span><input type="range" id="margin" min="0" max="10" value="4"><output id="marginO">4 mod</output></div>
+      <div class="slider"><span class="name">Export size</span><input type="range" id="size" min="256" max="4096" step="64" value="1024"><output id="sizeO">1024 px</output></div>
+    </section>
+  </div>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ===== QR Code encoder (byte mode, versions 1-40, ECC L/M/Q/H) ===== */
+const QR = (() => {
+  const ECC_CW = [
+    [-1,7,10,15,20,26,18,20,24,30,18,20,24,26,30,22,24,28,30,28,28,28,28,30,30,26,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+    [-1,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28],
+    [-1,13,22,18,26,18,24,18,22,20,24,28,26,24,20,30,24,28,28,26,30,28,30,30,30,30,28,30,30,30,30,30,30,30,30,30,30,30,30,30,30],
+    [-1,17,28,22,16,22,28,26,26,24,28,24,28,22,24,24,30,28,28,26,28,30,24,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30,30]];
+  const ECC_BLK = [
+    [-1,1,1,1,1,1,2,2,2,2,4,4,4,4,4,6,6,6,6,7,8,8,9,9,10,12,12,12,13,14,15,16,17,18,19,19,20,21,22,24,25],
+    [-1,1,1,1,2,2,4,4,4,5,5,5,8,9,9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49],
+    [-1,1,1,2,2,4,4,6,6,8,8,8,10,12,16,12,17,16,18,21,20,23,23,25,27,29,34,34,35,38,40,43,45,48,51,53,56,59,62,65,68],
+    [-1,1,1,2,4,4,4,5,6,8,8,11,11,16,16,18,16,19,21,25,25,25,34,30,32,35,37,40,42,45,48,51,54,57,60,63,66,70,74,77,81]];
+  const FMT = {L:1, M:0, Q:3, H:2}, IDX = {L:0, M:1, Q:2, H:3};
+
+  const rawModules = v => {
+    let r = (16*v+128)*v+64;
+    if (v >= 2) { const a = Math.floor(v/7)+2; r -= (25*a-10)*a-55; if (v >= 7) r -= 36; }
+    return r;
+  };
+  const dataCodewords = (v, e) => Math.floor(rawModules(v)/8) - ECC_CW[e][v]*ECC_BLK[e][v];
+  const alignPos = v => {
+    if (v === 1) return [];
+    const n = Math.floor(v/7)+2, size = v*4+17;
+    const step = v === 32 ? 26 : Math.ceil((v*4+4)/(n*2-2))*2;
+    const r = [6];
+    for (let p = size-7; r.length < n; p -= step) r.splice(1, 0, p);
+    return r;
+  };
+  const gfMul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z<<1) ^ ((z>>>7)*0x11D); z ^= ((y>>>i)&1)*x; } return z; };
+  const rsDivisor = d => {
+    const r = new Array(d).fill(0); r[d-1] = 1; let root = 1;
+    for (let i = 0; i < d; i++) {
+      for (let j = 0; j < d; j++) { r[j] = gfMul(r[j], root); if (j+1 < d) r[j] ^= r[j+1]; }
+      root = gfMul(root, 2);
+    }
+    return r;
+  };
+  const rsRemainder = (data, div) => {
+    const r = div.map(() => 0);
+    for (const b of data) {
+      const f = b ^ r.shift(); r.push(0);
+      div.forEach((c, i) => r[i] ^= gfMul(c, f));
+    }
+    return r;
+  };
+
+  function utf8(str) { return Array.from(new TextEncoder().encode(str)); }
+
+  function encode(text, eccKey) {
+    const bytes = utf8(text), e = IDX[eccKey];
+    let ver = 0;
+    for (let v = 1; v <= 40; v++) {
+      const need = 4 + (v < 10 ? 8 : 16) + bytes.length*8;
+      if (need <= dataCodewords(v, e)*8) { ver = v; break; }
+    }
+    if (!ver) throw new Error("Too much data for a QR code at this error-correction level. Shorten the text or lower the level.");
+
+    // bit stream
+    const bits = [];
+    const push = (val, len) => { for (let i = len-1; i >= 0; i--) bits.push((val>>>i)&1); };
+    push(4, 4); push(bytes.length, ver < 10 ? 8 : 16);
+    bytes.forEach(b => push(b, 8));
+    const cap = dataCodewords(ver, e)*8;
+    push(0, Math.min(4, cap-bits.length));
+    push(0, (8 - bits.length%8)%8);
+    for (let pad = 0xEC; bits.length < cap; pad ^= 0xEC ^ 0x11) push(pad, 8);
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) { let b = 0; for (let j = 0; j < 8; j++) b = (b<<1)|bits[i+j]; data.push(b); }
+
+    // blocks + ecc + interleave
+    const nb = ECC_BLK[e][ver], eccLen = ECC_CW[e][ver], raw = Math.floor(rawModules(ver)/8);
+    const nShort = nb - raw%nb, shortLen = Math.floor(raw/nb);
+    const div = rsDivisor(eccLen), blocks = [];
+    for (let i = 0, k = 0; i < nb; i++) {
+      const dat = data.slice(k, k + shortLen - eccLen + (i < nShort ? 0 : 1)); k += dat.length;
+      const ecc = rsRemainder(dat, div);
+      if (i < nShort) dat.push(0);
+      blocks.push(dat.concat(ecc));
+    }
+    const all = [];
+    for (let i = 0; i < blocks[0].length; i++)
+      blocks.forEach((b, j) => { if (i !== shortLen - eccLen || j >= nShort) all.push(b[i]); });
+
+    // matrix
+    const size = ver*4+17;
+    const mod = Array.from({length: size}, () => new Array(size).fill(false));
+    const fn = Array.from({length: size}, () => new Array(size).fill(false));
+    const set = (x, y, d) => { mod[y][x] = d; fn[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i%2 === 0); set(i, 6, i%2 === 0); }
+    for (const [cx, cy] of [[3,3],[size-4,3],[3,size-4]])
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const d = Math.max(Math.abs(dx), Math.abs(dy)), x = cx+dx, y = cy+dy;
+        if (x >= 0 && x < size && y >= 0 && y < size) set(x, y, d !== 2 && d !== 4);
+      }
+    const ap = alignPos(ver), n = ap.length;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      if ((i === 0 && j === 0) || (i === 0 && j === n-1) || (i === n-1 && j === 0)) continue;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+        set(ap[i]+dx, ap[j]+dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+    const drawFormat = mask => {
+      const d = (FMT[eccKey] << 3) | mask; let r = d;
+      for (let i = 0; i < 10; i++) r = (r<<1) ^ ((r>>>9)*0x537);
+      const bits = ((d<<10) | r) ^ 0x5412, bit = i => ((bits>>>i)&1) !== 0;
+      for (let i = 0; i <= 5; i++) set(8, i, bit(i));
+      set(8, 7, bit(6)); set(8, 8, bit(7)); set(7, 8, bit(8));
+      for (let i = 9; i < 15; i++) set(14-i, 8, bit(i));
+      for (let i = 0; i < 8; i++) set(size-1-i, 8, bit(i));
+      for (let i = 8; i < 15; i++) set(8, size-15+i, bit(i));
+      set(8, size-8, true);
+    };
+    drawFormat(0);
+    if (ver >= 7) {
+      let r = ver; for (let i = 0; i < 12; i++) r = (r<<1) ^ ((r>>>11)*0x1F25);
+      const bits = (ver<<12) | r;
+      for (let i = 0; i < 18; i++) {
+        const b = ((bits>>>i)&1) !== 0, a = size-11+i%3, c = Math.floor(i/3);
+        set(a, c, b); set(c, a, b);
+      }
+    }
+    // codewords
+    let bi = 0;
+    for (let right = size-1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) {
+        const x = right-j, up = ((right+1)&2) === 0, y = up ? size-1-vert : vert;
+        if (!fn[y][x] && bi < all.length*8) { mod[y][x] = ((all[bi>>>3] >>> (7-(bi&7)))&1) !== 0; bi++; }
+      }
+    }
+    // masking
+    const applyMask = m => {
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        if (fn[y][x]) continue;
+        let inv;
+        switch (m) {
+          case 0: inv = (x+y)%2 === 0; break;
+          case 1: inv = y%2 === 0; break;
+          case 2: inv = x%3 === 0; break;
+          case 3: inv = (x+y)%3 === 0; break;
+          case 4: inv = (Math.floor(x/3)+Math.floor(y/2))%2 === 0; break;
+          case 5: inv = x*y%2 + x*y%3 === 0; break;
+          case 6: inv = (x*y%2 + x*y%3)%2 === 0; break;
+          default: inv = ((x+y)%2 + x*y%3)%2 === 0;
+        }
+        if (inv) mod[y][x] = !mod[y][x];
+      }
+    };
+    const penalty = () => {
+      let p = 0, dark = 0;
+      const P1 = [1,0,1,1,1,0,1,0,0,0,0], P2 = [0,0,0,0,1,0,1,1,1,0,1];
+      for (let a = 0; a < size; a++) for (const horiz of [true, false]) {
+        const g = i => horiz ? mod[a][i] : mod[i][a];
+        let run = 1;
+        for (let i = 1; i < size; i++) {
+          if (g(i) === g(i-1)) { run++; if (i === size-1 && run >= 5) p += run-2; }
+          else { if (run >= 5) p += run-2; run = 1; }
+        }
+        for (let i = 0; i + 11 <= size; i++) {
+          let m1 = true, m2 = true;
+          for (let k = 0; k < 11 && (m1 || m2); k++) { const v = g(i+k) ? 1 : 0; if (v !== P1[k]) m1 = false; if (v !== P2[k]) m2 = false; }
+          if (m1 || m2) p += 40;
+        }
+      }
+      for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+        if (mod[y][x]) dark++;
+        if (x < size-1 && y < size-1 && mod[y][x] === mod[y][x+1] && mod[y][x] === mod[y+1][x] && mod[y][x] === mod[y+1][x+1]) p += 3;
+      }
+      const total = size*size;
+      p += (Math.ceil(Math.abs(dark*20 - total*10)/total) - 1) * 10;
+      return p;
+    };
+    let best = 0, bestP = Infinity;
+    for (let m = 0; m < 8; m++) {
+      applyMask(m); drawFormat(m);
+      const p = penalty();
+      if (p < bestP) { bestP = p; best = m; }
+      applyMask(m);
+    }
+    applyMask(best); drawFormat(best);
+    return { modules: mod, size, version: ver, bytes: bytes.length, mask: best };
+  }
+  return { encode, dataCodewords };
+})();
+
+/* ===== Renderer ===== */
+function rrPath(ctx, x, y, w, h, r) {
+  r = Math.min(r, w/2, h/2);
+  ctx.moveTo(x+r, y);
+  ctx.arcTo(x+w, y, x+w, y+h, r); ctx.arcTo(x+w, y+h, x, y+h, r);
+  ctx.arcTo(x, y+h, x, y, r); ctx.arcTo(x, y, x+w, y, r);
+  ctx.closePath();
+}
+
+function renderQR(canvas, qr, o, px) {
+  canvas.width = canvas.height = px;
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, px, px);
+  if (!o.transparent) { ctx.fillStyle = o.bg; ctx.fillRect(0, 0, px, px); }
+  const n = qr.size, ms = px/(n + 2*o.margin);
+  const P = v => Math.round((o.margin + v)*ms);
+  let fill = o.fg;
+  if (o.gradient) {
+    const g = ctx.createLinearGradient(0, 0, px, px);
+    g.addColorStop(0, o.fg); g.addColorStop(1, o.fg2); fill = g;
+  }
+  const inEye = (x, y) => (x < 7 && y < 7) || (x >= n-7 && y < 7) || (x < 7 && y >= n-7);
+  ctx.fillStyle = fill;
+  if (o.style === "square") {
+    ctx.beginPath();
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++)
+      if (qr.modules[y][x] && !inEye(x, y)) ctx.rect(P(x), P(y), P(x+1)-P(x), P(y+1)-P(y));
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+      if (!qr.modules[y][x] || inEye(x, y)) continue;
+      const w = ms, x0 = (o.margin+x)*ms, y0 = (o.margin+y)*ms;
+      if (o.style === "dots") { ctx.moveTo(x0+w/2+w*.42, y0+w/2); ctx.arc(x0+w/2, y0+w/2, w*.42, 0, Math.PI*2); }
+      else rrPath(ctx, x0+w*.04, y0+w*.04, w*.92, w*.92, w*.34);
+    }
+    ctx.fill();
+  }
+  // eyes
+  const R = o.style === "square" ? [0,0,0] : o.style === "rounded" ? [2.2,1.3,1.1] : [3.5,2.5,1.5];
+  ctx.fillStyle = o.eyeCustom ? o.eye : fill;
+  for (const [ex, ey] of [[0,0],[n-7,0],[0,n-7]]) {
+    const X = ex + o.margin, Y = ey + o.margin;
+    ctx.beginPath();
+    rrPath(ctx, X*ms, Y*ms, 7*ms, 7*ms, R[0]*ms);
+    rrPath(ctx, (X+1)*ms, (Y+1)*ms, 5*ms, 5*ms, R[1]*ms);
+    ctx.fill("evenodd");
+    ctx.beginPath();
+    rrPath(ctx, (X+2)*ms, (Y+2)*ms, 3*ms, 3*ms, R[2]*ms);
+    ctx.fill();
+  }
+}
+
+/* ===== App ===== */
+const $ = id => document.getElementById(id);
+const S = { text: "https://example.com", fg: "#14161f", fg2: "#5b4bff", bg: "#ffffff", eye: "#14161f",
+  gradient: false, eyeCustom: false, transparent: false, style: "square", ecc: "M", margin: 4, size: 1024 };
+const PRESETS = [
+  { n: "Classic", fg: "#14161f", bg: "#ffffff" },
+  { n: "Indigo", fg: "#3b2fd9", bg: "#f1efff" },
+  { n: "Ocean", fg: "#0b4f9c", bg: "#e8f3ff" },
+  { n: "Forest", fg: "#14532d", bg: "#e9fbef" },
+  { n: "Sunset", fg: "#f43f5e", fg2: "#f59e0b", bg: "#ffffff", g: true },
+  { n: "Aurora", fg: "#06b6d4", fg2: "#7c3aed", bg: "#ffffff", g: true },
+  { n: "Berry", fg: "#9d174d", fg2: "#4c1d95", bg: "#fdf2f8", g: true },
+  { n: "Midnight", fg: "#e8eaff", bg: "#12142a" }
+];
+const ECC_NOTE = { L: "Recovers ~7%", M: "Recovers ~15%", Q: "Recovers ~25%", H: "Recovers ~30%" };
+const canvas = $("canvas"), stage = $("stage");
+let qr = null;
+
+const HEX = /^#[0-9a-f]{6}$/i;
+const lum = h => { const c = [1,3,5].map(i => { const v = parseInt(h.substr(i,2),16)/255; return v <= .03928 ? v/12.92 : Math.pow((v+.055)/1.055, 2.4); }); return .2126*c[0]+.7152*c[1]+.0722*c[2]; };
+const contrast = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x,y)+.05)/(Math.min(x,y)+.05); };
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 2000); }
+
+function update() {
+  const text = S.text;
+  const bytes = new TextEncoder().encode(text).length;
+  $("count").textContent = bytes ? bytes + " byte" + (bytes === 1 ? "" : "s") : "";
+  $("meta").innerHTML = "";
+  stage.classList.remove("empty", "error");
+  qr = null;
+  if (!text) {
+    stage.classList.add("empty"); $("overlay").textContent = "Type something to generate a QR code";
+    // placeholder drawing
+    try { renderQR(canvas, QR.encode("https://example.com", "M"), view(), 1000); } catch (e) {}
+  } else {
+    try {
+      qr = QR.encode(text, S.ecc);
+      renderQR(canvas, qr, view(), 1000);
+      $("meta").innerHTML = `<span><b>Version ${qr.version}</b></span><i>•</i><span>${qr.size}×${qr.size} modules</span><i>•</i><span>${bytes} bytes</span>`;
+    } catch (e) {
+      stage.classList.add("error"); $("overlay").textContent = e.message;
+    }
+  }
+  $("download").disabled = $("copy").disabled = !qr;
+  // contrast warning
+  const w = $("warn"); let msg = "";
+  if (!S.transparent) {
+    const fgs = [S.fg].concat(S.gradient ? [S.fg2] : []).concat(S.eyeCustom ? [S.eye] : []);
+    const worst = Math.min(...fgs.map(c => contrast(c, S.bg)));
+    const fgL = Math.min(...fgs.map(lum));
+    if (worst < 3) msg = "Low contrast between code and background — it may be hard to scan.";
+    else if (fgL > lum(S.bg)) msg = "Light code on a dark background is inverted; some older scanners can't read it.";
+  } else msg = "Transparent PNGs scan best when placed over a light background.";
+  w.textContent = msg; w.classList.toggle("show", !!msg);
+}
+const view = () => ({ ...S });
+
+/* inputs */
+function bindColor(key, pick, hex, sw, onChange) {
+  const sync = () => { pick.value = S[key]; hex.value = S[key]; sw.style.background = S[key]; };
+  pick.addEventListener("input", () => { S[key] = pick.value; sync(); onChange && onChange(); update(); markPreset(); });
+  hex.addEventListener("input", () => {
+    let v = hex.value.trim(); if (v && v[0] !== "#") v = "#" + v;
+    if (HEX.test(v)) { S[key] = v.toLowerCase(); pick.value = S[key]; sw.style.background = S[key]; onChange && onChange(); update(); markPreset(); }
+  });
+  hex.addEventListener("blur", sync);
+  return sync;
+}
+const syncs = [
+  bindColor("fg", $("fgPick"), $("fgHex"), $("fgSw")),
+  bindColor("bg", $("bgPick"), $("bgHex"), $("bgSw")),
+  bindColor("fg2", $("fg2Pick"), $("fg2Hex"), $("fg2Sw")),
+  bindColor("eye", $("eyePick"), $("eyeHex"), $("eyeSw"))
+];
+const syncAll = () => syncs.forEach(f => f());
+
+$("text").addEventListener("input", e => { S.text = e.target.value; update(); });
+function bindToggle(id, key, extra) {
+  $(id).addEventListener("change", e => { S[key] = e.target.checked; extra && extra(); update(); markPreset(); });
+}
+bindToggle("grad", "gradient", () => $("gradRow").style.display = S.gradient ? "" : "none");
+bindToggle("eyeCustom", "eyeCustom", () => $("eyeRow").style.display = S.eyeCustom ? "" : "none");
+bindToggle("transp", "transparent", () => $("bgField").style.opacity = S.transparent ? .4 : 1);
+
+function bindSeg(id, key, extra) {
+  $(id).addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    S[key] = b.dataset.v;
+    [...$(id).children].forEach(c => c.classList.toggle("on", c === b));
+    extra && extra(); update();
+  });
+}
+bindSeg("styleSeg", "style");
+bindSeg("eccSeg", "ecc", () => $("eccNote").textContent = ECC_NOTE[S.ecc]);
+
+$("margin").addEventListener("input", e => { S.margin = +e.target.value; $("marginO").textContent = S.margin + " mod"; update(); });
+$("size").addEventListener("input", e => { S.size = +e.target.value; $("sizeO").textContent = S.size + " px"; });
+
+/* presets */
+const presetsEl = $("presets");
+PRESETS.forEach((p, i) => {
+  const b = document.createElement("button");
+  b.className = "preset"; b.title = p.n; b.setAttribute("aria-label", p.n + " preset");
+  b.innerHTML = `<i style="background:${p.bg}"></i><b style="background:${p.g ? `linear-gradient(135deg,${p.fg},${p.fg2})` : p.fg}"></b>`;
+  b.addEventListener("click", () => {
+    Object.assign(S, { fg: p.fg, bg: p.bg, gradient: !!p.g, transparent: false, eyeCustom: false });
+    if (p.g) S.fg2 = p.fg2;
+    $("grad").checked = S.gradient; $("gradRow").style.display = S.gradient ? "" : "none";
+    $("eyeCustom").checked = false; $("eyeRow").style.display = "none";
+    $("transp").checked = false; $("bgField").style.opacity = 1;
+    syncAll(); update(); markPreset();
+  });
+  b.dataset.i = i; presetsEl.appendChild(b);
+});
+function markPreset() {
+  [...presetsEl.children].forEach((b, i) => {
+    const p = PRESETS[i];
+    b.classList.toggle("on", !S.transparent && !S.eyeCustom && p.fg === S.fg && p.bg === S.bg && !!p.g === S.gradient && (!p.g || p.fg2 === S.fg2));
+  });
+}
+
+/* export */
+function exportCanvas() {
+  const c = document.createElement("canvas");
+  renderQR(c, qr, view(), S.size);
+  return c;
+}
+$("download").addEventListener("click", () => {
+  if (!qr) return;
+  exportCanvas().toBlob(blob => {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob); a.download = `qrcode-${S.size}px.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast("PNG downloaded · " + S.size + "×" + S.size);
+  }, "image/png");
+});
+$("copy").addEventListener("click", async () => {
+  if (!qr) return;
+  try {
+    const blob = await new Promise(r => exportCanvas().toBlob(r, "image/png"));
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    toast("Image copied to clipboard");
+  } catch (e) { toast("Copy not supported here — use Download"); }
+});
+
+syncAll(); markPreset(); update();
+</script>
+</body>
+</html>

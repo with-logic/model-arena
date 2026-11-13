@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Cloud Painter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #4a4670;
+    --ink-soft: #7a76a0;
+    --glass: rgba(255, 255, 255, 0.74);
+    --shadow: 0 10px 28px rgba(90, 80, 160, 0.2);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Baloo 2', 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+    color: var(--ink);
+    background: #bfe6ff;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+  }
+  canvas#sky {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: none;
+    touch-action: none;
+  }
+  .bar {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    max-width: calc(100vw - 20px);
+    background: var(--glass);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 2px solid rgba(255, 255, 255, 0.85);
+    border-radius: 999px;
+    box-shadow: var(--shadow);
+    z-index: 5;
+  }
+  #top { top: 14px; flex-wrap: wrap; justify-content: center; }
+  #bottom { bottom: 16px; flex-wrap: wrap; justify-content: center; border-radius: 28px; }
+  .brand {
+    font-weight: 800;
+    font-size: 21px;
+    padding: 0 8px 0 6px;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn {
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink);
+    background: #fff;
+    border: none;
+    border-radius: 999px;
+    padding: 8px 14px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 rgba(120, 110, 190, 0.25);
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease, opacity 0.2s ease;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(120, 110, 190, 0.25); }
+  .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+  .btn.armed { background: #ffc2c2; }
+  .btn.on { background: #d9f5ff; }
+  .btn:focus-visible, .swatch:focus-visible, .shape:focus-visible, input[type=range]:focus-visible {
+    outline: 3px solid #a48bff;
+    outline-offset: 2px;
+  }
+  .btn.big {
+    font-size: 20px;
+    padding: 12px 30px;
+    color: #fff;
+    background: linear-gradient(135deg, #ff9ec2, #a98cff);
+    box-shadow: 0 6px 0 #8a74d6;
+  }
+  .btn.big:active { box-shadow: 0 2px 0 #8a74d6; }
+  .divider {
+    width: 2px;
+    height: 28px;
+    background: rgba(120, 110, 190, 0.18);
+    border-radius: 2px;
+    margin: 0 4px;
+  }
+  .swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 6px rgba(90, 80, 160, 0.25);
+    cursor: pointer;
+    padding: 0;
+    transition: transform 0.15s ease;
+  }
+  .swatch:hover { transform: scale(1.12); }
+  .swatch.sel { transform: scale(1.18); box-shadow: 0 0 0 3px #a48bff, 0 2px 6px rgba(90, 80, 160, 0.3); }
+  .shape {
+    width: 42px;
+    height: 42px;
+    border-radius: 14px;
+    border: none;
+    background: #fff;
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    color: var(--ink);
+    box-shadow: 0 3px 0 rgba(120, 110, 190, 0.2);
+    transition: transform 0.12s ease, background 0.2s ease;
+  }
+  .shape:hover { transform: translateY(-1px); }
+  .shape svg { width: 26px; height: 26px; }
+  .shape.sel { background: #e3d9ff; }
+  .size {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--ink-soft);
+    padding: 0 6px;
+  }
+  input[type=range] { width: 110px; accent-color: #ff8fb1; cursor: pointer; }
+
+  #toast {
+    position: fixed;
+    left: 50%;
+    top: 88px;
+    transform: translate(-50%, -10px);
+    background: rgba(74, 70, 112, 0.88);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 16px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    white-space: nowrap;
+    z-index: 15;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  #intro {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(190, 225, 255, 0.5);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    z-index: 20;
+    transition: opacity 0.6s ease;
+  }
+  #intro.gone { opacity: 0; pointer-events: none; }
+  .card {
+    background: rgba(255, 255, 255, 0.94);
+    border-radius: 34px;
+    padding: 34px 38px;
+    max-width: 440px;
+    margin: 16px;
+    text-align: center;
+    box-shadow: var(--shadow);
+    animation: pop 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  }
+  @keyframes pop {
+    from { transform: scale(0.85) translateY(12px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  .card .emoji { font-size: 54px; line-height: 1; animation: bob 3s ease-in-out infinite; }
+  @keyframes bob { 50% { transform: translateY(-6px); } }
+  .card h1 { margin: 10px 0 8px; font-size: 42px; font-weight: 800; line-height: 1.05; }
+  .card p { margin: 0 0 24px; font-size: 18px; color: var(--ink-soft); line-height: 1.45; }
+
+  @media (max-width: 720px) {
+    .lbl, .brand .txt { display: none; }
+    .btn { padding: 9px 12px; }
+    .size span { display: none; }
+    input[type=range] { width: 80px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="sky" aria-label="Sky canvas. Drag to paint clouds."></canvas>
+
+<div class="bar" id="top">
+  <div class="brand"><span aria-hidden="true">☁️</span><span class="txt">Cloud Painter</span></div>
+  <div class="divider"></div>
+  <button class="btn" id="undoBtn" title="Undo (Ctrl+Z)"><span aria-hidden="true">↩️</span><span class="lbl">Undo</span></button>
+  <button class="btn" id="clearBtn" title="Clear the sky"><span aria-hidden="true">🧹</span><span class="lbl" id="clearLbl">Clear</span></button>
+  <button class="btn" id="skyBtn" title="Change the sky"><span aria-hidden="true" id="skyIcon">☀️</span><span class="lbl" id="skyLbl">Morning</span></button>
+  <button class="btn" id="planeBtn" title="Launch a plane (P)"><span aria-hidden="true">✈️</span><span class="lbl">Plane</span></button>
+  <button class="btn" id="saveBtn" title="Save as PNG (Ctrl+S)"><span aria-hidden="true">💾</span><span class="lbl">Save</span></button>
+  <button class="btn" id="soundBtn" title="Sound on/off"><span aria-hidden="true" id="soundIcon">🔊</span></button>
+</div>
+
+<div class="bar" id="bottom">
+  <div id="shapes" role="radiogroup" aria-label="Brush shape" style="display:flex;gap:6px;"></div>
+  <div class="divider"></div>
+  <div id="colors" role="radiogroup" aria-label="Cloud color" style="display:flex;gap:7px;"></div>
+  <div class="divider"></div>
+  <label class="size"><span>Size</span>
+    <input type="range" id="size" min="14" max="140" value="60" aria-label="Brush size">
+  </label>
+  <div class="divider"></div>
+  <button class="btn" id="breezeBtn" title="Make the clouds drift"><span aria-hidden="true">🌬️</span><span class="lbl" id="breezeLbl">Breeze</span></button>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<div id="intro">
+  <div class="card">
+    <div class="emoji" aria-hidden="true">☁️</div>
+    <h1>Cloud Painter</h1>
+    <p>Drag across the sky to paint fluffy clouds! Pick a brush and a color, launch a little plane ✈️, and tap a plane to make it zoom!</p>
+    <button class="btn big" id="startBtn">Let's paint!</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const TAU = Math.PI * 2;
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('sky');
+  const ctx = canvas.getContext('2d');
+  const paint = document.createElement('canvas');   // live stroke buffer (device px)
+  const pctx = paint.getContext('2d');
+
+  let W = 0, H = 0, dpr = 1;
+  let time = 0;
+
+  // ---------- Config ----------
+  const SKIES = [
+    { name: 'Morning', icon: '☀️', top: '#6fc0ff', mid: '#bfe4ff', bottom: '#fff6dc', night: false, sun: 'sun' },
+    { name: 'Sunset',  icon: '🌇', top: '#ff9bb5', mid: '#ffc0a0', bottom: '#ffe8b5', night: false, sun: 'sunset' },
+    { name: 'Twilight', icon: '🌙', top: '#4f56b3', mid: '#9b86d6', bottom: '#ffc4e2', night: true,  sun: 'moon' },
+  ];
+
+  const COLORS = [
+    { name: 'Snow',       hex: '#ffffff' },
+    { name: 'Bubblegum',  hex: '#ffb3cf' },
+    { name: 'Peach',      hex: '#ffd1a6' },
+    { name: 'Lavender',   hex: '#d4bfff' },
+    { name: 'Baby blue',  hex: '#b3e0ff' },
+    { name: 'Butter',     hex: '#fff0a0' },
+    { name: 'Mint',       hex: '#b9f2d6' },
+  ];
+  COLORS.forEach((c) => { c.rgb = hexToRgb(c.hex); });
+
+  const BRUSHES = [
+    { id: 'puff', label: 'Puffy', svg: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="14" r="4.5"/><circle cx="14.5" cy="10.5" r="5.5"/><circle cx="17" cy="16" r="3.8"/></svg>' },
+    { id: 'wisp', label: 'Wispy', svg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M3 15c4-7 7 3 11-2s4-3 7-1"/></svg>' },
+    { id: 'cloud', label: 'Cloud stamp', svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6.5 18.5h11a3.8 3.8 0 0 0 .2-7.6 5.6 5.6 0 0 0-10.7-1.2A4.2 4.2 0 0 0 6.5 18.5z"/></svg>' },
+    { id: 'star', label: 'Sparkle star', svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17.2l-5.9 3.1 1.3-6.5-4.9-4.5 6.6-.8z"/></svg>' },
+    { id: 'heart', label: 'Heart', svg: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>' },
+  ];
+
+  const STAR_PATH = new Path2D('M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17.2l-5.9 3.1 1.3-6.5-4.9-4.5 6.6-.8z');
+  const HEART_PATH = new Path2D('M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.6-7 10-7 10z');
+
+  const CLOUD_PUFFS = [
+    [-1.0, 0.24, 0.5], [-0.55, 0.0, 0.7], [-0.05, -0.2, 0.9], [0.5, -0.06, 0.74],
+    [1.0, 0.22, 0.5], [-0.3, 0.26, 0.55], [0.3, 0.26, 0.6], [0.0, 0.2, 0.62],
+  ];
+
+  const PLANE_COLORS = ['#ff8fb1', '#7cc4ff', '#ffd166', '#b49cff', '#6fdba8'];
+  const MAX_PLANES = 6;
+
+  // ---------- State ----------
+  const state = {
+    sky: 0,
+    brush: 'puff',
+    color: 0,
+    size: 60,
+    breeze: true,
+    sound: true,
+    wind: 1,
+    hover: null,
+  };
+
+  const layers = [];   // { canvas, x, y, w, h, speed }  - painted clouds (CSS px), drawn in order
+  const planes = [];
+  const birds = [];
+  const stars = [];
+  let stroke = null;
+  let audio = null;
+
+  // ---------- Helpers ----------
+  function hexToRgb(h) {
+    const n = parseInt(h.slice(1), 16);
+    return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+  }
+
+  function makeCanvas(w, h) {
+    const cv = document.createElement('canvas');
+    cv.width = Math.max(1, Math.ceil(w * dpr));
+    cv.height = Math.max(1, Math.ceil(h * dpr));
+    const c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { canvas: cv, c };
+  }
+
+  function softDisc(c, x, y, r, rgb) {
+    const g = c.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(${rgb},1)`);
+    g.addColorStop(0.6, `rgba(${rgb},1)`);
+    g.addColorStop(1, `rgba(${rgb},0)`);
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(x, y, r, 0, TAU);
+    c.fill();
+  }
+
+  function drawCloud(c, cx, cy, s, rgb, rnd) {
+    for (const [dx, dy, r] of CLOUD_PUFFS) {
+      softDisc(
+        c,
+        cx + dx * s * (0.92 + rnd() * 0.16),
+        cy + dy * s * (0.92 + rnd() * 0.16),
+        r * s * (0.9 + rnd() * 0.2),
+        rgb
+      );
+    }
+  }
+
+  // Gives every cloud a soft, blue-lavender underside.
+  function shadeLayer(c, w, h) {
+    c.save();
+    c.globalCompositeOperation = 'source-atop';
+    const g = c.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0, 'rgba(255,255,255,0)');
+    g.addColorStop(0.6, 'rgba(140,130,200,0.06)');
+    g.addColorStop(1, 'rgba(120,110,190,0.22)');
+    c.fillStyle = g;
+    c.fillRect(0, 0, w, h);
+    c.restore();
+  }
+
+  function speedFor(size) {
+    return (6 + size * 0.12) * (0.7 + Math.random() * 0.6);
+  }
+
+  function addCloudLayer(s, rgb, x, y, sizeForSpeed) {
+    const w = 4 * s, h = 3 * s;
+    const { canvas: cv, c } = makeCanvas(w, h);
+    drawCloud(c, 2 * s, 1.5 * s, s, rgb, Math.random);
+    shadeLayer(c, w, h);
+    layers.push({ canvas: cv, x, y, w, h, speed: speedFor(sizeForSpeed) });
+  }
+
+  function seedSky() {
+    const count = Math.max(5, Math.min(10, Math.round((W * H) / 150000)));
+    for (let i = 0; i < count; i++) {
+      const s = 30 + Math.random() * 34;
+      const x = Math.random() * W - 2 * s;
+      const y = H * (0.06 + Math.random() * 0.5) - 1.5 * s;
+      const rgb = Math.random() < 0.8 ? '255,255,255' : '255,240,250';
+      addCloudLayer(s, rgb, x, y, s);
+    }
+  }
+
+  function clearPaint() {
+    pctx.save();
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    pctx.clearRect(0, 0, paint.width, paint.height);
+    pctx.restore();
+  }
+
+  function updateUndo() {
+    $('undoBtn').disabled = layers.length === 0;
+  }
+
+  // ---------- Audio (tiny, optional) ----------
+  function ensureAudio() {
+    try {
+      if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+    } catch (e) { audio = null; }
+  }
+
+  function tone(f0, f1, dur, vol) {
+    if (!state.sound) return;
+    try {
+      ensureAudio();
+      if (!audio) return;
+      const t = audio.currentTime;
+      const o = audio.createOscillator();
+      const g = audio.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(audio.destination);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    } catch (e) { /* audio is optional */ }
+  }
+
+  // ---------- Toast ----------
+  let toastTimer = 0;
+  function toast(msg) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 1900);
+  }
+
+  // ---------- Painting ----------
+  function spacingFor(brush, size) {
+    switch (brush) {
+      case 'wisp': return 2;
+      case 'puff': return Math.max(2, size * 0.14);
+      case 'cloud': return size * 0.5;
+      default: return size * 0.6; // star, heart
+    }
+  }
+
+  function shapePath(c, path, x, y, k, rot, rgb) {
+    c.save();
+    c.translate(x, y);
+    c.rotate(rot);
+    c.scale(k, k);
+    c.translate(-12, -12);
+    c.fillStyle = `rgb(${rgb})`;
+    c.fill(path);
+    c.restore();
+  }
+
+  function stamp(st, x, y) {
+    const c = pctx, size = st.size, rgb = st.rgb, rnd = Math.random;
+    switch (st.brush) {
+      case 'puff':
+        softDisc(c, x + (rnd() - 0.5) * size * 0.25, y + (rnd() - 0.5) * size * 0.2, size * 0.3 * (0.8 + rnd() * 0.4), rgb);
+        break;
+      case 'wisp': {
+        const dx = x - st.sx, dy = y - st.sy, len = Math.hypot(dx, dy);
+        if (len > 0.5) {
+          const nx = -dy / len, ny = dx / len;
+          c.lineCap = 'round';
+          c.strokeStyle = `rgb(${rgb})`;
+          for (const k of [-1, 0, 1]) {
+            const o0 = k * size * 0.16 + Math.sin(st.ph + k) * size * 0.05;
+            const o1 = k * size * 0.16 + Math.sin(st.ph + 0.3 + k) * size * 0.05;
+            c.lineWidth = k === 0 ? size * 0.1 : size * 0.06;
+            c.beginPath();
+            c.moveTo(st.sx + nx * o0, st.sy + ny * o0);
+            c.lineTo(x + nx * o1, y + ny * o1);
+            c.stroke();
+          }
+          st.ph += 0.3;
+        }
+        st.sx = x;
+        st.sy = y;
+        break;
+      }
+      case 'cloud':
+        drawCloud(c, x, y, size * 0.5 * (0.8 + rnd() * 0.4), rgb, rnd);
+        break;
+      case 'star':
+        shapePath(c, STAR_PATH, x, y, size * 0.035, (rnd() - 0.5) * 0.6, rgb);
+        break;
+      case 'heart':
+        shapePath(c, HEART_PATH, x, y, size * 0.035, (rnd() - 0.5) * 0.5, rgb);
+        break;
+    }
+    const pad = size * 1.1, b = st.bbox;
+    b.x0 = Math.min(b.x0, x - pad);
+    b.y0 = Math.min(b.y0, y - pad);
+    b.x1 = Math.max(b.x1, x + pad);
+    b.y1 = Math.max(b.y1, y + pad);
+    st.dirty = true;
+  }
+
+  function beginStroke(pt, pid) {
+    stroke = {
+      pid,
+      brush: state.brush,
+      rgb: COLORS[state.color].rgb,
+      size: state.size,
+      px: pt.x, py: pt.y,      // last pointer position
+      sx: pt.x, sy: pt.y,      // last stamp position
+      carry: 0,
+      ph: 0,
+      dirty: false,
+      bbox: { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity },
+    };
+    stamp(stroke, pt.x, pt.y);
+  }
+
+  // Places brush stamps at even spacing along the path so fast strokes stay smooth.
+  function strokeTo(x, y) {
+    const st = stroke;
+    const ax = st.px, ay = st.py;
+    const dist = Math.hypot(x - ax, y - ay);
+    st.px = x;
+    st.py = y;
+    if (dist === 0) return;
+    const sp = spacingFor(st.brush, st.size);
+    let s = sp - st.carry;
+    while (s <= dist) {
+      const k = s / dist;
+      stamp(st, ax + (x - ax) * k, ay + (y - ay) * k);
+      s += sp;
+    }
+    st.carry = dist - (s - sp);
+  }
+
+  function endStroke() {
+    const st = stroke;
+    if (!st) return;
+    stroke = null;
+    if (st.dirty) {
+      const b = st.bbox;
+      const x0 = Math.max(0, Math.floor(b.x0));
+      const y0 = Math.max(0, Math.floor(b.y0));
+      const x1 = Math.min(W, Math.ceil(b.x1));
+      const y1 = Math.min(H, Math.ceil(b.y1));
+      if (x1 > x0 && y1 > y0) {
+        const w = x1 - x0, h = y1 - y0;
+        const { canvas: cv, c } = makeCanvas(w, h);
+        c.drawImage(paint, x0 * dpr, y0 * dpr, w * dpr, h * dpr, 0, 0, w, h);
+        shadeLayer(c, w, h);
+        layers.push({ canvas: cv, x: x0, y: y0, w, h, speed: speedFor(st.size) });
+      }
+    }
+    clearPaint();
+    updateUndo();
+  }
+
+  // ---------- Planes ----------
+  function launchPlane() {
+    if (planes.length >= MAX_PLANES) {
+      toast('Whoa, that is a lot of planes! ✈️');
+      return;
+    }
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    const baseY = H * (0.1 + Math.random() * 0.45);
+    planes.push({
+      x: dir > 0 ? -90 : W + 90,
+      y: baseY,
+      baseY,
+      dir,
+      speed: 70 + Math.random() * 50,
+      color: PLANE_COLORS[Math.floor(Math.random() * PLANE_COLORS.length)],
+      phase: Math.random() * TAU,
+      age: 0,
+      spin: 0,
+      boost: 0,
+      trail: [],
+      trailT: 0,
+      offscreen: false,
+    });
+    tone(320, 620, 0.5, 0.035);
+    toast('Vroom! Tap a plane to zoom! ✈️');
+  }
+
+  function updatePlanes(dt) {
+    for (let i = planes.length - 1; i >= 0; i--) {
+      const p = planes[i];
+      p.boost = Math.max(0, p.boost - dt);
+      p.age += dt;
+      p.x += p.dir * p.speed * (p.boost > 0 ? 2.5 : 1) * dt;
+      p.y = p.baseY + Math.sin(p.age * 1.3 + p.phase) * 10;
+      p.spin += dt * (p.boost > 0 ? 60 : 28);
+      p.trailT += dt;
+      if (p.trailT > (p.boost > 0 ? 0.03 : 0.07)) {
+        p.trailT = 0;
+        p.trail.push({ x: p.x, y: p.y, life: 1 });
+      }
+      for (const t of p.trail) t.life -= dt / 1.4;
+      p.trail = p.trail.filter((t) => t.life > 0);
+      p.offscreen = p.x < -140 || p.x > W + 140;
+      if (p.offscreen && p.trail.length === 0) planes.splice(i, 1);
+    }
+  }
+
+  function drawTrail(c, p) {
+    for (const t of p.trail) {
+      c.globalAlpha = Math.max(0, t.life) * 0.75;
+      softDisc(c, t.x, t.y, 4 + (1 - t.life) * 6, '255,255,255');
+    }
+    c.globalAlpha = 1;
+  }
+
+  function poly(c, pts, fill, stroke) {
+    c.beginPath();
+    c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.closePath();
+    c.fillStyle = fill;
+    c.fill();
+    if (stroke) { c.strokeStyle = stroke; c.stroke(); }
+  }
+
+  function drawPlane(c, p) {
+    c.save();
+    c.translate(p.x, p.y);
+    c.scale(p.dir, 1);
+    c.rotate(Math.sin(p.age * 1.3 + p.phase) * 0.05);
+    c.lineJoin = 'round';
+    const outline = 'rgba(74,70,112,0.22)';
+
+    // Tail fin and lower wing (behind the body)
+    poly(c, [[-24, -4], [-37, -21], [-30, -21], [-16, -4]], p.color, outline);
+    poly(c, [[4, 3], [-9, 21], [-2, 21], [13, 3]], '#ffffff', outline);
+
+    // Body
+    c.beginPath();
+    c.ellipse(0, 0, 34, 11.5, 0, 0, TAU);
+    c.fillStyle = p.color;
+    c.fill();
+    c.strokeStyle = outline;
+    c.lineWidth = 1.5;
+    c.stroke();
+
+    // Cockpit with a happy face
+    c.beginPath();
+    c.ellipse(14, -2, 10, 6.5, 0, 0, TAU);
+    c.fillStyle = '#e4f4ff';
+    c.fill();
+    c.fillStyle = '#4a4670';
+    for (const ex of [11, 17]) {
+      c.beginPath();
+      c.arc(ex, -3, 1.4, 0, TAU);
+      c.fill();
+    }
+    c.strokeStyle = '#4a4670';
+    c.lineWidth = 1.3;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.arc(14, -0.5, 2.6, 0.15 * Math.PI, 0.85 * Math.PI);
+    c.stroke();
+
+    // Propeller
+    c.save();
+    c.translate(37, 0);
+    c.beginPath();
+    c.ellipse(0, 0, Math.abs(Math.cos(p.spin)) * 2.5 + 0.8, 14, 0, 0, TAU);
+    c.fillStyle = 'rgba(74,70,112,0.45)';
+    c.fill();
+    c.restore();
+    c.beginPath();
+    c.arc(37, 0, 2.6, 0, TAU);
+    c.fillStyle = '#4a4670';
+    c.fill();
+
+    c.restore();
+  }
+
+  // ---------- Birds ----------
+  function initBirds() {
+    birds.length = 0;
+    for (let i = 0; i < 4; i++) {
+      birds.push({
+        x: Math.random() * W,
+        y: H * (0.1 + Math.random() * 0.4),
+        s: 0.8 + Math.random() * 0.6,
+        v: 14 + Math.random() * 12,
+        ph: Math.random() * TAU,
+      });
+    }
+  }
+
+  function updateBirds(dt) {
+    for (const b of birds) {
+      b.x += b.v * dt;
+      if (b.x > W + 40) b.x = -40;
+    }
+  }
+
+  function drawBird(c, b, t) {
+    const f = Math.sin(t * 6 + b.ph);
+    c.save();
+    c.translate(b.x, b.y);
+    c.scale(b.s, b.s);
+    c.strokeStyle = state.sky === 2 ? 'rgba(255,255,255,0.8)' : 'rgba(74,70,112,0.5)';
+    c.lineWidth = 2.2;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(-9, -3 - f * 3);
+    c.quadraticCurveTo(-4, -1, 0, 0);
+    c.quadraticCurveTo(4, -1, 9, -3 - f * 3);
+    c.stroke();
+    c.restore();
+  }
+
+  // ---------- Sky ----------
+  function drawCelestial(c, x, y, r, kind, t) {
+    const gc = kind === 'sun' || kind === 'sunset' ? '255,236,160' : '230,230,255';
+    const glow = c.createRadialGradient(x, y, r * 0.8, x, y, r * 3.2);
+    glow.addColorStop(0, `rgba(${gc},0.75)`);
+    glow.addColorStop(1, `rgba(${gc},0)`);
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(x, y, r * 3.2, 0, TAU);
+    c.fill();
+
+    if (kind !== 'moon') {
+      c.save();
+      c.translate(x, y);
+      c.rotate(t * 0.12);
+      c.strokeStyle = 'rgba(255,255,255,0.55)';
+      c.lineWidth = r * 0.12;
+      c.lineCap = 'round';
+      for (let i = 0; i < 12; i++) {
+        const a = (i * TAU) / 12;
+        c.beginPath();
+        c.moveTo(Math.cos(a) * r * 1.25, Math.sin(a) * r * 1.25);
+        c.lineTo(Math.cos(a) * r * 1.6, Math.sin(a) * r * 1.6);
+        c.stroke();
+      }
+      c.restore();
+    }
+
+    c.beginPath();
+    c.arc(x, y, r, 0, TAU);
+    c.fillStyle = kind === 'moon' ? '#fff9e0' : '#ffe27a';
+    c.fill();
+
+    // Friendly face
+    c.strokeStyle = '#8a6a3a';
+    c.fillStyle = '#8a6a3a';
+    c.lineCap = 'round';
+    c.lineWidth = Math.max(1.5, r * 0.08);
+    const ex = r * 0.36, ey = y - r * 0.12;
+    if (kind === 'moon') {
+      for (const sx of [-1, 1]) {
+        c.beginPath();
+        c.arc(x + sx * ex, ey, r * 0.16, Math.PI * 1.1, Math.PI * 1.9);
+        c.stroke();
+      }
+      c.beginPath();
+      c.arc(x, y + r * 0.2, r * 0.14, 0.1 * Math.PI, 0.9 * Math.PI);
+      c.stroke();
+    } else {
+      for (const sx of [-1, 1]) {
+        c.beginPath();
+        c.arc(x + sx * ex, ey, r * 0.09, 0, TAU);
+        c.fill();
+      }
+      c.beginPath();
+      c.arc(x, y + r * 0.05, r * 0.38, 0.15 * Math.PI, 0.85 * Math.PI);
+      c.stroke();
+    }
+  }
+
+  function drawSky(c, t) {
+    const s = SKIES[state.sky];
+    const g = c.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, s.top);
+    g.addColorStop(0.6, s.mid);
+    g.addColorStop(1, s.bottom);
+    c.fillStyle = g;
+    c.fillRect(0, 0, W, H);
+
+    const m = Math.min(W, H);
+    if (s.sun === 'moon') {
+      for (const st of stars) {
+        c.globalAlpha = 0.45 + 0.55 * Math.sin(t * st.sp + st.ph);
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.arc(st.x * W, st.y * H, st.r, 0, TAU);
+        c.fill();
+      }
+      c.globalAlpha = 1;
+      drawCelestial(c, W * 0.8, H * 0.2, m * 0.055, 'moon', t);
+    } else if (s.sun === 'sunset') {
+      drawCelestial(c, W * 0.24, H * 0.66, m * 0.075, 'sunset', t);
+    } else {
+      drawCelestial(c, W * 0.8, H * 0.2, m * 0.07, 'sun', t);
+    }
+  }
+
+  function drawCursor(c, t) {
+    const h = state.hover;
+    const rgb = COLORS[state.color].rgb;
+    const r = Math.max(4, state.size * 0.5);
+    c.save();
+    c.beginPath();
+    c.arc(h.x, h.y, r, 0, TAU);
+    c.strokeStyle = 'rgba(255,255,255,0.9)';
+    c.lineWidth = 3;
+    c.stroke();
+    c.strokeStyle = 'rgba(120,110,190,0.45)';
+    c.lineWidth = 1.5;
+    c.stroke();
+    c.beginPath();
+    c.arc(h.x, h.y, 4, 0, TAU);
+    c.fillStyle = `rgba(${rgb},0.95)`;
+    c.fill();
+    c.strokeStyle = 'rgba(74,70,112,0.35)';
+    c.lineWidth = 1;
+    c.stroke();
+    c.restore();
+  }
+
+  function render(c, t, forExport = false) {
+    drawSky(c, t);
+    for (const b of birds) drawBird(c, b, t);
+    for (const l of layers) c.drawImage(l.canvas, l.x, l.y, l.w, l.h);
+    if (stroke) c.drawImage(paint, 0, 0, W, H);
+    if (state.hover && !stroke && !forExport) drawCursor(c, t);
+    for (const p of planes) drawTrail(c, p);
+    for (const p of planes) if (!p.offscreen) drawPlane(c, p);
+  }
+
+  // ---------- Save ----------
+  function savePNG() {
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const oc = out.getContext('2d');
+    oc.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render(oc, time, true);
+    out.toBlob((blob) => {
+      if (!blob) { toast('Oops, the picture did not save. Try again!'); return; }
+      const d = new Date();
+      const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}-${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}${String(d.getSeconds()).padStart(2, '0')}`;
+      const a = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      a.href = url;
+      a.download = `cloud-painter-${stamp}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+      toast('Saved your sky! 💾☁️');
+    }, 'image/png');
+  }
+
+  // ---------- Controls ----------
+  function undo() {
+    if (!layers.length) return;
+    layers.pop();
+    updateUndo();
+    toast('Poof! ☁️');
+  }
+
+  let armed = false;
+  let armTimer = 0;
+  function disarm() {
+    armed = false;
+    clearTimeout(armTimer);
+    $('clearBtn').classList.remove('armed');
+    $('clearLbl').textContent = 'Clear';
+  }
+
+  function clearSky() {
+    if (!layers.length) {
+      toast('The sky is already clear ✨');
+      return;
+    }
+    if (!armed) {
+      armed = true;
+      $('clearBtn').classList.add('armed');
+      $('clearLbl').textContent = 'Sure?';
+      armTimer = setTimeout(disarm, 2500);
+      return;
+    }
+    disarm();
+    layers.length = 0;
+    updateUndo();
+    toast('Fresh sky! 🌈');
+  }
+
+  function setSky(i) {
+    state.sky = i;
+    $('skyIcon').textContent = SKIES[i].icon;
+    $('skyLbl').textContent = SKIES[i].name;
+  }
+
+  function selectBrush(id) {
+    state.brush = id;
+    document.querySelectorAll('.shape').forEach((b) => {
+      const on = b.dataset.brush === id;
+      b.classList.toggle('sel', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+  }
+
+  function selectColor(i) {
+    state.color = i;
+    document.querySelectorAll('.swatch').forEach((b) => {
+      const on = Number(b.dataset.i) === i;
+      b.classList.toggle('sel', on);
+      b.setAttribute('aria-checked', String(on));
+    });
+  }
+
+  function buildControls() {
+    const shapes = $('shapes');
+    BRUSHES.forEach((b) => {
+      const btn = document.createElement('button');
+      btn.className = 'shape';
+      btn.type = 'button';
+      btn.dataset.brush = b.id;
+      btn.title = b.label;
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-label', b.label);
+      btn.innerHTML = b.svg;
+      btn.addEventListener('click', () => selectBrush(b.id));
+      shapes.appendChild(btn);
+    });
+
+    const colors = $('colors');
+    COLORS.forEach((col, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch';
+      btn.type = 'button';
+      btn.dataset.i = String(i);
+      btn.title = col.name;
+      btn.setAttribute('role', 'radio');
+      btn.setAttribute('aria-label', col.name);
+      btn.style.background = col.hex;
+      btn.addEventListener('click', () => selectColor(i));
+      colors.appendChild(btn);
+    });
+
+    selectBrush(state.brush);
+    selectColor(state.color);
+
+    $('size').addEventListener('input', (e) => { state.size = Number(e.target.value); });
+
+    $('undoBtn').addEventListener('click', undo);
+    $('clearBtn').addEventListener('click', clearSky);
+    $('skyBtn').addEventListener('click', () => setSky((state.sky + 1) % SKIES.length));
+    $('planeBtn').addEventListener('click', launchPlane);
+    $('saveBtn').addEventListener('click', savePNG);
+
+    $('soundBtn').addEventListener('click', () => {
+      state.sound = !state.sound;
+      $('soundIcon').textContent = state.sound ? '🔊' : '🔇';
+      toast(state.sound ? 'Sounds on 🔊' : 'Sounds off 🔇');
+    });
+
+    const breezeBtn = $('breezeBtn');
+    const syncBreeze = () => {
+      breezeBtn.classList.toggle('on', state.breeze);
+      $('breezeLbl').textContent = state.breeze ? 'Breeze' : 'Calm';
+    };
+    breezeBtn.addEventListener('click', () => {
+      state.breeze = !state.breeze;
+      syncBreeze();
+      toast(state.breeze ? 'A gentle breeze 🌬️' : 'Clouds are resting 😴');
+    });
+    syncBreeze();
+
+    $('startBtn').addEventListener('click', () => {
+      ensureAudio();
+      $('intro').classList.add('gone');
+      setTimeout(() => planeHint(), 900);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (!$('intro').classList.contains('gone')) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+      else if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); savePNG(); }
+      else if (!mod && e.key.toLowerCase() === 'p') { launchPlane(); }
+    });
+  }
+
+  function planeHint() {
+    toast('Try launching a plane with ✈️ or press P');
+  }
+
+  // ---------- Pointer input ----------
+  function toPoint(e) { return { x: e.clientX, y: e.clientY }; }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (stroke) return;
+    const pt = toPoint(e);
+    const hit = planes.find((p) => !p.offscreen && Math.hypot(pt.x - p.x, pt.y - p.y) < 50);
+    if (hit) {
+      hit.boost = 1.5;
+      tone(560, 1100, 0.35, 0.04);
+      toast('Wheee! 🎉');
+      return;
+    }
+    canvas.setPointerCapture(e.pointerId);
+    ensureAudio();
+    tone(700, 900, 0.12, 0.025);
+    beginStroke(pt, e.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.pointerType === 'mouse') state.hover = toPoint(e);
+    if (!stroke || e.pointerId !== stroke.pid) return;
+    const events = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    if (events.length) {
+      for (const ev of events) strokeTo(ev.clientX, ev.clientY);
+    } else {
+      strokeTo(e.clientX, e.clientY);
+    }
+  });
+
+  const finishPointer = (e) => {
+    if (stroke && e.pointerId === stroke.pid) endStroke();
+  };
+  canvas.addEventListener('pointerup', finishPointer);
+  canvas.addEventListener('pointercancel', finishPointer);
+  canvas.addEventListener('pointerleave', () => { state.hover = null; });
+
+  // ---------- Layout / loop ----------
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    paint.width = canvas.width;
+    paint.height = canvas.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+    last = now;
+    time += dt;
+
+    // Ease the wind in and out so drifting starts and stops gently.
+    const target = state.breeze ? 1 : 0;
+    state.wind += (target - state.wind) * Math.min(1, dt * 2.5);
+    if (state.wind > 0.001) {
+      for (const l of layers) {
+        l.x += l.speed * state.wind * dt;
+        // Wrap once fully off the right edge so clouds re-enter from the left.
+        while (l.x >= W) l.x -= W + l.w;
+      }
+    }
+
+    updateBirds(dt);
+    updatePlanes(dt);
+
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    render(ctx, time);
+    requestAnimationFrame(frame);
+  }
+
+  // Stars for the night sky (normalized positions)
+  for (let i = 0; i < 90; i++) {
+    stars.push({
+      x: Math.random(),
+      y: Math.random() * 0.75,
+      r: 0.6 + Math.random() * 1.6,
+      ph: Math.random() * TAU,
+      sp: 0.8 + Math.random() * 1.6,
+    });
+  }
+
+  window.addEventListener('resize', () => {
+    resize();
+    initBirds();
+  });
+
+  resize();
+  initBirds();
+  buildControls();
+  seedSky();
+  updateUndo();
+  setSky(0);
+  requestAnimationFrame((now) => { last = now; frame(now); });
+})();
+</script>
+</body>
+</html>

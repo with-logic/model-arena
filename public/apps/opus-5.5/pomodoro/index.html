@@ -1,0 +1,2252 @@
+<!doctype html>
+<html lang="en" data-theme="light" data-mode="focus">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pomodoro</title>
+<meta name="description" content="A focus timer with a twistable dial, session log and charts.">
+<meta name="theme-color" content="#FFF1EE">
+<link rel="icon" id="favicon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='18.5' r='11.5' fill='%23EC3F23'/%3E%3Cpath fill='%232E9447' d='M16 12.6c-1.9-2.2-4.6-2.6-7-1.6 1.6-1.9 3.8-2.6 6-2.3-.5-1.4-.3-2.6.9-3.6.3 1.3 1 2.3 2.2 2.9 2.2-.4 4.3.4 5.9 2.3-2.4-.8-5.4-.5-8 2.3z'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&family=Figtree:wght@400..800&display=swap" rel="stylesheet">
+<script>
+  /* Set theme + mode before first paint so there is no flash. */
+  (function () {
+    var d = document.documentElement;
+    try {
+      var s = JSON.parse(localStorage.getItem('pomodoro.v1.settings') || '{}') || {};
+      var t = s.theme || 'system';
+      if (t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      d.setAttribute('data-theme', t);
+      var st = JSON.parse(localStorage.getItem('pomodoro.v1.state') || '{}') || {};
+      if (st.mode === 'focus' || st.mode === 'short' || st.mode === 'long') d.setAttribute('data-mode', st.mode);
+    } catch (e) { d.setAttribute('data-theme', 'light'); }
+  })();
+</script>
+<style>
+/* ------------------------------------------------------------------
+   Tokens
+   ------------------------------------------------------------------ */
+:root {
+  --font-display: "Anybody", "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-ui: "Figtree", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --pad-x: clamp(16px, 4vw, 40px);
+  --leaf: #2E9447;
+}
+html[data-theme="light"] {
+  color-scheme: light;
+  --ink: #26171A;
+  --ink-2: #6B575B;
+  --raised: #FFFFFF;
+  --line: rgba(38, 23, 26, .14);
+  --line-2: rgba(38, 23, 26, .07);
+  --c-focus: #EC3F23;
+  --c-short: #0E9F8C;
+  --c-long: #4B5CF0;
+  --heat-0: rgba(38, 23, 26, .07);
+  --heat-1: #FAD0C6;
+  --heat-2: #F49A85;
+  --heat-3: #EC5A3C;
+  --heat-4: #B4280F;
+  --tip-bg: #26171A;
+  --tip-ink: #FFF6F4;
+  --leaf: #2E9447;
+  --body-shadow: 0 30px 50px -24px;
+  --shadow-a: 30%;
+}
+html[data-theme="light"][data-mode="focus"] { --paper: #FFF1EE; --accent: #EC3F23; --accent-strong: #D2361C; --accent-deep: #9E2511; --accent-ink: #B92D16; --on-accent: #FFFFFF; }
+html[data-theme="light"][data-mode="short"] { --paper: #E9F6F3; --accent: #0E9F8C; --accent-strong: #0B7F70; --accent-deep: #065449; --accent-ink: #09705F; --on-accent: #FFFFFF; }
+html[data-theme="light"][data-mode="long"]  { --paper: #EEF0FE; --accent: #4B5CF0; --accent-strong: #3F4FE0; --accent-deep: #27329E; --accent-ink: #3343CC; --on-accent: #FFFFFF; }
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #FBEFEC;
+  --ink-2: #C4B0AE;
+  --line: rgba(255, 240, 236, .15);
+  --line-2: rgba(255, 240, 236, .075);
+  --c-focus: #EE5034;
+  --c-short: #16A893;
+  --c-long: #7381F7;
+  --heat-0: rgba(255, 240, 236, .08);
+  --heat-1: #55291F;
+  --heat-2: #8C3826;
+  --heat-3: #CF4A2D;
+  --heat-4: #FF8466;
+  --tip-bg: #FBEFEC;
+  --tip-ink: #26171A;
+  --leaf: #4DB566;
+  --shadow-a: 45%;
+}
+html[data-theme="dark"][data-mode="focus"] { --paper: #22161A; --raised: #302226; --accent: #EE5034; --accent-strong: #EE5034; --accent-deep: #9A2D18; --accent-ink: #FF8C73; --on-accent: #1A0D0F; }
+html[data-theme="dark"][data-mode="short"] { --paper: #0F1F1D; --raised: #1A2E2B; --accent: #16A893; --accent-strong: #16A893; --accent-deep: #0A6457; --accent-ink: #52D8C3; --on-accent: #04120F; }
+html[data-theme="dark"][data-mode="long"]  { --paper: #14172E; --raised: #212540; --accent: #7381F7; --accent-strong: #7381F7; --accent-deep: #3A44A8; --accent-ink: #AAB3FF; --on-accent: #0B0D1F; }
+
+/* ------------------------------------------------------------------
+   Base
+   ------------------------------------------------------------------ */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; background: var(--paper); transition: background-color .6s var(--ease-out); }
+body {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  transition: background-color .6s var(--ease-out), color .3s;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.sr-only { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+svg { display: block; }
+[hidden] { display: none !important; }
+
+/* ------------------------------------------------------------------
+   Header
+   ------------------------------------------------------------------ */
+.top {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 20px var(--pad-x) 12px;
+}
+.brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 820; font-stretch: 135%;
+  font-size: 22px; letter-spacing: -.01em;
+  color: var(--ink); text-decoration: none;
+  justify-self: start;
+}
+.brand svg { width: 30px; height: 30px; }
+.modes {
+  display: flex; gap: 2px; padding: 4px;
+  border-radius: 999px;
+  background: var(--line-2);
+}
+.mode-tab {
+  appearance: none; border: 0; background: transparent;
+  color: var(--ink-2);
+  font-weight: 650; font-size: 15px; line-height: 1;
+  padding: 10px 16px 10px 13px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 8px;
+  transition: background-color .2s, color .2s, box-shadow .2s;
+  white-space: nowrap;
+}
+.mode-tab:hover { color: var(--ink); }
+.mode-tab .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--dotc); flex: none; }
+.mode-tab[data-mode="focus"] { --dotc: var(--c-focus); }
+.mode-tab[data-mode="short"] { --dotc: var(--c-short); }
+.mode-tab[data-mode="long"]  { --dotc: var(--c-long); }
+.mode-tab[aria-selected="true"] { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--line-2); }
+.tools { justify-self: end; display: flex; gap: 4px; }
+.icon-btn {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: transparent; border: 0; color: var(--ink);
+  transition: background-color .15s;
+}
+.icon-btn:hover { background: var(--line-2); }
+.icon-btn svg { width: 22px; height: 22px; }
+.theme-dark-only { display: none; }
+html[data-theme="dark"] .theme-dark-only { display: block; }
+html[data-theme="dark"] .theme-light-only { display: none; }
+
+/* ------------------------------------------------------------------
+   Hero: dial + today
+   ------------------------------------------------------------------ */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.12fr) minmax(0, .88fr);
+  gap: clamp(32px, 5vw, 80px);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 12px var(--pad-x) 64px;
+  align-items: start;
+}
+.timer-col { display: flex; flex-direction: column; align-items: center; min-width: 0; }
+
+.dial-wrap {
+  position: relative;
+  width: min(100%, 540px);
+  aspect-ratio: 1;
+  container-type: inline-size;
+  user-select: none; -webkit-user-select: none;
+  touch-action: none;
+}
+#dial {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 26px 34px color-mix(in srgb, var(--accent-deep) var(--shadow-a), transparent)) drop-shadow(0 2px 3px rgba(0,0,0,.08));
+  transition: filter .6s;
+  border-radius: 50%;
+}
+#dial:focus-visible { outline: 3px solid var(--accent); outline-offset: 6px; }
+.dial-wrap.can-set #dial { cursor: grab; }
+.dial-wrap.dragging #dial { cursor: grabbing; }
+#dial .body { fill: var(--raised); stroke: var(--line-2); stroke-width: 1; transition: fill .6s; }
+#dial .track { fill: color-mix(in srgb, var(--accent) 14%, var(--raised)); transition: fill .6s; }
+#dial .wedge { fill: var(--accent); transition: fill .6s; }
+html.is-paused #dial .wedge { fill: url(#hatch); }
+#dial .hatch-bg { fill: color-mix(in srgb, var(--accent) 30%, var(--raised)); }
+#dial .hatch-line { stroke: var(--accent); stroke-width: 5; }
+#dial .hub { fill: var(--raised); cursor: pointer; transition: fill .6s; }
+#dial .hub-ring { fill: none; stroke: var(--line-2); stroke-width: 1; pointer-events: none; }
+#dial .tick { stroke: var(--ink-2); stroke-width: 1.5; stroke-linecap: round; opacity: .55; }
+#dial .tick.major { stroke: var(--ink); stroke-width: 3; opacity: .9; }
+#dial .num { fill: var(--ink); font-family: var(--font-ui); font-weight: 700; font-size: 15px; }
+#dial .pointer { fill: var(--ink); }
+#dial .sec-dot { fill: var(--accent); opacity: 0; transition: opacity .3s; }
+html.is-running #dial .sec-dot { opacity: 1; }
+#hubGroup { transform-box: fill-box; transform-origin: center; }
+.pulse #hubGroup { animation: hub-pulse .45s var(--ease-spring); }
+@keyframes hub-pulse { 0% { transform: scale(1); } 35% { transform: scale(.955); } 100% { transform: scale(1); } }
+.ringing #dial { animation: ring-bell .9s cubic-bezier(.36,.07,.19,.97); }
+@keyframes ring-bell {
+  0%, 100% { transform: rotate(0); }
+  10% { transform: rotate(-6deg); } 20% { transform: rotate(6deg); }
+  30% { transform: rotate(-5deg); } 40% { transform: rotate(5deg); }
+  52% { transform: rotate(-3deg); } 64% { transform: rotate(3deg); }
+  78% { transform: rotate(-1deg); }
+}
+
+.dial-center {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  pointer-events: none;
+  text-align: center;
+}
+.dial-mode {
+  font-weight: 700;
+  font-size: 15px; font-size: clamp(13px, 3.3cqw, 18px);
+  color: var(--accent-ink);
+  transition: color .6s;
+  margin-bottom: .1em;
+}
+.digits {
+  font-family: var(--font-display);
+  font-size: 14vw; font-size: 13.6cqw;
+  line-height: 1;
+  font-weight: 860;
+  font-stretch: 104%;
+  --dw: .72em; --cw: .33em;
+  letter-spacing: 0;
+  color: var(--ink);
+  display: flex; justify-content: center;
+  transition: font-weight .5s var(--ease-out), font-stretch .5s var(--ease-out), color .4s;
+  font-variant-numeric: tabular-nums;
+}
+.digits .d { display: inline-block; width: var(--dw); text-align: center; transition: width .5s var(--ease-out); }
+.digits .c { display: inline-block; width: var(--cw); text-align: center; transform: translateY(-.04em); transition: width .5s var(--ease-out); }
+.digits.long { font-size: 10.8cqw; }
+html.is-paused .digits { font-weight: 260; --dw: .6em; --cw: .26em; }
+html.is-idle .digits { font-weight: 700; --dw: .67em; --cw: .3em; }
+.cycle-dots { display: flex; gap: 7px; margin-top: .9cqw; height: 12px; align-items: center; }
+.cycle-dots i {
+  width: 9px; height: 9px; border-radius: 50%;
+  box-shadow: inset 0 0 0 2px var(--line);
+  transition: background-color .3s, box-shadow .3s, transform .3s var(--ease-spring);
+}
+.cycle-dots i.done { background: var(--c-focus); box-shadow: none; }
+.cycle-dots i.now { box-shadow: inset 0 0 0 2px var(--c-focus); transform: scale(1.15); }
+
+.burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; pointer-events: none; z-index: 3; }
+.burst i { position: absolute; left: 0; top: 0; border-radius: 50%; will-change: transform, opacity; }
+.burst i.leaf { border-radius: 2px 70% 2px 70%; }
+
+.controls { display: flex; align-items: center; justify-content: center; gap: clamp(16px, 4vw, 32px); margin-top: 18px; }
+.go {
+  font-family: var(--font-display);
+  font-weight: 780; font-stretch: 120%;
+  font-size: 24px; letter-spacing: .01em;
+  color: var(--on-accent);
+  background: var(--accent-strong);
+  border: 0; border-radius: 999px;
+  min-width: 196px; height: 68px; padding: 0 40px;
+  box-shadow: 0 6px 0 var(--accent-deep), 0 18px 30px -12px color-mix(in srgb, var(--accent) 70%, transparent);
+  transform: translateY(0);
+  transition: transform .08s, box-shadow .08s, background-color .6s;
+  position: relative; top: -3px;
+}
+.go:hover { filter: brightness(1.04); }
+.go:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--accent-deep), 0 6px 14px -8px color-mix(in srgb, var(--accent) 70%, transparent); }
+.go:focus-visible { outline-color: var(--ink); outline-offset: 6px; }
+.ctl {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: none; border: 0; padding: 4px 6px; border-radius: 14px;
+  color: var(--ink-2); font-size: 13px; font-weight: 650;
+}
+.ctl .ic {
+  width: 50px; height: 50px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--raised); color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line), 0 3px 0 var(--line);
+  transition: transform .08s, box-shadow .08s, background-color .6s;
+}
+.ctl:hover .ic { box-shadow: inset 0 0 0 1px var(--ink-2), 0 3px 0 var(--line); }
+.ctl:active .ic { transform: translateY(3px); box-shadow: inset 0 0 0 1px var(--line), 0 0 0 var(--line); }
+.ctl svg { width: 22px; height: 22px; }
+.ctl:disabled { opacity: .4; cursor: default; }
+.hint { min-height: 24px; margin: 14px 0 0; color: var(--ink-2); font-size: 15px; text-align: center; transition: color .2s; }
+.hint.flash { animation: hint-flash .6s; }
+@keyframes hint-flash { 0%, 100% { transform: none; } 25% { transform: translateX(-6px); } 50% { transform: translateX(5px); } 75% { transform: translateX(-3px); } }
+
+.intent { width: min(100%, 460px); margin-top: 26px; }
+.intent label { display: block; font-weight: 650; font-size: 15px; margin-bottom: 8px; }
+.field {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--raised);
+  border-radius: 14px; padding: 0 8px 0 14px;
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: box-shadow .15s, background-color .6s;
+}
+.field svg { width: 18px; height: 18px; color: var(--ink-2); flex: none; }
+.field input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 17px; font-weight: 500; padding: 13px 0; outline: none; }
+.field input::placeholder { color: var(--ink-2); opacity: .75; }
+.field:focus-within { box-shadow: inset 0 0 0 2px var(--accent); }
+.clear-x { width: 32px; height: 32px; border-radius: 50%; border: 0; background: transparent; color: var(--ink-2); display: grid; place-items: center; }
+.clear-x:hover { background: var(--line-2); color: var(--ink); }
+.clear-x svg { width: 16px; height: 16px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.chip {
+  border: 0; background: var(--line-2); color: var(--ink);
+  font-size: 13.5px; font-weight: 550;
+  padding: 6px 12px; border-radius: 999px;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.chip:hover { background: var(--line); }
+
+/* Today panel */
+.today { min-width: 0; padding-top: 8px; }
+.today-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.today h2 {
+  font-family: var(--font-display); font-weight: 830; font-stretch: 128%;
+  font-size: 40px; line-height: 1.05; letter-spacing: -.015em; margin: 0;
+}
+.today .date { color: var(--ink-2); font-size: 16px; margin: 4px 0 0; }
+.cheer { font-size: 21px; line-height: 1.4; font-weight: 550; margin: 18px 0 16px; max-width: 32ch; text-wrap: pretty; }
+.tomatoes { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; min-height: 36px; }
+.tomatoes svg { width: 34px; height: 34px; }
+.tomatoes .tf { fill: var(--c-focus); }
+.tomatoes .te { fill: none; stroke: var(--ink-2); stroke-opacity: .5; stroke-width: 2; stroke-dasharray: 3.4 2.6; }
+.tomatoes .lf { fill: var(--leaf); }
+.tomatoes .le { fill: var(--ink-2); opacity: .4; }
+.tomatoes .bonus svg { width: 28px; height: 28px; }
+.tomatoes .pop { animation: pop .7s var(--ease-spring); }
+@keyframes pop { 0% { transform: scale(.2) rotate(-40deg); } 60% { transform: scale(1.25) rotate(8deg); } 100% { transform: none; } }
+.tomatoes .more { font-weight: 700; color: var(--ink-2); font-size: 14px; margin-left: 4px; }
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 24px 0 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.stats > div { padding: 14px 0 14px 16px; }
+.stats > div:first-child { padding-left: 0; }
+.stats > div + div { border-left: 1px solid var(--line); }
+.stats dt { font-size: 14px; color: var(--ink-2); font-weight: 550; }
+.stats dd { margin: 2px 0 0; font-family: var(--font-display); font-weight: 760; font-stretch: 112%; font-size: 28px; line-height: 1.15; white-space: nowrap; }
+.block { margin-top: 30px; }
+.block-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin: 0 0 10px; }
+.block-head h3 { font-size: 17px; font-weight: 750; margin: 0; }
+.block-head small { color: var(--ink-2); font-size: 14px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 6px; font-size: 13.5px; color: var(--ink-2); align-items: center; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 12px; height: 12px; border-radius: 3px; background: var(--k); display: inline-block; }
+.heat-legend { justify-content: space-between; }
+.heat-legend .scale { display: inline-flex; gap: 3px; align-items: center; }
+.heat-legend .scale i { width: 12px; height: 12px; }
+
+.sample-note {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  padding: 10px 10px 10px 14px; margin-bottom: 18px;
+  border-radius: 12px;
+  background: var(--line-2);
+  font-size: 14px; color: var(--ink-2);
+}
+.sample-note p { margin: 0; flex: 1 1 220px; }
+.link-btn { border: 0; background: var(--raised); color: var(--ink); font-weight: 650; font-size: 14px; padding: 7px 12px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); white-space: nowrap; }
+.link-btn:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
+
+/* Charts */
+.chart-svg { overflow: visible; }
+.chart-svg text { font-family: var(--font-ui); }
+.axis text { fill: var(--ink-2); font-size: 12px; font-variant-numeric: tabular-nums; }
+.grid line { stroke: var(--line-2); stroke-width: 1; }
+.baseline { stroke: var(--line); stroke-width: 1; }
+.bar { fill: var(--c-focus); transition: opacity .15s, filter .15s; }
+.bar.hot { filter: brightness(1.15) saturate(1.1); }
+.chart-svg.has-hot .bar:not(.hot) { opacity: .55; }
+.hit { fill: transparent; }
+.goal-line { stroke: var(--ink); stroke-width: 1; opacity: .55; }
+.goal-label { fill: var(--ink); font-size: 12px; font-weight: 700; }
+.dlabel { fill: var(--ink); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.halo { paint-order: stroke; stroke: var(--paper); stroke-width: 4px; stroke-linejoin: round; }
+.empty-msg { fill: var(--ink-2); font-size: 14px; font-weight: 550; }
+.tl-track { fill: var(--line-2); }
+.tl-focus { fill: var(--c-focus); }
+.tl-short { fill: var(--c-short); }
+.tl-long { fill: var(--c-long); }
+.tl-live { fill: url(#liveHatch); }
+.tl-now { stroke: var(--ink); stroke-width: 2; stroke-linecap: round; }
+.tl-block { transition: opacity .15s; }
+.tl-block.dim { opacity: .65; }
+.heat-cell { transition: opacity .12s; }
+.heat-cell.hot { stroke: var(--ink); stroke-width: 1.5; }
+.chart-box { position: relative; min-height: 40px; }
+.chart-box:focus-visible { outline-offset: 6px; border-radius: 8px; }
+
+/* ------------------------------------------------------------------
+   Sections
+   ------------------------------------------------------------------ */
+.section { max-width: 1280px; margin: 0 auto; padding: 0 var(--pad-x); }
+.section-inner { border-top: 1px solid var(--line); padding: 48px 0 56px; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.sec-head h2 {
+  font-family: var(--font-display); font-weight: 830; font-stretch: 128%;
+  font-size: 40px; line-height: 1.05; letter-spacing: -.015em; margin: 0;
+}
+.seg { display: inline-flex; gap: 2px; padding: 4px; border-radius: 999px; background: var(--line-2); }
+.seg label { position: relative; }
+.seg input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.seg span { display: block; padding: 8px 14px; border-radius: 999px; font-size: 14px; font-weight: 650; color: var(--ink-2); white-space: nowrap; transition: background-color .2s, color .2s; }
+.seg input:checked + span { background: var(--raised); color: var(--ink); box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 0 0 1px var(--line-2); }
+.seg input:focus-visible + span { outline: 3px solid var(--accent); outline-offset: 2px; }
+.seg label:hover span { color: var(--ink); }
+
+.summary { font-size: 22px; line-height: 1.5; max-width: 60ch; margin: 0; text-wrap: pretty; }
+.summary b { font-family: var(--font-display); font-weight: 760; font-stretch: 110%; white-space: nowrap; }
+.charts { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 48px; margin-top: 36px; }
+.chart h3 { font-size: 18px; font-weight: 750; margin: 0; }
+.chart .sub { margin: 2px 0 16px; color: var(--ink-2); font-size: 14.5px; }
+
+/* Log */
+.log-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.log-actions .seg { margin-right: 8px; }
+.btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 0; background: var(--raised); color: var(--ink);
+  font-weight: 650; font-size: 14.5px;
+  padding: 9px 16px; border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.btn:hover { box-shadow: inset 0 0 0 1px var(--ink-2); }
+.btn svg { width: 17px; height: 17px; }
+.btn.primary { background: var(--accent-strong); color: var(--on-accent); box-shadow: none; }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn.danger { background: #C42B1C; color: #fff; box-shadow: none; }
+.day-group { margin-top: 26px; }
+.day-group:first-of-type { margin-top: 8px; }
+.day-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.day-head h3 { font-size: 17px; font-weight: 750; margin: 0; }
+.day-head span { color: var(--ink-2); font-size: 14px; }
+.row {
+  display: grid;
+  grid-template-columns: 150px 128px minmax(0, 1fr) 64px 112px 36px;
+  grid-template-areas: "time type lbl dur status del";
+  align-items: center; gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-2);
+  font-size: 15px;
+}
+.row .time { grid-area: time; font-variant-numeric: tabular-nums; color: var(--ink-2); white-space: nowrap; }
+.row .type { grid-area: type; display: flex; align-items: center; gap: 9px; font-weight: 650; white-space: nowrap; }
+.row .key { width: 14px; height: 4px; border-radius: 2px; background: var(--k); flex: none; }
+.row .lbl { grid-area: lbl; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .dur { grid-area: dur; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.row .status { grid-area: status; color: var(--ink-2); font-size: 14px; white-space: nowrap; }
+.row .del { grid-area: del; width: 34px; height: 34px; border-radius: 50%; border: 0; background: transparent; color: var(--ink-2); display: grid; place-items: center; opacity: .55; transition: opacity .15s, background-color .15s; }
+.row:hover .del, .row .del:focus-visible { opacity: 1; }
+.row .del:hover { background: var(--line-2); color: var(--ink); }
+.row .del svg { width: 16px; height: 16px; }
+.log-empty { padding: 28px 0; color: var(--ink-2); font-size: 17px; max-width: 46ch; }
+.more-wrap { margin-top: 20px; }
+
+/* Footer */
+.foot { max-width: 1280px; margin: 0 auto; padding: 0 var(--pad-x) 48px; }
+.foot-inner { border-top: 1px solid var(--line); padding-top: 22px; display: flex; flex-wrap: wrap; gap: 10px 22px; color: var(--ink-2); font-size: 14px; align-items: center; }
+kbd {
+  font: 700 12px/1 var(--font-ui);
+  display: inline-block; min-width: 22px; text-align: center;
+  padding: 4px 6px; border-radius: 6px; margin-right: 4px;
+  background: var(--raised); color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line), 0 2px 0 var(--line);
+}
+
+/* Tooltip */
+.tip {
+  position: fixed; z-index: 60; left: 0; top: 0;
+  pointer-events: none;
+  background: var(--tip-bg); color: var(--tip-ink);
+  padding: 8px 12px; border-radius: 10px;
+  font-size: 13px; line-height: 1.35;
+  box-shadow: 0 10px 30px -8px rgba(0,0,0,.35);
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .12s, transform .12s;
+  max-width: 260px;
+}
+.tip.on { opacity: 1; transform: none; }
+.tip .v { display: block; font-weight: 750; font-size: 15px; font-variant-numeric: tabular-nums; }
+.tip .l { display: block; opacity: .78; }
+.tip .k { display: inline-block; width: 12px; height: 3px; border-radius: 2px; background: var(--k); margin-right: 6px; vertical-align: middle; }
+
+/* Toasts */
+.toasts { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: calc(100vw - 24px); }
+.toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 14px;
+  background: var(--tip-bg); color: var(--tip-ink);
+  padding: 11px 12px 11px 18px; border-radius: 14px;
+  font-size: 15px; font-weight: 550;
+  box-shadow: 0 16px 40px -12px rgba(0,0,0,.45);
+  animation: toast-in .35s var(--ease-spring);
+}
+.toast.out { animation: toast-out .25s var(--ease-out) forwards; }
+.toast button { border: 0; background: transparent; color: inherit; font-weight: 750; text-decoration: underline; text-underline-offset: 3px; padding: 4px 6px; border-radius: 6px; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(10px); } }
+
+/* Dialogs */
+dialog {
+  border: 0; padding: 0;
+  border-radius: 22px;
+  background: var(--raised); color: var(--ink);
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 32px);
+  box-shadow: 0 40px 90px -24px rgba(0,0,0,.5);
+}
+dialog[open] { animation: dlg-in .3s var(--ease-out); }
+@keyframes dlg-in { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+dialog::backdrop { background: rgba(26, 12, 14, .45); backdrop-filter: blur(3px); }
+.dlg { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 20px 8px 28px; }
+.dlg-head h2 { font-family: var(--font-display); font-weight: 830; font-stretch: 125%; font-size: 30px; margin: 0; letter-spacing: -.01em; }
+.dlg-body { overflow: auto; padding: 0 28px 8px; }
+.dlg-body section { padding: 18px 0; border-bottom: 1px solid var(--line-2); }
+.dlg-body section:last-child { border-bottom: 0; }
+.dlg-body h3 { font-size: 15px; font-weight: 750; margin: 0 0 6px; color: var(--accent-ink); }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 0; }
+.set-row > label, .set-row > .lab { font-weight: 600; font-size: 15.5px; }
+.set-row small { display: block; font-weight: 450; color: var(--ink-2); font-size: 13.5px; line-height: 1.35; margin-top: 2px; }
+.stepper { display: inline-flex; align-items: center; border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); background: var(--paper); flex: none; }
+.stepper button { width: 38px; height: 40px; border: 0; background: transparent; font-size: 20px; font-weight: 600; color: var(--ink); border-radius: 10px; }
+.stepper button:hover { background: var(--line-2); }
+.stepper input { width: 46px; text-align: center; border: 0; background: transparent; font-weight: 700; font-size: 16px; font-variant-numeric: tabular-nums; -moz-appearance: textfield; padding: 0; }
+.stepper input::-webkit-outer-spin-button, .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.stepper .unit { font-size: 13px; color: var(--ink-2); margin-right: 4px; min-width: 52px; }
+.switch {
+  appearance: none; -webkit-appearance: none;
+  width: 48px; height: 28px; border-radius: 999px; margin: 0;
+  background: var(--line); position: relative; flex: none;
+  transition: background-color .2s;
+  cursor: pointer;
+}
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3); transition: transform .25s var(--ease-spring); }
+.switch:checked { background: var(--accent-strong); }
+.switch:checked::after { transform: translateX(20px); }
+.vol { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; }
+input[type="range"] { accent-color: var(--accent-strong); width: min(200px, 100%); }
+.dlg-body .seg { flex-wrap: wrap; border-radius: 16px; }
+.dlg-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px 20px; border-top: 1px solid var(--line-2); }
+.dlg-foot .btn { padding: 11px 22px; font-size: 15.5px; }
+.note { font-size: 13.5px; color: var(--ink-2); margin: 4px 0 0; }
+.confirm-body { padding: 4px 28px 8px; font-size: 16px; color: var(--ink-2); }
+.confirm-body p { margin: 0 0 8px; }
+
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+
+/* ------------------------------------------------------------------
+   Responsive
+   ------------------------------------------------------------------ */
+@media (max-width: 1020px) {
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .today { max-width: 640px; width: 100%; margin: 0 auto; }
+  .charts { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .top { grid-template-columns: 1fr auto; grid-template-areas: "brand tools" "modes modes"; row-gap: 14px; }
+  .brand { grid-area: brand; }
+  .tools { grid-area: tools; }
+  .modes { grid-area: modes; justify-self: stretch; }
+  .mode-tab { flex: 1; justify-content: center; padding: 10px 8px; font-size: 14px; }
+  .row { grid-template-columns: auto minmax(0, 1fr) auto 36px; grid-template-areas: "type time dur del" "lbl lbl status status"; row-gap: 2px; }
+  .row .time { text-align: left; font-size: 14px; }
+  .row .status { text-align: right; }
+  .row .lbl:empty { display: none; }
+  .sec-head h2, .today h2 { font-size: 32px; }
+  .summary { font-size: 19px; }
+  .stats dd { font-size: 23px; }
+}
+@media (max-width: 420px) {
+  .go { min-width: 150px; height: 62px; font-size: 21px; padding: 0 26px; }
+  .ctl .ic { width: 46px; height: 46px; }
+  .mode-tab .dot { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+@media (forced-colors: active) {
+  #dial .wedge { fill: Highlight; }
+  .bar, .tl-focus, .tl-short, .tl-long { fill: CanvasText; }
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="liveHatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" style="fill: color-mix(in srgb, var(--c-focus) 35%, transparent)"/>
+      <path d="M0 0V6" style="stroke: var(--c-focus); stroke-width: 3"/>
+    </pattern>
+  </defs>
+</svg>
+
+<header class="top">
+  <a class="brand" href="#" aria-label="Pomodoro home">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18.5" r="11.5" fill="var(--c-focus)"/><path fill="var(--leaf)" d="M16 12.6c-1.9-2.2-4.6-2.6-7-1.6 1.6-1.9 3.8-2.6 6-2.3-.5-1.4-.3-2.6.9-3.6.3 1.3 1 2.3 2.2 2.9 2.2-.4 4.3.4 5.9 2.3-2.4-.8-5.4-.5-8 2.3z"/></svg>
+    Pomodoro
+  </a>
+  <nav class="modes" role="tablist" aria-label="Timer mode">
+    <button class="mode-tab" role="tab" data-mode="focus" aria-selected="true"><span class="dot" aria-hidden="true"></span>Focus</button>
+    <button class="mode-tab" role="tab" data-mode="short" aria-selected="false"><span class="dot" aria-hidden="true"></span>Short break</button>
+    <button class="mode-tab" role="tab" data-mode="long" aria-selected="false"><span class="dot" aria-hidden="true"></span>Long break</button>
+  </nav>
+  <div class="tools">
+    <button class="icon-btn" id="themeBtn" type="button" aria-label="Switch to dark mode" title="Dark mode (D)">
+      <svg class="theme-light-only" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 1 1 9.8 3.5a7 7 0 0 0 10.7 10.7z"/></svg>
+      <svg class="theme-dark-only" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>
+    </button>
+    <button class="icon-btn" id="settingsBtn" type="button" aria-label="Settings" title="Settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" aria-label="Timer">
+    <div class="timer-col">
+      <div class="dial-wrap" id="dialWrap">
+        <svg id="dial" viewBox="-232 -232 464 464" role="slider" tabindex="0" aria-label="Session length" aria-valuemin="1" aria-valuemax="60" aria-valuenow="25" aria-valuetext="25 minutes">
+          <defs>
+            <pattern id="hatch" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+              <rect class="hatch-bg" width="12" height="12"/>
+              <path class="hatch-line" d="M0 0V12"/>
+            </pattern>
+            <filter id="hubShadow" x="-30%" y="-30%" width="160%" height="160%">
+              <feDropShadow dx="0" dy="7" stdDeviation="9" style="flood-color: var(--accent-deep); flood-opacity: .3"/>
+            </filter>
+          </defs>
+          <circle class="body" r="218"/>
+          <circle class="track" r="162"/>
+          <path class="wedge" id="wedge" d=""/>
+          <g id="scale"></g>
+          <g id="hubGroup">
+            <circle class="hub" id="hub" r="120" filter="url(#hubShadow)"/>
+            <circle class="hub-ring" r="112"/>
+            <circle class="sec-dot" id="secDot" r="5" cx="0" cy="-104"/>
+          </g>
+          <path class="pointer" d="M0 -199 L-11 -226 Q0 -231 11 -226 Z"/>
+        </svg>
+        <div class="dial-center" aria-hidden="true">
+          <div class="dial-mode" id="dialMode">Focus</div>
+          <div class="digits" id="digits"></div>
+          <div class="cycle-dots" id="cycleDots"></div>
+        </div>
+        <div class="burst" id="burst" aria-hidden="true"></div>
+      </div>
+
+      <div class="controls">
+        <button class="ctl" id="resetBtn" type="button" title="Reset (R)">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3.5 4v4.5H8"/></svg></span>
+          Reset
+        </button>
+        <button class="go" id="startBtn" type="button">Start</button>
+        <button class="ctl" id="skipBtn" type="button" title="Skip to next (S)">
+          <span class="ic"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 5.6v12.8c0 .8.9 1.3 1.6.8l9-6.4c.6-.4.6-1.2 0-1.6l-9-6.4C5.9 4.3 5 4.8 5 5.6z"/><rect x="17" y="5" width="2.6" height="14" rx="1.3"/></svg></span>
+          Skip
+        </button>
+      </div>
+      <p class="hint" id="hint" aria-live="polite"></p>
+
+      <div class="intent">
+        <label for="intentInput">What are you working on?</label>
+        <div class="field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
+          <input id="intentInput" type="text" maxlength="80" placeholder="Name this session, like “Draft the intro”" autocomplete="off" enterkeyhint="done">
+          <button class="clear-x" id="intentClear" type="button" aria-label="Clear session name" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="chips" id="chips" aria-label="Recent session names"></div>
+      </div>
+    </div>
+
+    <aside class="today" aria-labelledby="todayTitle">
+      <div class="sample-note" id="sampleNoteToday" hidden>
+        <p>You’re looking at sample sessions so the charts have something to show. They clear when you finish your first session.</p>
+        <button class="link-btn" type="button" data-action="clear-sample">Remove sample data</button>
+      </div>
+      <div class="today-head">
+        <div>
+          <h2 id="todayTitle">Today</h2>
+          <p class="date" id="todayDate"></p>
+        </div>
+      </div>
+      <p class="cheer" id="cheer"></p>
+      <div class="tomatoes" id="tomatoes" role="img"></div>
+      <dl class="stats">
+        <div><dt>Focused</dt><dd id="statFocused">0m</dd></div>
+        <div><dt>Sessions</dt><dd id="statSessions">0</dd></div>
+        <div><dt>Streak</dt><dd id="statStreak">0 days</dd></div>
+      </dl>
+
+      <div class="block">
+        <div class="block-head"><h3>Your day</h3><small id="timelineNote"></small></div>
+        <div class="chart-box" id="timeline"></div>
+        <div class="legend" aria-hidden="true">
+          <span><i style="--k: var(--c-focus)"></i>Focus</span>
+          <span><i style="--k: var(--c-short)"></i>Short break</span>
+          <span><i style="--k: var(--c-long)"></i>Long break</span>
+        </div>
+      </div>
+
+      <div class="block">
+        <div class="block-head"><h3>Consistency</h3><small id="heatNote"></small></div>
+        <div class="chart-box" id="heatmap"></div>
+        <div class="legend heat-legend" aria-hidden="true">
+          <span>Each square is one day</span>
+          <span class="scale">No focus <i style="--k: var(--heat-0)"></i><i style="--k: var(--heat-1)"></i><i style="--k: var(--heat-2)"></i><i style="--k: var(--heat-3)"></i><i style="--k: var(--heat-4)"></i> Goal met</span>
+        </div>
+      </div>
+    </aside>
+  </section>
+
+  <section class="section" aria-labelledby="insightsTitle">
+    <div class="section-inner">
+      <div class="sec-head">
+        <h2 id="insightsTitle">Insights</h2>
+        <div class="seg" role="radiogroup" aria-label="Date range">
+          <label><input type="radio" name="range" value="7"><span>7 days</span></label>
+          <label><input type="radio" name="range" value="30"><span>30 days</span></label>
+          <label><input type="radio" name="range" value="90"><span>90 days</span></label>
+        </div>
+      </div>
+      <p class="summary" id="summary"></p>
+      <div class="charts">
+        <figure class="chart" style="margin:0">
+          <h3>Focus per day</h3>
+          <p class="sub">Minutes of focus each day, with your daily goal as a line</p>
+          <div class="chart-box" id="dailyChart" tabindex="0" aria-describedby="dailyHelp"></div>
+          <p class="sr-only" id="dailyHelp">Use the left and right arrow keys to read each day.</p>
+          <table class="sr-only" id="dailyTable"></table>
+        </figure>
+        <figure class="chart" style="margin:0">
+          <h3>When you focus</h3>
+          <p class="sub">Focus minutes by hour of the day</p>
+          <div class="chart-box" id="hourChart" tabindex="0" aria-describedby="hourHelp"></div>
+          <p class="sr-only" id="hourHelp">Use the left and right arrow keys to read each hour.</p>
+          <table class="sr-only" id="hourTable"></table>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="logTitle">
+    <div class="section-inner">
+      <div class="sec-head">
+        <h2 id="logTitle">Session log</h2>
+        <div class="log-actions">
+          <div class="seg" role="radiogroup" aria-label="Show in log">
+            <label><input type="radio" name="logFilter" value="focus"><span>Focus only</span></label>
+            <label><input type="radio" name="logFilter" value="all"><span>Everything</span></label>
+          </div>
+          <button class="btn" id="exportBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Export CSV</button>
+          <button class="btn" id="clearBtn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4.5h6V7M6.5 7l1 13h9l1-13"/></svg>Clear history</button>
+        </div>
+      </div>
+      <div class="sample-note" id="sampleNoteLog" hidden>
+        <p>These are sample sessions. Your own sessions replace them as soon as you finish one.</p>
+        <button class="link-btn" type="button" data-action="clear-sample">Remove sample data</button>
+      </div>
+      <div id="logList"></div>
+      <div class="more-wrap"><button class="btn" id="moreBtn" type="button" hidden>Show earlier days</button></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="foot-inner" aria-label="Keyboard shortcuts">
+    <span><kbd>Space</kbd>Start or pause</span>
+    <span><kbd>R</kbd>Reset</span>
+    <span><kbd>S</kbd>Skip</span>
+    <span><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>Switch mode</span>
+    <span><kbd>D</kbd>Dark mode</span>
+    <span>Everything stays in this browser.</span>
+  </div>
+</footer>
+
+<div class="tip" id="tip" role="tooltip"></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="sr-only" id="announcer" aria-live="assertive"></div>
+
+<dialog id="settingsDlg" aria-labelledby="settingsTitle">
+  <form method="dialog" class="dlg" id="settingsForm">
+    <div class="dlg-head">
+      <h2 id="settingsTitle">Settings</h2>
+      <button class="icon-btn" value="close" aria-label="Close settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    <div class="dlg-body">
+      <section>
+        <h3>Timer</h3>
+        <div class="set-row"><label for="setFocus">Focus</label>
+          <div class="stepper"><button type="button" data-step="-1" data-for="setFocus" aria-label="Shorter focus">−</button><input id="setFocus" data-setting="focus" type="number" min="1" max="120" inputmode="numeric"><span class="unit">min</span><button type="button" data-step="1" data-for="setFocus" aria-label="Longer focus">+</button></div></div>
+        <div class="set-row"><label for="setShort">Short break</label>
+          <div class="stepper"><button type="button" data-step="-1" data-for="setShort" aria-label="Shorter short break">−</button><input id="setShort" data-setting="short" type="number" min="1" max="60" inputmode="numeric"><span class="unit">min</span><button type="button" data-step="1" data-for="setShort" aria-label="Longer short break">+</button></div></div>
+        <div class="set-row"><label for="setLong">Long break</label>
+          <div class="stepper"><button type="button" data-step="-1" data-for="setLong" aria-label="Shorter long break">−</button><input id="setLong" data-setting="long" type="number" min="1" max="90" inputmode="numeric"><span class="unit">min</span><button type="button" data-step="1" data-for="setLong" aria-label="Longer long break">+</button></div></div>
+        <div class="set-row"><label for="setEvery">Long break after<small>Focus sessions in a row before the long break</small></label>
+          <div class="stepper"><button type="button" data-step="-1" data-for="setEvery" aria-label="Fewer sessions before long break">−</button><input id="setEvery" data-setting="longEvery" type="number" min="2" max="8" inputmode="numeric"><span class="unit">sessions</span><button type="button" data-step="1" data-for="setEvery" aria-label="More sessions before long break">+</button></div></div>
+        <div class="set-row"><label for="setGoal">Daily goal<small>Shown as tomatoes on the Today panel</small></label>
+          <div class="stepper"><button type="button" data-step="-1" data-for="setGoal" aria-label="Lower daily goal">−</button><input id="setGoal" data-setting="goal" type="number" min="1" max="16" inputmode="numeric"><span class="unit">sessions</span><button type="button" data-step="1" data-for="setGoal" aria-label="Higher daily goal">+</button></div></div>
+        <p class="note" id="durNote" hidden>New lengths apply from your next session.</p>
+      </section>
+      <section>
+        <h3>Auto-start</h3>
+        <div class="set-row"><label for="setAutoBreak">Start breaks automatically<small>Your break begins the moment a focus session ends.</small></label><input class="switch" type="checkbox" role="switch" id="setAutoBreak" data-setting="autoBreak"></div>
+        <div class="set-row"><label for="setAutoFocus">Start focus automatically<small>The next focus session begins when a break ends.</small></label><input class="switch" type="checkbox" role="switch" id="setAutoFocus" data-setting="autoFocus"></div>
+      </section>
+      <section>
+        <h3>Sound</h3>
+        <div class="set-row"><label for="setSound">Beep when a session ends</label><input class="switch" type="checkbox" role="switch" id="setSound" data-setting="sound"></div>
+        <div class="set-row" style="flex-wrap:wrap">
+          <span class="lab" id="styleLab">Alert</span>
+          <div class="seg" role="radiogroup" aria-labelledby="styleLab">
+            <label><input type="radio" name="soundStyle" value="beep" data-setting="soundStyle"><span>Classic beep</span></label>
+            <label><input type="radio" name="soundStyle" value="chime" data-setting="soundStyle"><span>Chime</span></label>
+            <label><input type="radio" name="soundStyle" value="bell" data-setting="soundStyle"><span>Kitchen bell</span></label>
+          </div>
+        </div>
+        <div class="set-row"><label for="setVolume">Volume</label>
+          <div class="vol"><input type="range" id="setVolume" data-setting="volume" min="0" max="1" step="0.05"><button class="btn" type="button" id="testSound">Play test</button></div></div>
+        <div class="set-row"><label for="setTick">Dial clicks<small>A soft click for each minute while you turn the dial.</small></label><input class="switch" type="checkbox" role="switch" id="setTick" data-setting="dialClicks"></div>
+      </section>
+      <section>
+        <h3>Notifications</h3>
+        <div class="set-row"><label for="setNotify">Desktop notification<small id="notifyNote">Get a heads-up when a session ends while this tab is in the background.</small></label><input class="switch" type="checkbox" role="switch" id="setNotify" data-setting="notify"></div>
+      </section>
+      <section>
+        <h3>Appearance</h3>
+        <div class="set-row" style="flex-wrap:wrap">
+          <span class="lab" id="themeLab">Theme</span>
+          <div class="seg" role="radiogroup" aria-labelledby="themeLab">
+            <label><input type="radio" name="theme" value="system" data-setting="theme"><span>Match system</span></label>
+            <label><input type="radio" name="theme" value="light" data-setting="theme"><span>Light</span></label>
+            <label><input type="radio" name="theme" value="dark" data-setting="theme"><span>Dark</span></label>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div class="dlg-foot"><button class="btn primary" value="close">Done</button></div>
+  </form>
+</dialog>
+
+<dialog id="confirmDlg" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+  <form method="dialog" class="dlg">
+    <div class="dlg-head"><h2 id="confirmTitle" style="font-size:26px">Are you sure?</h2></div>
+    <div class="confirm-body"><p id="confirmText"></p></div>
+    <div class="dlg-foot">
+      <button class="btn" value="cancel" id="confirmCancel">Cancel</button>
+      <button class="btn primary" value="ok" id="confirmOk">OK</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ================================================================
+     Utilities
+     ================================================================ */
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const root = document.documentElement;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+  const MIN = 60000;
+
+  function h(tag, attrs, ...kids) {
+    const n = document.createElement(tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+      if (k === 'class') n.className = v;
+      else if (k === 'text') n.textContent = v;
+      else if (k === 'style') n.style.cssText = v;
+      else if (k.startsWith('on') && typeof v === 'function') n.addEventListener(k.slice(2), v);
+      else n.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of kids.flat()) if (c != null) n.append(c.nodeType ? c : document.createTextNode(String(c)));
+    return n;
+  }
+  function s(tag, attrs, ...kids) {
+    const n = document.createElementNS(SVGNS, tag);
+    if (attrs) for (const [k, v] of Object.entries(attrs)) {
+      if (v == null) continue;
+      if (k === 'text') n.textContent = v; else n.setAttribute(k, v);
+    }
+    for (const c of kids.flat()) if (c) n.append(c);
+    return n;
+  }
+  function load(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); return v == null ? fallback : v; } catch { return fallback; }
+  }
+  function store(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* storage full or blocked */ } }
+  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+  /* Dates */
+  function dayStart(t) { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  function addDays(t, n) { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); }
+  function dayKey(t) { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+  const fmtHour = new Intl.DateTimeFormat(undefined, { hour: 'numeric' });
+  const fmtWeekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+  const fmtWeekdayLong = new Intl.DateTimeFormat(undefined, { weekday: 'long' });
+  const fmtMonthDay = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+  const fmtLongDate = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+  const fmtDayFull = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+  const fmtMonth = new Intl.DateTimeFormat(undefined, { month: 'short' });
+
+  function fmtDur(min) {
+    min = Math.round(min);
+    if (min < 60) return min + 'm';
+    const hh = Math.floor(min / 60), mm = min % 60;
+    return mm ? `${hh}h ${String(mm).padStart(2, '0')}m` : `${hh}h`;
+  }
+  function fmtClock(ms) {
+    const sec = Math.max(0, Math.ceil(ms / 1000 - 1e-6));
+    const m = Math.floor(sec / 60), r = sec % 60;
+    return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+  }
+  function plural(n, one, many) { return n === 1 ? one : many; }
+
+  /* ================================================================
+     State
+     ================================================================ */
+  const KEYS = { settings: 'pomodoro.v1.settings', sessions: 'pomodoro.v1.sessions', state: 'pomodoro.v1.state', ui: 'pomodoro.v1.ui' };
+  const MODES = {
+    focus: { name: 'Focus', setting: 'focus' },
+    short: { name: 'Short break', setting: 'short' },
+    long: { name: 'Long break', setting: 'long' },
+  };
+  const DEFAULTS = {
+    focus: 25, short: 5, long: 15, longEvery: 4, goal: 8,
+    autoBreak: true, autoFocus: false,
+    sound: true, soundStyle: 'beep', volume: 0.7, dialClicks: true,
+    notify: false, theme: 'system',
+  };
+  const LIMITS = { focus: [1, 120], short: [1, 60], long: [1, 90], longEvery: [2, 8], goal: [1, 16] };
+
+  let settings = Object.assign({}, DEFAULTS, load(KEYS.settings, {}));
+  for (const [k, [a, b]] of Object.entries(LIMITS)) settings[k] = clamp(Math.round(+settings[k] || DEFAULTS[k]), a, b);
+
+  let ui = Object.assign({ range: 7, logDays: 3, logFilter: 'focus' }, load(KEYS.ui, {}));
+  if (ui.logFilter !== 'all') ui.logFilter = 'focus';
+  if (![7, 30, 90].includes(ui.range)) ui.range = 7;
+  ui.logDays = 3;
+
+  let sessions = load(KEYS.sessions, null);
+  if (!Array.isArray(sessions)) { sessions = makeSample(); store(KEYS.sessions, sessions); }
+  sessions = sessions.filter(x => x && MODES[x.type] && isFinite(x.start) && isFinite(x.end));
+
+  const durFor = mode => settings[MODES[mode].setting] * MIN;
+  let st = load(KEYS.state, null);
+  if (!st || !MODES[st.mode] || !isFinite(st.duration) || !isFinite(st.remaining)) {
+    st = { mode: 'focus', duration: durFor('focus'), remaining: durFor('focus'), running: false, endAt: 0, startedAt: 0, cycle: 0, label: '' };
+  }
+  st.cycle = clamp(st.cycle | 0, 0, 20);
+  st.label = typeof st.label === 'string' ? st.label : '';
+
+  const saveSettings = () => store(KEYS.settings, settings);
+  const saveSessions = () => store(KEYS.sessions, sessions);
+  const saveState = () => store(KEYS.state, st);
+  const saveUi = () => store(KEYS.ui, { range: ui.range, logFilter: ui.logFilter });
+
+  const currentRemaining = () => st.running ? Math.max(0, st.endAt - Date.now()) : st.remaining;
+  const isStarted = () => st.running || st.remaining < st.duration;
+  const canSet = () => !isStarted();
+  const scaleFor = dur => dur > 60 * MIN ? 120 : 60;
+
+  /* ================================================================
+     Sample data, so first-time charts have something to show
+     ================================================================ */
+  function makeSample() {
+    const out = [];
+    const now = Date.now();
+    const today0 = dayStart(now);
+    let seed = 20261113;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const labels = ['Write the project brief', 'Inbox zero', 'Thesis, chapter 2', 'Code review', 'Spanish practice', 'Prep design critique', 'Budget spreadsheet', 'Read: Deep Work'];
+    for (let d = 118; d >= 0; d--) {
+      const day = addDays(today0, -d);
+      const dow = new Date(day).getDay();
+      const weekend = dow === 0 || dow === 6;
+      if (d > 0 && rnd() < (weekend ? 0.45 : d > 60 ? 0.22 : 0.05)) continue;
+      const ramp = d > 60 ? 0.6 : 1; // a gentle upward trend
+      const count = weekend ? 1 + Math.floor(rnd() * 3) : Math.max(1, Math.round((3 + Math.floor(rnd() * 7)) * ramp));
+      let t = day + (8.25 + rnd() * 1.75) * 3600000;
+      let cycle = 0;
+      const mainLabel = labels[Math.floor(rnd() * labels.length)];
+      for (let i = 0; i < count; i++) {
+        const completed = rnd() > 0.09;
+        const actual = completed ? 1500 : (7 + Math.floor(rnd() * 14)) * 60;
+        if (t + actual * 1000 > now) break;
+        out.push({ id: uid(), type: 'focus', start: t, end: t + actual * 1000, planned: 1500, actual, completed, label: rnd() < 0.7 ? mainLabel : labels[Math.floor(rnd() * labels.length)], sample: true });
+        t += actual * 1000;
+        if (completed) cycle++;
+        const isLong = completed && cycle % 4 === 0;
+        const b = (isLong ? 15 : 5) * 60;
+        if (t + b * 1000 > now) break;
+        out.push({ id: uid(), type: isLong ? 'long' : 'short', start: t, end: t + b * 1000, planned: b, actual: b, completed: true, label: '', sample: true });
+        t += b * 1000;
+        t += (i === 3 ? 50 + rnd() * 70 : rnd() * 14) * MIN;
+      }
+    }
+    return out;
+  }
+  const hasSample = () => sessions.some(x => x.sample);
+  function clearSample(silent) {
+    const n = sessions.length;
+    sessions = sessions.filter(x => !x.sample);
+    if (sessions.length !== n) {
+      saveSessions();
+      renderData();
+      if (!silent) toast('Sample data removed. The log is all yours now.');
+    }
+  }
+
+  /* ================================================================
+     Audio: beeps, chimes, a kitchen bell and dial clicks (Web Audio)
+     ================================================================ */
+  let actx = null, master = null, scheduled = null;
+  function ensureAudio() {
+    try {
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        actx = new AC();
+        master = actx.createGain();
+        master.gain.value = settings.volume;
+        master.connect(actx.destination);
+      }
+      if (actx.state === 'suspended') actx.resume().then(() => { if (st.running && !scheduled) scheduleAlert(); });
+    } catch { return null; }
+    return actx;
+  }
+  function tone(at, { freq, dur, type = 'sine', gain = 0.3, attack = 0.006, to, dest }) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, at);
+    if (to) o.frequency.exponentialRampToValueAtTime(to, at + dur);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(gain, at + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    o.connect(g).connect(dest || master);
+    o.start(at); o.stop(at + dur + 0.05);
+    return o;
+  }
+  /* Each pattern returns the oscillators it scheduled, so a pending alert can be cancelled. */
+  function playPattern(style, mode, at) {
+    if (!actx) return [];
+    const nodes = [];
+    const lift = mode === 'focus' ? 1 : 1.335; // break-end alerts sit a fourth higher
+    if (style === 'chime') {
+      const notes = mode === 'focus' ? [1046.5, 1318.5, 1568, 2093] : [1568, 1318.5, 1046.5, 1568];
+      notes.forEach((f, i) => {
+        nodes.push(tone(at + i * 0.13, { freq: f, dur: 1.1, gain: 0.22 }));
+        nodes.push(tone(at + i * 0.13, { freq: f * 2.01, dur: 0.5, gain: 0.05 }));
+      });
+    } else if (style === 'bell') {
+      const lp = actx.createBiquadFilter(); lp.type = 'highshelf'; lp.frequency.value = 4000; lp.gain.value = -6; lp.connect(master);
+      for (let i = 0; i < 16; i++) {
+        const t = at + i * 0.075;
+        const base = 2350 * (lift > 1 ? 1.12 : 1);
+        nodes.push(tone(t, { freq: base, dur: 0.24, gain: 0.16, attack: 0.002, dest: lp }));
+        nodes.push(tone(t, { freq: base * 2.76, dur: 0.12, gain: 0.05, attack: 0.002, dest: lp }));
+        nodes.push(tone(t, { freq: base * 0.5, dur: 0.18, gain: 0.04, attack: 0.002, dest: lp }));
+      }
+    } else {
+      const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200; lp.connect(master);
+      for (let g = 0; g < 3; g++) for (let b = 0; b < 2; b++) {
+        nodes.push(tone(at + g * 0.55 + b * 0.15, { freq: 880 * lift, dur: 0.1, type: 'square', gain: 0.12, attack: 0.004, dest: lp }));
+      }
+    }
+    return nodes;
+  }
+  function playNow(mode) {
+    if (!settings.sound || !ensureAudio()) return;
+    playPattern(settings.soundStyle, mode, actx.currentTime + 0.03);
+  }
+  /* Schedule the end-of-session alert on the audio clock. It fires on time even when the
+     tab is in the background and JS timers are throttled. */
+  function scheduleAlert() {
+    cancelAlert();
+    if (!st.running || !settings.sound || !actx || actx.state !== 'running') return;
+    const when = actx.currentTime + Math.max(0, (st.endAt - Date.now()) / 1000);
+    scheduled = { endAt: st.endAt, when, nodes: playPattern(settings.soundStyle, st.mode, when) };
+  }
+  function cancelAlert() {
+    if (!scheduled) return;
+    for (const n of scheduled.nodes) { try { n.stop(0); n.disconnect(); } catch { /* already stopped */ } }
+    scheduled = null;
+  }
+  let lastClick = 0;
+  function dialClick() {
+    if (!settings.sound || !settings.dialClicks || !ensureAudio()) return;
+    const now = performance.now();
+    if (now - lastClick < 28) return;
+    lastClick = now;
+    tone(actx.currentTime + 0.005, { freq: 2400, dur: 0.018, type: 'triangle', gain: 0.09, attack: 0.001 });
+    if (navigator.vibrate) try { navigator.vibrate(4); } catch { /* not allowed */ }
+  }
+
+  /* ================================================================
+     Timer engine
+     ================================================================ */
+  function start(at) {
+    if (st.running) return;
+    ensureAudio();
+    const now = at || Date.now();
+    if (st.remaining <= 0) st.remaining = st.duration;
+    st.running = true;
+    st.endAt = now + st.remaining;
+    if (!st.startedAt) st.startedAt = now;
+    tween = null;
+    saveState();
+    scheduleAlert();
+    pulseHub();
+    render();
+  }
+  function pause() {
+    if (!st.running) return;
+    st.remaining = Math.max(0, st.endAt - Date.now());
+    st.running = false;
+    cancelAlert();
+    saveState();
+    render();
+  }
+  const toggle = () => (st.running ? pause() : start());
+
+  function logPartial() {
+    if (!st.startedAt) return null;
+    const elapsed = st.duration - currentRemaining();
+    if (elapsed < MIN) return null;
+    return addSession({ type: st.mode, start: st.startedAt, end: Date.now(), planned: st.duration / 1000, actual: Math.round(elapsed / 1000), completed: false, label: st.mode === 'focus' ? st.label.trim() : '' });
+  }
+  function setMode(mode, { animate = true } = {}) {
+    cancelAlert();
+    const from = displayed;
+    st.mode = mode;
+    st.duration = durFor(mode);
+    st.remaining = st.duration;
+    st.running = false; st.endAt = 0; st.startedAt = 0;
+    saveState();
+    if (animate) windTo(from);
+    render();
+  }
+  function reset() {
+    const wasStarted = isStarted();
+    const logged = logPartial();
+    setMode(st.mode);
+    if (wasStarted) toast(logged ? 'Timer reset. The time you put in is in the log.' : 'Timer reset.');
+  }
+  function skip() {
+    const wasRunning = st.running;
+    logPartial();
+    advance(false, wasRunning ? Date.now() : 0);
+  }
+  function advance(completed, autoAt) {
+    if (st.mode === 'focus') {
+      if (completed) st.cycle++;
+      const next = completed && st.cycle >= settings.longEvery ? 'long' : 'short';
+      setMode(next);
+      if (autoAt && settings.autoBreak) start(autoAt);
+    } else {
+      if (st.mode === 'long') st.cycle = 0;
+      setMode('focus');
+      if (autoAt && settings.autoFocus) start(autoAt);
+    }
+  }
+  function complete({ silent = false } = {}) {
+    const at = st.endAt || Date.now();
+    const mode = st.mode;
+    addSession({ type: mode, start: st.startedAt || at - st.duration, end: at, planned: st.duration / 1000, actual: Math.round(st.duration / 1000), completed: true, label: mode === 'focus' ? st.label.trim() : '' });
+    const alreadyRang = scheduled && scheduled.endAt === at && actx && actx.currentTime >= scheduled.when - 0.15;
+    if (!alreadyRang) cancelAlert();
+    scheduled = null;
+    if (!silent) {
+      if (!alreadyRang) playNow(mode);
+      celebrate(mode);
+    }
+    advance(true, at);
+    const nextName = MODES[st.mode].name.toLowerCase();
+    const msg = mode === 'focus' ? `Focus session done. Next up: ${nextName}.` : 'Break over. Ready for the next focus session?';
+    announce(msg);
+    if (!silent) notify(mode === 'focus' ? 'Focus session done' : 'Break over', mode === 'focus' ? `Nice work. Time for a ${nextName}${st.running ? ', it has started.' : '.'}` : `Back to it${st.running ? '. Your focus session has started.' : ' when you are ready.'}`);
+  }
+  /* Finish any sessions that ended while the page was closed or asleep. */
+  function catchUp() {
+    let n = 0;
+    const finished = [];
+    while (st.running && st.endAt <= Date.now() && n++ < 60) { finished.push(st.mode); complete({ silent: true }); }
+    if (finished.length) {
+      const f = finished.filter(m => m === 'focus').length;
+      toast(f ? `${f} focus ${plural(f, 'session', 'sessions')} finished while you were away.` : 'Your break ended while you were away.');
+    }
+  }
+  function addSession(rec) {
+    if (rec.end - rec.start < 1000) rec.start = rec.end - rec.actual * 1000;
+    rec.id = uid();
+    const sampleWasThere = hasSample();
+    if (sampleWasThere) sessions = sessions.filter(x => !x.sample);
+    sessions.push(rec);
+    saveSessions();
+    renderData();
+    if (sampleWasThere) toast('Sample data cleared. This log is all yours now.');
+    return rec;
+  }
+
+  /* ================================================================
+     The dial
+     ================================================================ */
+  const dial = $('#dial'), dialWrap = $('#dialWrap'), scaleG = $('#scale'), wedge = $('#wedge'), secDot = $('#secDot');
+  const digitsEl = $('#digits');
+  let builtScale = 0;
+  let displayed = st.remaining / MIN; // minutes currently drawn
+  let tween = null;
+
+  function buildScale(S) {
+    if (builtScale === S) return;
+    builtScale = S;
+    scaleG.replaceChildren();
+    const step = S / 60, majorEvery = S === 60 ? 5 : 10;
+    for (let i = 0; i < 60; i++) {
+      const v = i * step, a = -v / S * 360, major = v % majorEvery === 0;
+      scaleG.append(s('line', { class: major ? 'tick major' : 'tick', x1: 0, y1: major ? -196 : -203, x2: 0, y2: -211, transform: `rotate(${a})` }));
+      if (major) scaleG.append(s('text', { class: 'num', x: 0, y: -183, transform: `rotate(${a})`, 'text-anchor': 'middle', 'dominant-baseline': 'central', text: String(v) }));
+    }
+    dial.setAttribute('aria-valuemax', String(S));
+  }
+  function wedgePath(deg, r) {
+    if (deg <= 0.05) return '';
+    if (deg >= 359.95) return `M0 ${-r}A${r} ${r} 0 1 1 0 ${r}A${r} ${r} 0 1 1 0 ${-r}Z`;
+    const rad = deg * Math.PI / 180;
+    return `M0 0L0 ${-r}A${r} ${r} 0 ${deg > 180 ? 1 : 0} 1 ${(r * Math.sin(rad)).toFixed(2)} ${(-r * Math.cos(rad)).toFixed(2)}Z`;
+  }
+  function windTo(fromMinutes) {
+    if (reduceMotion.matches) { tween = null; return; }
+    tween = { from: fromMinutes, t0: performance.now(), dur: 750 };
+  }
+  const easeOutBack = p => { const c1 = 1.3, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+
+  let lastDigits = '';
+  function setDigits(str) {
+    if (str === lastDigits) return;
+    if (str.length !== lastDigits.length) {
+      digitsEl.replaceChildren(...[...str].map(ch => h('span', { class: ch === ':' ? 'c' : 'd', text: ch })));
+      digitsEl.classList.toggle('long', str.length > 5);
+    } else {
+      const spans = digitsEl.children;
+      for (let i = 0; i < str.length; i++) if (str[i] !== lastDigits[i]) spans[i].textContent = str[i];
+    }
+    lastDigits = str;
+  }
+
+  let lastAria = '';
+  function drawDial() {
+    const S = drag ? drag.S : scaleFor(st.duration);
+    buildScale(S);
+    const target = currentRemaining() / MIN;
+    let show = target, digitMin = target;
+    if (tween && !drag) {
+      const p = clamp((performance.now() - tween.t0) / tween.dur, 0, 1);
+      if (p >= 1) tween = null;
+      else {
+        show = tween.from + (target - tween.from) * easeOutBack(p);
+        const lin = tween.from + (target - tween.from) * (1 - Math.pow(1 - p, 3));
+        digitMin = clamp(lin, Math.min(tween.from, target), Math.max(tween.from, target));
+      }
+    }
+    displayed = show;
+    const deg = clamp(show / S * 360, 0, 360);
+    scaleG.setAttribute('transform', `rotate(${deg.toFixed(3)})`);
+    wedge.setAttribute('d', wedgePath(deg, 162));
+    if (st.running) {
+      const el = (st.duration - currentRemaining()) / 1000;
+      const a = (el % 60) / 60 * 2 * Math.PI;
+      secDot.setAttribute('cx', (104 * Math.sin(a)).toFixed(2));
+      secDot.setAttribute('cy', (-104 * Math.cos(a)).toFixed(2));
+    }
+    setDigits(fmtClock(Math.round(digitMin * MIN / 1000) * 1000));
+    // aria (only when the whole-minute value changes, so screen readers are not flooded)
+    const mins = Math.ceil(target - 1e-6);
+    const aria = st.running ? `${mins} ${plural(mins, 'minute', 'minutes')} left` : canSet() ? `${mins} ${plural(mins, 'minute', 'minutes')}` : `Paused, ${mins} ${plural(mins, 'minute', 'minutes')} left`;
+    if (aria !== lastAria) {
+      lastAria = aria;
+      dial.setAttribute('aria-valuenow', String(Math.round(st.duration / MIN)));
+      dial.setAttribute('aria-valuetext', aria);
+      dial.setAttribute('aria-disabled', canSet() ? 'false' : 'true');
+    }
+  }
+
+  /* Drag (twist) to set the length, tap the hub to start or pause */
+  let drag = null, hubTap = null;
+  function toDial(e) {
+    const r = dial.getBoundingClientRect();
+    const k = 464 / r.width;
+    return { x: (e.clientX - (r.left + r.width / 2)) * k, y: (e.clientY - (r.top + r.height / 2)) * k };
+  }
+  const angleOf = p => { let a = Math.atan2(p.x, -p.y) * 180 / Math.PI; return a < 0 ? a + 360 : a; };
+  function setMinutes(min, { click = true } = {}) {
+    const [lo, hi] = LIMITS[MODES[st.mode].setting];
+    min = clamp(Math.round(min), lo, hi);
+    if (min === Math.round(st.duration / MIN)) return;
+    settings[MODES[st.mode].setting] = min;
+    st.duration = st.remaining = min * MIN;
+    saveSettings(); saveState();
+    if (click) dialClick();
+    renderControls();
+    syncSettingsForm();
+  }
+  dial.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    ensureAudio();
+    const p = toDial(e), r = Math.hypot(p.x, p.y);
+    if (r <= 120) { hubTap = { x: e.clientX, y: e.clientY, id: e.pointerId }; return; }
+    if (r > 236) return;
+    if (!canSet()) { nudge(); return; }
+    e.preventDefault();
+    const S = scaleFor(st.duration);
+    const a = angleOf(p);
+    drag = { S, last: a, acc: a, id: e.pointerId };
+    tween = null;
+    try { dial.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+    dialWrap.classList.add('dragging');
+    setMinutes(Math.max(1, a / 360 * S));
+  });
+  dial.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const a = angleOf(toDial(e));
+    let d = a - drag.last;
+    if (d > 180) d -= 360; else if (d < -180) d += 360;
+    drag.last = a;
+    drag.acc = clamp(drag.acc + d, 0, 360);
+    setMinutes(Math.max(1, drag.acc / 360 * drag.S));
+  });
+  function endDrag(e) {
+    if (hubTap && e.type === 'pointerup' && e.pointerId === hubTap.id && Math.hypot(e.clientX - hubTap.x, e.clientY - hubTap.y) < 10) {
+      const p = toDial(e);
+      if (Math.hypot(p.x, p.y) <= 124) toggle();
+    }
+    hubTap = null;
+    if (!drag || e.pointerId !== drag.id) return;
+    const S = drag.S;
+    drag = null;
+    dialWrap.classList.remove('dragging');
+    if (scaleFor(st.duration) !== S) windTo(displayed * S / scaleFor(st.duration));
+    renderData();
+  }
+  dial.addEventListener('pointerup', endDrag);
+  dial.addEventListener('pointercancel', endDrag);
+  dial.addEventListener('keydown', e => {
+    const steps = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 5, PageDown: -5 };
+    if (e.key in steps || e.key === 'Home' || e.key === 'End') {
+      e.preventDefault();
+      if (!canSet()) { nudge(); return; }
+      const cur = Math.round(st.duration / MIN);
+      const S = scaleFor(st.duration);
+      const next = e.key === 'Home' ? 1 : e.key === 'End' ? S : cur + steps[e.key];
+      const from = displayed;
+      setMinutes(next);
+      windTo(from);
+    } else if (e.key === 'Enter') { e.preventDefault(); toggle(); }
+  });
+  function nudge() {
+    const hint = $('#hint');
+    hint.textContent = 'Reset the timer to change its length.';
+    hint.classList.remove('flash'); void hint.offsetWidth; hint.classList.add('flash');
+    clearTimeout(nudge.t);
+    nudge.t = setTimeout(renderControls, 2600);
+  }
+  function pulseHub() {
+    if (reduceMotion.matches) return;
+    dialWrap.classList.remove('pulse'); void dialWrap.offsetWidth; dialWrap.classList.add('pulse');
+  }
+
+  /* Celebration: the dial rings like a kitchen timer and tomatoes burst out */
+  function celebrate(mode) {
+    if (reduceMotion.matches || document.hidden) return;
+    dialWrap.classList.remove('ringing'); void dialWrap.offsetWidth; dialWrap.classList.add('ringing');
+    setTimeout(() => dialWrap.classList.remove('ringing'), 1000);
+    if (mode !== 'focus') return;
+    const burst = $('#burst');
+    const size = dialWrap.clientWidth;
+    const colors = ['var(--c-focus)', 'var(--c-focus)', 'var(--c-focus)', 'var(--leaf)', '#FFB627'];
+    for (let i = 0; i < 26; i++) {
+      const leaf = i % 5 === 3;
+      const p = h('i', { class: leaf ? 'leaf' : '' });
+      const sz = (leaf ? 9 : 6) + Math.random() * 9;
+      p.style.cssText = `width:${sz}px;height:${sz}px;margin:${-sz / 2}px 0 0 ${-sz / 2}px;background:${colors[i % colors.length]}`;
+      burst.append(p);
+      const ang = Math.random() * Math.PI * 2;
+      const r0 = size * 0.26, r1 = size * (0.48 + Math.random() * 0.22);
+      const x0 = Math.cos(ang) * r0, y0 = Math.sin(ang) * r0;
+      const x1 = Math.cos(ang) * r1, y1 = Math.sin(ang) * r1 + size * 0.05;
+      p.animate([
+        { transform: `translate(${x0}px, ${y0}px) scale(.3) rotate(0deg)`, opacity: 0 },
+        { transform: `translate(${(x0 + x1) / 2}px, ${(y0 + y1) / 2}px) scale(1.1) rotate(${90 * (Math.random() - .5)}deg)`, opacity: 1, offset: 0.35 },
+        { transform: `translate(${x1}px, ${y1 + size * 0.06}px) scale(.5) rotate(${200 * (Math.random() - .5)}deg)`, opacity: 0 },
+      ], { duration: 1000 + Math.random() * 500, easing: 'cubic-bezier(.15,.75,.3,1)' }).onfinish = () => p.remove();
+    }
+  }
+
+  /* ================================================================
+     Rendering: mode, controls, title, favicon
+     ================================================================ */
+  const BREAK_TIPS = [
+    'Stand up and stretch your back.', 'Refill your water.', 'Look at something far away for a bit.',
+    'Roll your shoulders, unclench your jaw.', 'Step outside for a breath of air.', 'Walk around the room once or twice.',
+    'Close your eyes for a minute.', 'Leave the phone face down.',
+  ];
+  let breakTip = BREAK_TIPS[0];
+  function renderMode() {
+    root.dataset.mode = st.mode;
+    $$('.mode-tab').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === st.mode)));
+    $('#dialMode').textContent = MODES[st.mode].name;
+    if (st.mode !== 'focus') breakTip = BREAK_TIPS[Math.floor(Math.random() * BREAK_TIPS.length)];
+    requestAnimationFrame(() => {
+      const paper = getComputedStyle(root).getPropertyValue('--paper').trim();
+      if (paper) $('meta[name="theme-color"]').setAttribute('content', paper);
+    });
+    lastFav = '';
+  }
+  function renderControls() {
+    const started = isStarted();
+    root.classList.toggle('is-running', st.running);
+    root.classList.toggle('is-paused', !st.running && started);
+    root.classList.toggle('is-idle', !started);
+    dialWrap.classList.toggle('can-set', !started);
+    $('#startBtn').textContent = st.running ? 'Pause' : started ? 'Resume' : 'Start';
+    $('#startBtn').setAttribute('aria-label', (st.running ? 'Pause' : started ? 'Resume' : 'Start') + ' ' + MODES[st.mode].name.toLowerCase());
+    // cycle dots
+    const dots = $('#cycleDots');
+    const n = settings.longEvery;
+    if (dots.children.length !== n) dots.replaceChildren(...Array.from({ length: n }, () => h('i')));
+    [...dots.children].forEach((d, i) => {
+      d.className = i < Math.min(st.cycle, n) ? 'done' : (st.mode === 'focus' && i === st.cycle ? 'now' : '');
+    });
+    // hint
+    const hint = $('#hint');
+    if (st.running) {
+      const ends = fmtTime.format(st.endAt);
+      hint.textContent = st.mode === 'focus' ? `Ends at ${ends}. ${st.label.trim() ? 'Stay with it.' : 'You’ve got this.'}` : `Back at ${ends}. ${breakTip}`;
+    } else if (started) {
+      hint.textContent = 'Paused. Press Resume when you’re ready.';
+    } else {
+      hint.textContent = st.mode === 'focus' ? 'Turn the dial to set the length, then press Start.' : `Turn the dial to set the length. ${breakTip}`;
+    }
+    $('#durNote').hidden = !started;
+    updateTitle();
+  }
+  function updateTitle() {
+    const rem = currentRemaining();
+    const started = isStarted();
+    document.title = started ? `${st.running ? '' : 'Paused '}${fmtClock(rem)} ${MODES[st.mode].name}` : 'Pomodoro';
+    updateFavicon(rem);
+  }
+  let lastFav = '';
+  const favEl = $('#favicon');
+  const TOMATO_ICON = favEl.getAttribute('href');
+  function updateFavicon(rem) {
+    if (!isStarted()) {
+      if (lastFav !== 'idle') { favEl.setAttribute('href', TOMATO_ICON); lastFav = 'idle'; }
+      return;
+    }
+    const frac = clamp(rem / st.duration, 0, 1);
+    const key = st.mode + Math.round(frac * 60) + (st.running ? 'r' : 'p');
+    if (key === lastFav) return;
+    lastFav = key;
+    const cs = getComputedStyle(root);
+    const accent = cs.getPropertyValue('--accent').trim() || '#EC3F23';
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="-32 -32 64 64"><circle r="31" fill="${accent}" opacity=".22"/><path d="${wedgePath(frac * 360, 31)}" fill="${accent}"/><circle r="13" fill="#fff"/>${st.running ? '' : '<rect x="-6" y="-7" width="4" height="14" rx="1" fill="#26171A"/><rect x="2" y="-7" width="4" height="14" rx="1" fill="#26171A"/>'}</svg>`;
+    favEl.setAttribute('href', 'data:image/svg+xml,' + encodeURIComponent(svg));
+  }
+  function render() {
+    renderMode();
+    renderControls();
+    drawDial();
+    renderTimeline();
+  }
+
+  /* ================================================================
+     Today panel
+     ================================================================ */
+  function tomatoSVG(filled) {
+    return `<svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="18.5" r="11.5" class="${filled ? 'tf' : 'te'}"/><path class="${filled ? 'lf' : 'le'}" d="M16 12.6c-1.9-2.2-4.6-2.6-7-1.6 1.6-1.9 3.8-2.6 6-2.3-.5-1.4-.3-2.6.9-3.6.3 1.3 1 2.3 2.2 2.9 2.2-.4 4.3.4 5.9 2.3-2.4-.8-5.4-.5-8 2.3z"/></svg>`;
+  }
+  function focusByDay() {
+    const m = new Map();
+    for (const x of sessions) {
+      if (x.type !== 'focus') continue;
+      const k = dayKey(x.start);
+      const o = m.get(k) || { min: 0, count: 0, done: 0 };
+      o.min += x.actual / 60; o.count++; if (x.completed) o.done++;
+      m.set(k, o);
+    }
+    return m;
+  }
+  function streakDays(byDay) {
+    let t = dayStart(Date.now());
+    const has = k => (byDay.get(k) || {}).done > 0;
+    if (!has(dayKey(t))) t = addDays(t, -1);
+    let n = 0;
+    while (has(dayKey(t)) && n < 3650) { n++; t = addDays(t, -1); }
+    return n;
+  }
+  function cheerFor(done, goal) {
+    const hr = new Date().getHours();
+    const left = goal - done;
+    if (done === 0) {
+      if (hr < 12) return `Fresh morning. One ${settings.focus}-minute tomato gets the day rolling.`;
+      if (hr < 18) return `Plenty of day left. Pick one thing and give it ${settings.focus} minutes.`;
+      return 'One focused block still counts. Make it a good one.';
+    }
+    if (left > 0) {
+      if (left === 1) return 'One more and today’s goal is done.';
+      if (done === 1) return `First tomato’s in. ${left} to go, keep the momentum.`;
+      if (done * 2 >= goal && (done - 1) * 2 < goal) return `Halfway there, ${left} to go. Nice pace.`;
+      return `${done} down, ${left} to go. You’re on a roll.`;
+    }
+    if (left === 0) return 'Goal reached. Everything from here is a bonus.';
+    return `${done} tomatoes today. Big day. Remember to rest, too.`;
+  }
+  let prevDone = null;
+  function renderToday() {
+    const now = Date.now();
+    const byDay = focusByDay();
+    const today = byDay.get(dayKey(now)) || { min: 0, count: 0, done: 0 };
+    const goal = settings.goal;
+    $('#todayDate').textContent = fmtLongDate.format(now);
+    $('#cheer').textContent = cheerFor(today.done, goal);
+    const box = $('#tomatoes');
+    const total = Math.max(goal, today.done);
+    const shown = Math.min(total, 16);
+    let html = '';
+    for (let i = 0; i < shown; i++) {
+      const cls = i >= goal ? 'bonus' : '';
+      const pop = prevDone !== null && today.done > prevDone && i === today.done - 1 ? ' pop' : '';
+      html += `<span class="${cls}${pop}" style="display:inline-block">${tomatoSVG(i < today.done)}</span>`;
+    }
+    if (total > shown) html += `<span class="more">+${total - shown}</span>`;
+    box.innerHTML = html; // static markup only, no user data
+    box.setAttribute('aria-label', `${today.done} of ${goal} focus sessions done today`);
+    prevDone = today.done;
+    $('#statFocused').textContent = fmtDur(today.min);
+    $('#statSessions').textContent = String(today.done);
+    const streak = streakDays(byDay);
+    $('#statStreak').textContent = `${streak} ${plural(streak, 'day', 'days')}`;
+    const sample = hasSample();
+    $('#sampleNoteToday').hidden = !sample;
+    $('#sampleNoteLog').hidden = !sample;
+    renderTimeline();
+    renderHeatmap(byDay);
+  }
+
+  /* Tooltip */
+  const tip = $('#tip');
+  function showTip(x, y, value, label, keyColor) {
+    tip.replaceChildren(
+      h('span', { class: 'v' }, keyColor ? h('span', { class: 'k', style: `--k:${keyColor}` }) : null, value),
+      h('span', { class: 'l', text: label })
+    );
+    tip.classList.add('on');
+    const w = tip.offsetWidth, ht = tip.offsetHeight;
+    let left = clamp(x - w / 2, 8, innerWidth - w - 8);
+    let top = y - ht - 12;
+    if (top < 8) top = y + 18;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  }
+  const hideTip = () => tip.classList.remove('on');
+
+  /* Today timeline */
+  function renderTimeline() {
+    const box = $('#timeline');
+    if (!box) return;
+    const W = Math.max(240, box.clientWidth || 400), H = 52;
+    const now = Date.now(), t0 = dayStart(now);
+    const todays = sessions.filter(x => x.end > t0 && x.start < t0 + 86400000).sort((a, b) => a.start - b.start);
+    const nowH = (now - t0) / 3600000;
+    let sh = 7, eh = 22;
+    for (const x of todays) { sh = Math.min(sh, Math.floor(Math.max(0, x.start - t0) / 3600000)); eh = Math.max(eh, Math.ceil((x.end - t0) / 3600000)); }
+    sh = Math.min(sh, Math.floor(nowH));
+    eh = clamp(Math.max(eh, Math.ceil(nowH + 0.01)), sh + 1, 24);
+    const X = t => clamp((((t - t0) / 3600000) - sh) / (eh - sh), 0, 1) * W;
+    const svg = s('svg', { class: 'chart-svg', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Today's sessions: ${todays.filter(x => x.type === 'focus').length} focus, ${todays.filter(x => x.type !== 'focus').length} breaks` });
+    svg.append(s('rect', { class: 'tl-track', x: 0, y: 6, width: W, height: 22, rx: 6 }));
+    const blocks = [];
+    for (const x of todays) {
+      const x1 = X(x.start), x2 = X(x.end);
+      const w = Math.max(2, x2 - x1 - 2);
+      const r = s('rect', { class: `tl-block tl-${x.type}`, x: (x1 + 1).toFixed(1), y: 6, width: w.toFixed(1), height: 22, rx: Math.min(4, w / 2) });
+      r._s = x; blocks.push(r); svg.append(r);
+    }
+    if (st.startedAt && st.startedAt >= t0) {
+      const x1 = X(st.startedAt), x2 = X(st.running ? now : st.startedAt + (st.duration - st.remaining));
+      if (x2 - x1 > 1) {
+        const r = s('rect', { class: `tl-block ${st.mode === 'focus' ? 'tl-live' : 'tl-' + st.mode}`, x: (x1 + 1).toFixed(1), y: 6, width: Math.max(2, x2 - x1 - 2).toFixed(1), height: 22, rx: 3, opacity: st.mode === 'focus' ? 1 : .5 });
+        r._live = true; blocks.push(r); svg.append(r);
+      }
+    }
+    const nx = X(now);
+    svg.append(s('line', { class: 'tl-now', x1: nx, x2: nx, y1: 2, y2: 32 }));
+    const ax = s('g', { class: 'axis' });
+    const stepH = (eh - sh) > 12 ? 3 : 2;
+    for (let hr = Math.ceil(sh / stepH) * stepH; hr <= eh; hr += stepH) {
+      const x = ((hr - sh) / (eh - sh)) * W;
+      const d = new Date(t0); d.setHours(hr % 24);
+      ax.append(s('text', { x: clamp(x, 14, W - 14), y: 46, 'text-anchor': x < 14 ? 'start' : x > W - 14 ? 'end' : 'middle', text: hr === 24 ? fmtHour.format(new Date(t0)) : fmtHour.format(d) }));
+    }
+    svg.append(ax);
+    svg.addEventListener('pointermove', e => {
+      const r = svg.getBoundingClientRect();
+      const px = e.clientX - r.left;
+      let hit = null;
+      for (const b of blocks) { const bx = +b.getAttribute('x'), bw = +b.getAttribute('width'); if (px >= bx - 3 && px <= bx + bw + 3) hit = b; }
+      blocks.forEach(b => b.classList.toggle('dim', hit && b !== hit));
+      if (!hit) { hideTip(); return; }
+      const bx = +hit.getAttribute('x') + +hit.getAttribute('width') / 2;
+      if (hit._live) {
+        const el = (st.duration - currentRemaining()) / MIN;
+        showTip(r.left + bx, r.top + 6, `${fmtDur(el)} so far`, `${MODES[st.mode].name} in progress, since ${fmtTime.format(st.startedAt)}`, `var(--c-${st.mode})`);
+      } else {
+        const x = hit._s;
+        showTip(r.left + bx, r.top + 6, `${fmtTime.format(x.start)} – ${fmtTime.format(x.end)}`, `${MODES[x.type].name}, ${fmtDur(x.actual / 60)}${x.label ? ': ' + x.label : ''}${x.completed ? '' : ' (stopped early)'}`, `var(--c-${x.type})`);
+      }
+    });
+    svg.addEventListener('pointerleave', () => { hideTip(); blocks.forEach(b => b.classList.remove('dim')); });
+    box.replaceChildren(svg);
+    const focusMin = todays.filter(x => x.type === 'focus').reduce((a, x) => a + x.actual / 60, 0);
+    $('#timelineNote').textContent = todays.length ? `${fmtDur(focusMin)} of focus so far` : 'Nothing logged yet';
+  }
+
+  /* Consistency heatmap: last N weeks, Monday-first columns */
+  function renderHeatmap(byDay) {
+    const box = $('#heatmap');
+    const W = Math.max(260, box.clientWidth || 420);
+    const labelW = 30, gap = 3;
+    const weeks = clamp(Math.floor((W - labelW + gap) / (14 + gap)), 10, 20);
+    const cell = Math.min(18, Math.floor((W - labelW) / weeks) - gap);
+    const topPad = 18;
+    const H = topPad + 7 * (cell + gap);
+    const today0 = dayStart(Date.now());
+    const dowMon = d => (new Date(d).getDay() + 6) % 7;
+    const firstMonday = addDays(today0, -dowMon(today0) - (weeks - 1) * 7);
+    const goalMin = settings.goal * settings.focus;
+    const svg = s('svg', { class: 'chart-svg', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img' });
+    const ax = s('g', { class: 'axis' });
+    const refMon = new Date(2024, 0, 1); // a Monday
+    [0, 2, 4].forEach(r => ax.append(s('text', { x: 0, y: topPad + r * (cell + gap) + cell / 2, 'dominant-baseline': 'central', text: fmtWeekday.format(addDays(refMon.getTime(), r)) })));
+    let lastMonth = -1, lastLabelW = -9, active = 0, totalDays = 0;
+    const cells = [];
+    for (let w = 0; w < weeks; w++) {
+      const colT = addDays(firstMonday, w * 7);
+      const m = new Date(colT).getMonth();
+      const x = labelW + w * (cell + gap);
+      if (m !== lastMonth) {
+        const firstOfMonth = new Date(colT).getDate() <= 7 || w === 0;
+        if (firstOfMonth && w - lastLabelW >= 3 && w < weeks - 1) { ax.append(s('text', { x, y: 10, text: fmtMonth.format(addDays(colT, 6)) })); lastLabelW = w; }
+        lastMonth = m;
+      }
+      for (let d = 0; d < 7; d++) {
+        const t = addDays(colT, d);
+        if (t > today0) break;
+        totalDays++;
+        const o = byDay.get(dayKey(t));
+        const min = o ? o.min : 0;
+        if (min > 0) active++;
+        const f = min / goalMin;
+        const lvl = min <= 0 ? 0 : f < 1 / 3 ? 1 : f < 2 / 3 ? 2 : f < 1 ? 3 : 4;
+        const r = s('rect', { class: 'heat-cell', x, y: topPad + d * (cell + gap), width: cell, height: cell, rx: 3, style: `fill: var(--heat-${lvl})` });
+        r._d = { t, min, o };
+        cells.push(r);
+        svg.append(r);
+      }
+    }
+    svg.append(ax);
+    svg.setAttribute('aria-label', `Focus over the last ${weeks} weeks: ${active} of ${totalDays} days had focus time.`);
+    let hot = null;
+    svg.addEventListener('pointermove', e => {
+      const t = e.target.closest && e.target.closest('.heat-cell');
+      if (hot && hot !== t) hot.classList.remove('hot');
+      if (!t) { hideTip(); hot = null; return; }
+      hot = t; t.classList.add('hot');
+      const r = t.getBoundingClientRect();
+      const d = t._d;
+      showTip(r.left + r.width / 2, r.top, d.min ? `${fmtDur(d.min)} focus` : 'No focus', `${fmtDayFull.format(d.t)}${d.o ? `, ${d.o.done} ${plural(d.o.done, 'session', 'sessions')} done` : ''}`);
+    });
+    svg.addEventListener('pointerleave', () => { hideTip(); if (hot) hot.classList.remove('hot'); hot = null; });
+    box.replaceChildren(svg);
+    $('#heatNote').textContent = `${active} of ${totalDays} days`;
+  }
+
+  /* ================================================================
+     Insights: summary + column charts
+     ================================================================ */
+  function niceScale(maxV) {
+    const steps = [5, 10, 15, 20, 30, 60, 90, 120, 180, 240, 300, 360, 480, 600, 720, 960, 1200];
+    let step = steps[steps.length - 1];
+    for (const st0 of steps) if (maxV / st0 <= 4) { step = st0; break; }
+    const top = Math.ceil(maxV / step) * step;
+    const ticks = [];
+    for (let v = 0; v <= top + 1e-9; v += step) ticks.push(v);
+    return { top, ticks };
+  }
+  function barPath(x, y, w, hgt, r) {
+    r = Math.min(r, w / 2, hgt);
+    return `M${x},${y + hgt}V${y + r}A${r},${r} 0 0 1 ${x + r},${y}H${x + w - r}A${r},${r} 0 0 1 ${x + w},${y + r}V${y + hgt}Z`;
+  }
+  /* Generic column chart: hover and arrow keys both read each column. */
+  function columnChart(box, o) {
+    const W = Math.max(260, box.clientWidth || 600), H = o.height || 236;
+    const M = { t: 26, r: 6, b: 28, l: 50 };
+    const pw = W - M.l - M.r, ph = H - M.t - M.b;
+    const n = o.values.length;
+    const maxV = Math.max(o.minTop || 30, o.ref || 0, ...o.values);
+    const { top, ticks } = niceScale(maxV * 1.04);
+    const Y = v => M.t + ph - (v / top) * ph;
+    const slot = pw / n, bw = Math.max(2, Math.min(24, slot - Math.max(2, slot * 0.34)));
+    const svg = s('svg', { class: 'chart-svg', width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.aria });
+    const grid = s('g', { class: 'grid' }), ax = s('g', { class: 'axis' });
+    const refY = o.ref ? Y(o.ref) : null;
+    ticks.forEach(v => {
+      const yy = Math.round(Y(v)) + 0.5;
+      if (v > 0) grid.append(s('line', { x1: M.l, x2: W - M.r, y1: yy, y2: yy }));
+      if (refY == null || Math.abs(yy - refY) > 13) ax.append(s('text', { x: M.l - 10, y: yy, 'text-anchor': 'end', 'dominant-baseline': 'central', text: v === 0 ? '0' : fmtDur(v) }));
+    });
+    svg.append(grid);
+    const bars = s('g');
+    const barEls = [];
+    o.values.forEach((v, i) => {
+      const cx = M.l + slot * i + slot / 2;
+      if (v > 0) {
+        const hh = Math.max(3, (v / top) * ph);
+        const p = s('path', { class: 'bar', d: barPath(cx - bw / 2, M.t + ph - hh, bw, hh, 4) });
+        barEls[i] = p; bars.append(p);
+      }
+      const lab = o.xLabel(i, slot);
+      if (lab) ax.append(s('text', { x: clamp(cx, M.l + 12, W - M.r - 12), y: H - 8, 'text-anchor': 'middle', text: lab }));
+    });
+    svg.append(bars);
+    svg.append(s('line', { class: 'baseline', x1: M.l, x2: W - M.r, y1: M.t + ph + 0.5, y2: M.t + ph + 0.5 }));
+    if (o.ref && o.ref <= top) {
+      const yy = Math.round(refY) + 0.5;
+      svg.append(s('line', { class: 'goal-line', x1: M.l, x2: W - M.r, y1: yy, y2: yy }));
+      svg.append(s('text', { class: 'goal-label', x: M.l - 10, y: yy, 'text-anchor': 'end', 'dominant-baseline': 'central', text: 'Goal' }));
+    }
+    // selective direct labels
+    const labeled = [];
+    (o.labelIdx || []).forEach(i => {
+      const v = o.values[i];
+      if (!(v > 0) || labeled.some(j => Math.abs(j - i) * slot < 46)) return;
+      labeled.push(i);
+      const cx = M.l + slot * i + slot / 2;
+      svg.append(s('text', { class: 'dlabel halo', x: clamp(cx, M.l + 16, W - M.r - 16), y: Y(v) - 7, 'text-anchor': 'middle', text: o.valueLabel ? o.valueLabel(i) : fmtDur(v) }));
+    });
+    if (o.empty) svg.append(s('text', { class: 'empty-msg', x: M.l + pw / 2, y: M.t + ph / 2, 'text-anchor': 'middle', text: o.empty }));
+    svg.append(ax);
+    // interaction
+    let active = -1;
+    const show = (i, fromKey) => {
+      if (i < 0 || i >= n) return;
+      active = i;
+      barEls.forEach((b, j) => b && b.classList.toggle('hot', j === i));
+      svg.classList.toggle('has-hot', !!barEls[i]);
+      const r = svg.getBoundingClientRect();
+      const kx = r.width / W;
+      const cx = r.left + (M.l + slot * i + slot / 2) * kx;
+      const cy = r.top + (o.values[i] > 0 ? Y(o.values[i]) : M.t + ph) * kx;
+      const t = o.tip(i);
+      showTip(cx, cy, t.value, t.label);
+      if (fromKey) box.setAttribute('aria-label', `${t.label}: ${t.value}`);
+    };
+    const clear = () => { active = -1; hideTip(); svg.classList.remove('has-hot'); barEls.forEach(b => b && b.classList.remove('hot')); };
+    svg.addEventListener('pointermove', e => {
+      const r = svg.getBoundingClientRect();
+      const x = (e.clientX - r.left) * (W / r.width);
+      const i = Math.floor((x - M.l) / slot);
+      if (i < 0 || i >= n) { clear(); return; }
+      if (i !== active) show(i);
+    });
+    svg.addEventListener('pointerleave', clear);
+    box.onkeydown = e => {
+      if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'Home' || e.key === 'End') {
+        e.preventDefault();
+        let i = active < 0 ? (o.startIdx ?? n - 1) : active + (e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0);
+        if (e.key === 'Home') i = 0; if (e.key === 'End') i = n - 1;
+        show(clamp(i, 0, n - 1), true);
+      } else if (e.key === 'Escape') clear();
+    };
+    box.onblur = clear;
+    box.replaceChildren(svg);
+  }
+
+  function rangeDays() {
+    const n = ui.range, today0 = dayStart(Date.now());
+    const byDay = focusByDay();
+    const days = [];
+    for (let i = n - 1; i >= 0; i--) {
+      const t = addDays(today0, -i);
+      days.push(Object.assign({ t, min: 0, count: 0, done: 0 }, byDay.get(dayKey(t))));
+    }
+    return days;
+  }
+  function renderDaily(days) {
+    const n = days.length;
+    const goalMin = settings.goal * settings.focus;
+    const vals = days.map(d => d.min);
+    let maxI = -1; vals.forEach((v, i) => { if (v > 0 && (maxI < 0 || v > vals[maxI])) maxI = i; });
+    const anyData = vals.some(v => v > 0);
+    columnChart($('#dailyChart'), {
+      values: vals,
+      ref: goalMin,
+      minTop: 60,
+      aria: `Focus minutes per day for the last ${n} days. Daily goal ${fmtDur(goalMin)}.`,
+      labelIdx: [n - 1, maxI].filter(i => i >= 0),
+      empty: anyData ? null : 'No focus sessions in this range yet',
+      xLabel: (i, slot) => {
+        const stride = Math.max(1, Math.ceil(54 / slot));
+        if ((n - 1 - i) % stride) return null;
+        if (i === n - 1) return 'Today';
+        return n <= 7 ? fmtWeekday.format(days[i].t) : fmtMonthDay.format(days[i].t);
+      },
+      tip: i => ({ value: days[i].min ? `${fmtDur(days[i].min)} focus` : 'No focus', label: `${fmtDayFull.format(days[i].t)}${days[i].count ? `, ${days[i].done} of ${days[i].count} ${plural(days[i].count, 'session', 'sessions')} finished` : ''}` }),
+    });
+    const tbl = $('#dailyTable');
+    tbl.replaceChildren(h('caption', { text: `Focus per day, last ${n} days` }), h('tr', null, h('th', { text: 'Day' }), h('th', { text: 'Focus' }), h('th', { text: 'Sessions finished' })),
+      ...days.map(d => h('tr', null, h('td', { text: fmtDayFull.format(d.t) }), h('td', { text: fmtDur(d.min) }), h('td', { text: String(d.done) }))));
+  }
+  function renderHours() {
+    const from = addDays(dayStart(Date.now()), -(ui.range - 1));
+    const arr = new Array(24).fill(0);
+    for (const x of sessions) {
+      if (x.type !== 'focus' || x.start < from) continue;
+      let t = x.start; const end = x.start + x.actual * 1000;
+      let guard = 0;
+      while (t < end && guard++ < 48) {
+        const d = new Date(t); const hr = d.getHours();
+        d.setMinutes(60, 0, 0);
+        const nt = Math.min(end, d.getTime());
+        arr[hr] += (nt - t) / MIN; t = nt;
+      }
+    }
+    let peak = -1; arr.forEach((v, i) => { if (v > 0 && (peak < 0 || v > arr[peak])) peak = i; });
+    const hourLabel = i => { const d = new Date(2024, 0, 1, i); return fmtHour.format(d); };
+    columnChart($('#hourChart'), {
+      values: arr,
+      minTop: 30,
+      aria: `Focus minutes by hour of day over the last ${ui.range} days.${peak >= 0 ? ` Peak hour ${hourLabel(peak)}.` : ''}`,
+      labelIdx: peak >= 0 ? [peak] : [],
+      valueLabel: () => 'Peak',
+      startIdx: peak >= 0 ? peak : 9,
+      empty: peak < 0 ? 'Nothing here yet' : null,
+      xLabel: i => (i % 6 === 0 ? hourLabel(i) : null),
+      tip: i => ({ value: arr[i] ? `${fmtDur(arr[i])} focus` : 'No focus', label: `${hourLabel(i)} to ${hourLabel((i + 1) % 24)}, last ${ui.range} days` }),
+    });
+    const tbl = $('#hourTable');
+    tbl.replaceChildren(h('caption', { text: `Focus by hour, last ${ui.range} days` }), h('tr', null, h('th', { text: 'Hour' }), h('th', { text: 'Focus' })),
+      ...arr.map((v, i) => h('tr', null, h('td', { text: hourLabel(i) }), h('td', { text: fmtDur(v) }))));
+    return { peak, hourLabel };
+  }
+  function renderInsights() {
+    const days = rangeDays();
+    renderDaily(days);
+    const { peak, hourLabel } = renderHours();
+    const from = days[0].t;
+    const focus = sessions.filter(x => x.type === 'focus' && x.start >= from);
+    const total = focus.reduce((a, x) => a + x.actual / 60, 0);
+    const done = focus.filter(x => x.completed).length;
+    const rate = focus.length ? Math.round(done / focus.length * 100) : 0;
+    let best = null; days.forEach(d => { if (d.min > 0 && (!best || d.min > best.min)) best = d; });
+    const goalMin = settings.goal * settings.focus;
+    const metGoal = days.filter(d => d.min >= goalMin).length;
+    const p = $('#summary');
+    p.replaceChildren();
+    const b = t => h('b', { text: t });
+    const span = ui.range === 7 ? 'the last 7 days' : `the last ${ui.range} days`;
+    if (!focus.length) {
+      p.append(`No focus sessions in ${span} yet. Finish one and it shows up here right away.`);
+      return;
+    }
+    p.append(`In ${span} you focused for `, b(fmtDur(total)), ' across ', b(`${done} ${plural(done, 'session', 'sessions')}`), ', about ', b(fmtDur(total / ui.range)), ' a day. You finished ', b(`${rate}%`), ' of what you started');
+    if (best) p.append(', and your best day was ', b(ui.range === 7 ? fmtWeekdayLong.format(best.t) : fmtMonthDay.format(best.t)), ' with ', b(fmtDur(best.min)));
+    p.append('.');
+    if (metGoal) p.append(' You hit your goal on ', b(`${metGoal} ${plural(metGoal, 'day', 'days')}`), '.');
+    if (peak >= 0) p.append(' Your sharpest hour starts at ', b(hourLabel(peak)), '.');
+  }
+
+  /* ================================================================
+     Session log
+     ================================================================ */
+  function dayTitle(t) {
+    const t0 = dayStart(Date.now());
+    if (t === t0) return 'Today';
+    if (t === addDays(t0, -1)) return 'Yesterday';
+    return fmtDayFull.format(t);
+  }
+  function renderLog() {
+    const list = $('#logList');
+    const groups = new Map();
+    const sorted = sessions.slice().sort((a, b) => b.start - a.start);
+    for (const x of sorted) {
+      if (ui.logFilter === 'focus' && x.type !== 'focus') continue;
+      const k = dayStart(x.start);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(x);
+    }
+    const keys = [...groups.keys()];
+    if (!keys.length) {
+      list.replaceChildren(h('p', { class: 'log-empty', text: 'No sessions yet. Press Start, and every focus session and break you finish lands here with its time and name.' }));
+      $('#moreBtn').hidden = true;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    keys.slice(0, ui.logDays).forEach(k => {
+      const items = groups.get(k);
+      const dayAll = sorted.filter(x => x.type === 'focus' && dayStart(x.start) === k);
+      const fmin = dayAll.reduce((a, x) => a + x.actual / 60, 0);
+      const fdone = dayAll.filter(x => x.completed).length;
+      const g = h('div', { class: 'day-group' },
+        h('div', { class: 'day-head' }, h('h3', { text: dayTitle(k) }), h('span', { text: `${fmtDur(fmin)} focus, ${fdone} ${plural(fdone, 'session', 'sessions')} finished` })));
+      for (const x of items) {
+        g.append(h('div', { class: 'row' },
+          h('span', { class: 'time', text: `${fmtTime.format(x.start)} – ${fmtTime.format(x.end)}` }),
+          h('span', { class: 'type' }, h('span', { class: 'key', style: `--k: var(--c-${x.type})` }), MODES[x.type].name),
+          h('span', { class: 'lbl', text: x.label || '' }),
+          h('span', { class: 'dur', text: fmtDur(x.actual / 60) }),
+          h('span', { class: 'status', text: x.completed ? 'Finished' : 'Stopped early' }),
+          h('button', { class: 'del', type: 'button', 'aria-label': `Delete ${MODES[x.type].name.toLowerCase()} session from ${fmtTime.format(x.start)}`, 'data-id': x.id, title: 'Delete session' })
+        ));
+      }
+      frag.append(g);
+    });
+    list.replaceChildren(frag);
+    $$('.del', list).forEach(b => { b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'; });
+    const more = $('#moreBtn');
+    more.hidden = keys.length <= ui.logDays;
+    if (!more.hidden) more.textContent = `Show earlier days (${keys.length - ui.logDays} more)`;
+  }
+  $('#logList').addEventListener('click', e => {
+    const b = e.target.closest('.del');
+    if (!b) return;
+    const idx = sessions.findIndex(x => x.id === b.dataset.id);
+    if (idx < 0) return;
+    const [removed] = sessions.splice(idx, 1);
+    saveSessions(); renderData();
+    toast(`${MODES[removed.type].name} session deleted.`, { label: 'Undo', fn: () => { sessions.push(removed); saveSessions(); renderData(); } });
+  });
+  $('#moreBtn').addEventListener('click', () => { ui.logDays += 7; renderLog(); });
+  $('#exportBtn').addEventListener('click', () => {
+    if (!sessions.length) { toast('Nothing to export yet.'); return; }
+    const esc = v => { const t = String(v); return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+    const iso = t => { const d = new Date(t); const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+    const rows = [['type', 'start', 'end', 'planned_min', 'actual_min', 'finished', 'name']];
+    sessions.slice().sort((a, b) => a.start - b.start).forEach(x => rows.push([x.type, iso(x.start), iso(x.end), (x.planned / 60).toFixed(1), (x.actual / 60).toFixed(1), x.completed ? 'yes' : 'no', x.label || '']));
+    const blob = new Blob([rows.map(r => r.map(esc).join(',')).join('\n')], { type: 'text/csv' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: `pomodoro-sessions-${dayKey(Date.now())}.csv` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast(`Exported ${sessions.length} ${plural(sessions.length, 'session', 'sessions')}.`);
+  });
+  $('#clearBtn').addEventListener('click', async () => {
+    if (!sessions.length) { toast('The log is already empty.'); return; }
+    const ok = await confirmDialog('Clear history?', `This deletes all ${sessions.length} logged sessions from this browser. It can’t be undone.`, 'Delete all', true);
+    if (!ok) return;
+    sessions = []; saveSessions(); renderData();
+    toast('History cleared.');
+  });
+  document.addEventListener('click', e => { if (e.target.closest('[data-action="clear-sample"]')) clearSample(); });
+
+  function renderData() {
+    renderToday();
+    renderInsights();
+    renderLog();
+    renderChips();
+  }
+
+  /* ================================================================
+     Intention field
+     ================================================================ */
+  const intent = $('#intentInput');
+  intent.value = st.label;
+  $('#intentClear').hidden = !st.label;
+  intent.addEventListener('input', () => { st.label = intent.value; $('#intentClear').hidden = !intent.value; saveState(); renderChips(); renderControls(); });
+  intent.addEventListener('keydown', e => { if (e.key === 'Enter') intent.blur(); if (e.key === 'Escape') { intent.blur(); } });
+  $('#intentClear').addEventListener('click', () => { intent.value = ''; st.label = ''; $('#intentClear').hidden = true; saveState(); renderChips(); intent.focus(); });
+  function renderChips() {
+    const seen = new Set(), out = [];
+    const cur = st.label.trim().toLowerCase();
+    for (const x of sessions.slice().sort((a, b) => b.start - a.start)) {
+      const l = (x.label || '').trim();
+      if (!l || seen.has(l.toLowerCase()) || l.toLowerCase() === cur) continue;
+      seen.add(l.toLowerCase()); out.push(l);
+      if (out.length >= 4) break;
+    }
+    $('#chips').replaceChildren(...out.map(l => h('button', { class: 'chip', type: 'button', text: l, title: `Use “${l}”`, onclick: () => { intent.value = l; st.label = l; $('#intentClear').hidden = false; saveState(); renderChips(); renderControls(); } })));
+  }
+
+  /* ================================================================
+     Toasts, announcements, notifications, confirm
+     ================================================================ */
+  function toast(msg, action) {
+    const box = $('#toasts');
+    const t = h('div', { class: 'toast', role: 'status' }, h('span', { text: msg }));
+    if (action) t.append(h('button', { type: 'button', text: action.label, onclick: () => { action.fn(); dismiss(); } }));
+    box.append(t);
+    while (box.children.length > 3) box.firstChild.remove();
+    let gone = false;
+    function dismiss() { if (gone) return; gone = true; t.classList.add('out'); setTimeout(() => t.remove(), 260); }
+    setTimeout(dismiss, action ? 6000 : 3800);
+  }
+  function announce(msg) { const a = $('#announcer'); a.textContent = ''; setTimeout(() => { a.textContent = msg; }, 30); }
+  function notify(title, body) {
+    if (!settings.notify || !('Notification' in window) || Notification.permission !== 'granted' || !document.hidden) return;
+    try { const n = new Notification(title, { body, tag: 'pomodoro', icon: TOMATO_ICON }); n.onclick = () => { window.focus(); n.close(); }; } catch { /* some browsers need a service worker */ }
+  }
+  function confirmDialog(title, text, okLabel, danger) {
+    const d = $('#confirmDlg');
+    $('#confirmTitle').textContent = title;
+    $('#confirmText').textContent = text;
+    const ok = $('#confirmOk');
+    ok.textContent = okLabel;
+    ok.className = 'btn ' + (danger ? 'danger' : 'primary');
+    d.returnValue = '';
+    d.showModal();
+    return new Promise(res => d.addEventListener('close', () => res(d.returnValue === 'ok'), { once: true }));
+  }
+
+  /* ================================================================
+     Mode tabs, buttons, keyboard
+     ================================================================ */
+  async function requestMode(mode) {
+    if (mode === st.mode && !isStarted()) return;
+    if (isStarted() && st.duration - currentRemaining() >= MIN) {
+      const el = Math.floor((st.duration - currentRemaining()) / MIN);
+      const ok = await confirmDialog(`Switch to ${MODES[mode].name.toLowerCase()}?`, `Your ${st.mode === 'focus' ? 'focus session' : MODES[st.mode].name.toLowerCase()} is ${el} ${plural(el, 'minute', 'minutes')} in. Switching ends it now and logs it as stopped early.`, 'Switch', false);
+      if (!ok) return;
+      logPartial();
+    }
+    setMode(mode);
+  }
+  $$('.mode-tab').forEach(b => b.addEventListener('click', () => requestMode(b.dataset.mode)));
+  $('.modes').addEventListener('keydown', e => {
+    const order = ['focus', 'short', 'long'];
+    const i = order.indexOf(document.activeElement && document.activeElement.dataset.mode);
+    if (i < 0) return;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+      e.preventDefault();
+      const next = order[(i + (e.key === 'ArrowRight' ? 1 : 2)) % 3];
+      $(`.mode-tab[data-mode="${next}"]`).focus();
+    }
+  });
+  $('#startBtn').addEventListener('click', toggle);
+  $('#resetBtn').addEventListener('click', reset);
+  $('#skipBtn').addEventListener('click', skip);
+  $('.brand').addEventListener('click', e => { e.preventDefault(); scrollTo({ top: 0, behavior: reduceMotion.matches ? 'auto' : 'smooth' }); });
+
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (document.querySelector('dialog[open]')) return;
+    const tag = (e.target.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.target.isContentEditable) return;
+    const k = e.key.toLowerCase();
+    if (k === ' ' || e.code === 'Space') {
+      if (tag === 'button' || tag === 'a' || e.target.getAttribute('role') === 'tab') return;
+      e.preventDefault(); toggle();
+    } else if (k === 'r') reset();
+    else if (k === 's') skip();
+    else if (k === '1') requestMode('focus');
+    else if (k === '2') requestMode('short');
+    else if (k === '3') requestMode('long');
+    else if (k === 'd') toggleTheme();
+  });
+  ['pointerdown', 'keydown', 'touchstart'].forEach(ev => addEventListener(ev, () => ensureAudio(), { once: true, passive: true }));
+
+  /* ================================================================
+     Theme
+     ================================================================ */
+  const darkMQ = matchMedia('(prefers-color-scheme: dark)');
+  const resolvedTheme = () => settings.theme === 'system' ? (darkMQ.matches ? 'dark' : 'light') : settings.theme;
+  function applyTheme() {
+    const t = resolvedTheme();
+    root.dataset.theme = t;
+    $('#themeBtn').setAttribute('aria-label', t === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+    $('#themeBtn').title = t === 'dark' ? 'Light mode (D)' : 'Dark mode (D)';
+    renderMode();
+    lastFav = '';
+    updateTitle();
+  }
+  function toggleTheme() {
+    settings.theme = resolvedTheme() === 'dark' ? 'light' : 'dark';
+    saveSettings(); syncSettingsForm();
+    const btn = $('#themeBtn').getBoundingClientRect();
+    const x = btn.left + btn.width / 2, y = btn.top + btn.height / 2;
+    if (document.startViewTransition && !reduceMotion.matches) {
+      const R = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+      const vt = document.startViewTransition(applyTheme);
+      vt.ready.then(() => root.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${R}px at ${x}px ${y}px)`] }, { duration: 560, easing: 'cubic-bezier(.2,.8,.2,1)', pseudoElement: '::view-transition-new(root)' })).catch(() => {});
+    } else applyTheme();
+  }
+  $('#themeBtn').addEventListener('click', toggleTheme);
+  darkMQ.addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
+
+  /* ================================================================
+     Settings dialog
+     ================================================================ */
+  const dlg = $('#settingsDlg');
+  function syncSettingsForm() {
+    $$('[data-setting]', dlg).forEach(inp => {
+      const k = inp.dataset.setting;
+      if (inp.type === 'checkbox') inp.checked = !!settings[k];
+      else if (inp.type === 'radio') inp.checked = settings[k] === inp.value;
+      else if (document.activeElement !== inp) inp.value = settings[k];
+    });
+  }
+  function applySetting(k, v) {
+    const prev = settings[k];
+    settings[k] = v;
+    saveSettings();
+    if (k in MODES && k === st.mode && !isStarted()) {
+      const from = displayed;
+      st.duration = st.remaining = v * MIN; saveState(); windTo(from);
+    }
+    if (k === 'volume' && master) master.gain.setTargetAtTime(v, actx.currentTime, 0.02);
+    if (k === 'sound' || k === 'soundStyle') { if (st.running) { ensureAudio(); scheduleAlert(); } else cancelAlert(); }
+    if (k === 'theme') applyTheme();
+    if (k === 'notify' && v) {
+      if (!('Notification' in window)) { settings.notify = false; saveSettings(); $('#notifyNote').textContent = 'This browser doesn’t support desktop notifications.'; }
+      else if (Notification.permission === 'denied') { settings.notify = false; saveSettings(); $('#notifyNote').textContent = 'Notifications are blocked for this page. Allow them in your browser’s site settings, then try again.'; }
+      else if (Notification.permission !== 'granted') {
+        Notification.requestPermission().then(p => {
+          if (p !== 'granted') { settings.notify = false; saveSettings(); $('#notifyNote').textContent = 'Permission wasn’t granted, so notifications stay off.'; }
+          syncSettingsForm();
+        });
+      }
+    }
+    if (k === 'goal' || k === 'focus' || k === 'longEvery') renderData();
+    if (prev !== v) { renderControls(); drawDial(); }
+    syncSettingsForm();
+  }
+  dlg.addEventListener('input', e => {
+    const inp = e.target.closest('[data-setting]');
+    if (!inp) return;
+    const k = inp.dataset.setting;
+    if (inp.type === 'checkbox') applySetting(k, inp.checked);
+    else if (inp.type === 'radio') applySetting(k, inp.value);
+    else if (inp.type === 'range') applySetting(k, +inp.value);
+    else if (inp.type === 'number') {
+      const n = Math.round(+inp.value);
+      if (!inp.value || !isFinite(n)) return;
+      const [a, b] = LIMITS[k];
+      if (n >= a && n <= b) applySetting(k, n);
+    }
+  });
+  dlg.addEventListener('change', e => {
+    const inp = e.target;
+    if (inp.type === 'number' && inp.dataset.setting) {
+      const [a, b] = LIMITS[inp.dataset.setting];
+      const n = clamp(Math.round(+inp.value) || settings[inp.dataset.setting], a, b);
+      inp.value = n; applySetting(inp.dataset.setting, n);
+    }
+  });
+  dlg.addEventListener('click', e => {
+    const b = e.target.closest('[data-step]');
+    if (b) {
+      const inp = $('#' + b.dataset.for);
+      const k = inp.dataset.setting;
+      const [a, mx] = LIMITS[k];
+      const n = clamp((+inp.value || settings[k]) + +b.dataset.step, a, mx);
+      inp.value = n; applySetting(k, n);
+      return;
+    }
+    if (e.target === dlg) dlg.close(); // click on backdrop
+  });
+  $('#testSound').addEventListener('click', () => {
+    if (!settings.sound) { toast('Turn on the beep first to hear it.'); return; }
+    ensureAudio(); playNow('focus');
+  });
+  $('#settingsBtn').addEventListener('click', () => { syncSettingsForm(); $('#durNote').hidden = !isStarted(); dlg.showModal(); });
+
+  /* ================================================================
+     Main loop
+     ================================================================ */
+  let lastSecond = -1, lastDay = dayKey(Date.now()), lastTimeline = 0;
+  function frame() {
+    if (st.running && st.endAt <= Date.now()) complete();
+    drawDial();
+    if (st.running) {
+      const sec = Math.ceil(currentRemaining() / 1000);
+      if (sec !== lastSecond) { lastSecond = sec; updateTitle(); }
+      if (Date.now() - lastTimeline > 30000) { lastTimeline = Date.now(); renderTimeline(); }
+    }
+    requestAnimationFrame(frame);
+  }
+  function backgroundTick() {
+    if (st.running && st.endAt <= Date.now()) complete();
+    if (document.hidden) updateTitle();
+    const k = dayKey(Date.now());
+    if (k !== lastDay) { lastDay = k; renderData(); }
+  }
+  /* A worker clock keeps ticking in background tabs where page timers get throttled. */
+  try {
+    const src = 'let id;onmessage=e=>{clearInterval(id);id=setInterval(()=>postMessage(0),1000)}';
+    const w = new Worker(URL.createObjectURL(new Blob([src], { type: 'text/javascript' })));
+    w.onmessage = backgroundTick; w.postMessage('go');
+  } catch { setInterval(backgroundTick, 1000); }
+  setInterval(() => { const k = dayKey(Date.now()); if (k !== lastDay) { lastDay = k; renderData(); } }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { catchUp(); render(); renderToday(); } });
+
+  let resizeT = 0;
+  new ResizeObserver(() => { clearTimeout(resizeT); resizeT = setTimeout(() => { renderToday(); renderInsights(); }, 80); }).observe(document.body);
+
+  $$('input[name="logFilter"]').forEach(r => {
+    r.checked = r.value === ui.logFilter;
+    r.addEventListener('change', () => { ui.logFilter = r.value; saveUi(); renderLog(); });
+  });
+
+  /* Range filter */
+  $$('input[name="range"]').forEach(r => {
+    r.checked = +r.value === ui.range;
+    r.addEventListener('change', () => { ui.range = +r.value; saveUi(); renderInsights(); });
+  });
+
+  /* ================================================================
+     Boot
+     ================================================================ */
+  applyTheme();
+  catchUp();
+  if (!isStarted()) { st.duration = st.remaining = durFor(st.mode); saveState(); }
+  displayed = 0;
+  windTo(0);
+  render();
+  renderData();
+  syncSettingsForm();
+  requestAnimationFrame(frame);
+  requestAnimationFrame(() => root.classList.add('ready'));
+})();
+</script>
+</body>
+</html>
