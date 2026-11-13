@@ -1,3 +1,5 @@
+import type { ModelColor } from "./model-colors.ts";
+
 export type Provider = "openai" | "anthropic" | "google" | "moonshot" | "z-ai" | "qwen" | "xai" | "meta" | "thinking-machines";
 
 export interface ProviderConfig {
@@ -45,8 +47,8 @@ export interface ModelConfig {
   /** Optional harness-specific model variant (for example, reasoning effort). */
   variant?: string;
 
-  /** Tailwind CSS class for the model's color indicator */
-  color: string;
+  /** Tailwind CSS class for the model's color indicator; must have a chart hex in model-colors.ts */
+  color: ModelColor;
 
   /** Provider that owns this model */
   provider: Provider;

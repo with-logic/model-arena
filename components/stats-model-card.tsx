@@ -11,7 +11,7 @@ import {
 import { MODELS, PROVIDERS } from "@/lib/models";
 import { DEFAULT_COMPARISON_MODELS } from "@/lib/models.config";
 import { getAllModelAggregates, formatBytes, formatNumber } from "@/lib/stats";
-import { getModelHex } from "./stats-mini-chart";
+import { getModelHex } from "@/lib/model-colors";
 import type { ModelAggregate, MetricSpread } from "@/lib/stats.types";
 
 type MetricKey = Exclude<keyof ModelAggregate, "modelId" | "totalApps">;

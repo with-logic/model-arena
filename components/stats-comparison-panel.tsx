@@ -3,7 +3,7 @@
 import { MODELS } from "@/lib/models";
 import { getAppStats, formatBytes, formatNumber } from "@/lib/stats";
 import type { AppModelStats } from "@/lib/stats.types";
-import { getModelHex } from "./stats-mini-chart";
+import { getModelHex } from "@/lib/model-colors";
 
 interface StatsComparisonPanelProps {
   appId: string;
