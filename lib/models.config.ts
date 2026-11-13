@@ -419,7 +419,7 @@ export const models: ModelConfig[] = [
 ];
 
 /** Default models shown in the side-by-side comparison view */
-export const DEFAULT_COMPARISON_MODELS = ["gpt-6-astra", "opus-5", "qwen-3.8-27b"] as const;
+export const DEFAULT_COMPARISON_MODELS = ["fable-5.2", "gpt-6.1-sol", "qwen-3.8-27b"] as const;
 
 /** The first default model opens in the live collection. */
 export const DEFAULT_EXPLORER_MODEL = DEFAULT_COMPARISON_MODELS[0];

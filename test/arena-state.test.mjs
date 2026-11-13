@@ -51,7 +51,7 @@ test("navigation round trips filters, shortlist and display state", () => {
   const u = new URL(buildArenaUrl(s), "http://localhost");
   assert.deepEqual(parseArenaLocation(u.pathname, u.search), s);
 });
-test("the homepage opens Astra even when the saved shortlist starts with Opus", () => {
+test("the homepage opens Fable even when the saved shortlist starts with Opus", () => {
   const s = parseArenaLocation("/", "", [
     "opus-5",
     "gpt-6-astra",
@@ -61,7 +61,7 @@ test("the homepage opens Astra even when the saved shortlist starts with Opus", 
   assert.equal(s.view, "tabs");
   assert.equal(s.page, "explore");
   assert.deepEqual(s.models, [...DEFAULT_COMPARISON_MODELS]);
-  assert.equal(s.tab, "gpt-6-astra");
+  assert.equal(s.tab, "fable-5.2");
   const explicit = parseArenaLocation("/", "?models=opus-5", ["gpt-6-astra"]);
   assert.deepEqual(explicit.models, ["opus-5"]);
   assert.equal(explicit.tab, "opus-5");
@@ -72,10 +72,10 @@ test("untrusted model values and malformed paths do not crash navigation", () =>
   assert.doesNotThrow(() => parseArenaLocation("/compare/%ZZ", "?page=bogus"));
 });
 
-test("fresh collection opens Astra solo and round-trips the selected app without expanding", () => {
+test("fresh collection opens Fable solo and round-trips the selected app without expanding", () => {
   const initial = parseArenaLocation("/", "");
   assert.deepEqual(initial.models, [...DEFAULT_COMPARISON_MODELS]);
-  assert.equal(initial.tab, "gpt-6-astra");
+  assert.equal(initial.tab, "fable-5.2");
   assert.equal(initial.view, "tabs");
   assert.equal(initial.expanded, false);
   const next = { ...initial, appId: "asteroid-game" };
