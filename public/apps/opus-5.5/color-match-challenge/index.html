@@ -1,0 +1,1625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Color Match: press the ink, not the word</title>
+<meta name="description" content="A 30-second color game. A color name appears in a different ink. Press the chip that matches the ink, not the word.">
+<meta name="theme-color" content="#383838">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23383838'/%3E%3Crect x='5' y='8' width='6' height='7' rx='1.5' fill='%23f43b4e'/%3E%3Crect x='13' y='8' width='6' height='7' rx='1.5' fill='%23ff8c1a'/%3E%3Crect x='21' y='8' width='6' height='7' rx='1.5' fill='%23ffd829'/%3E%3Crect x='5' y='17' width='6' height='7' rx='1.5' fill='%232bcb6b'/%3E%3Crect x='13' y='17' width='6' height='7' rx='1.5' fill='%233d8bff'/%3E%3Crect x='21' y='17' width='6' height='7' rx='1.5' fill='%23b169ff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anybody:wdth,wght@50..150,100..900&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  /*
+    Design rule: the booth is achromatic. Only the ink of the word and the
+    paint chips carry color, so nothing in the interface biases the eye.
+  */
+  :root {
+    --booth: #383838;
+    --booth-shade: #2a2a2a;
+    --chip-edge: #1b1b1b;
+    --paper: #f5f5f3;
+    --paper-ink: #1f1f1f;
+    --fg: #ededed;
+    --muted: #a8a8a8;
+    --faint: rgba(255, 255, 255, .12);
+
+    --red: #f43b4e;
+    --orange: #ff8c1a;
+    --yellow: #ffd829;
+    --green: #2bcb6b;
+    --blue: #3d8bff;
+    --purple: #b169ff;
+
+    --display: "Anybody", "Arial Black", "Helvetica Neue", system-ui, sans-serif;
+    --text: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+
+    /* type scale, ratio 1.25 from 17px */
+    --t-sm: 14px;
+    --t-base: 17px;
+    --t-md: 21px;
+    --t-lg: 26px;
+    --t-xl: 33px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { height: 100%; -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--booth);
+    color: var(--fg);
+    font: 400 var(--t-base)/1.5 var(--text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* soft overhead light of a viewing booth */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      radial-gradient(80% 60% at 50% 38%, rgba(255, 255, 255, .055), transparent 70%),
+      radial-gradient(150% 110% at 50% 45%, transparent 55%, rgba(0, 0, 0, .3));
+  }
+  body[data-state="playing"], body[data-state="countdown"] { user-select: none; -webkit-user-select: none; }
+
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 3px solid var(--paper); outline-offset: 3px; }
+
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+
+  /* ---------- frame ---------- */
+  .app {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-areas: "top" "hud" "stage" "tray";
+    height: 100vh;
+    height: 100dvh;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding:
+      max(14px, env(safe-area-inset-top))
+      max(20px, env(safe-area-inset-right))
+      max(18px, env(safe-area-inset-bottom))
+      max(20px, env(safe-area-inset-left));
+  }
+
+  .topbar {
+    grid-area: top;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 44px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand-mark {
+    display: grid;
+    grid-template-columns: repeat(3, 8px);
+    grid-auto-rows: 9px;
+    gap: 2px;
+  }
+  .brand-mark i { display: block; border-radius: 2px; background: var(--c); }
+  .brand-name {
+    font-family: var(--display);
+    font-weight: 760;
+    font-stretch: 118%;
+    font-size: var(--t-md);
+    letter-spacing: .005em;
+    white-space: nowrap;
+  }
+  .top-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid var(--faint);
+    background: rgba(255, 255, 255, .04);
+    color: var(--fg);
+    cursor: pointer;
+    transition: background .15s, transform .12s var(--ease-out);
+  }
+  .icon-btn:hover { background: rgba(255, 255, 255, .1); }
+  .icon-btn:active { transform: scale(.94); }
+  .icon-btn[hidden] { display: none; }
+  .icon-btn svg { width: 20px; height: 20px; }
+  #soundBtn[aria-pressed="false"] .ico-on,
+  #soundBtn[aria-pressed="true"] .ico-off { display: none; }
+
+  /* ---------- heads-up display ---------- */
+  .hud {
+    grid-area: hud;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: end;
+    column-gap: 12px;
+    padding-top: 10px;
+  }
+  body[data-state="intro"] .hud,
+  body[data-state="results"] .hud { display: none; }
+  .hud-item { display: flex; align-items: baseline; gap: 8px; }
+  .hud-score { justify-self: start; }
+  .hud-time { justify-self: center; }
+  .hud-streak { justify-self: end; }
+  .hud-value {
+    display: inline-block;
+    font-family: var(--display);
+    font-weight: 800;
+    font-stretch: 105%;
+    font-size: clamp(30px, 4.6vw, 46px);
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-time .hud-value { min-width: 2.2ch; text-align: right; }
+  .hud-label { color: var(--muted); font-size: var(--t-sm); }
+  .timebar {
+    grid-column: 1 / -1;
+    height: 6px;
+    margin-top: 12px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, .09);
+    overflow: hidden;
+    transition: height .2s var(--ease-out);
+  }
+  .timebar span {
+    display: block;
+    height: 100%;
+    background: var(--paper);
+    border-radius: inherit;
+    transform-origin: left center;
+  }
+  .hud.is-urgent .timebar { height: 10px; }
+  .hud.is-urgent .timebar span { animation: throbBar 1s ease-in-out infinite; }
+  .hud.is-urgent .hud-time .hud-value { animation: throb 1s ease-in-out infinite; }
+  @keyframes throb { 0%, 100% { transform: scale(1); } 15% { transform: scale(1.14); } }
+  @keyframes throbBar { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+  /* ---------- stage & views ---------- */
+  .stage {
+    grid-area: stage;
+    position: relative;
+    display: grid;
+    min-height: 0;
+  }
+  .view {
+    grid-area: 1 / 1;
+    display: none;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+  }
+  .view.is-active { display: flex; animation: viewIn .22s var(--ease-out); }
+  @keyframes viewIn { from { opacity: 0; } to { opacity: 1; } }
+  .view-scroll { overflow-y: auto; overscroll-behavior: contain; }
+  .view-inner { margin: auto; width: 100%; padding: 12px 0; }
+
+  .word {
+    display: inline-block;
+    font-family: var(--display);
+    font-weight: 860;
+    font-stretch: 100%;
+    line-height: .92;
+    letter-spacing: -.005em;
+    white-space: nowrap;
+    text-shadow: 0 3px 0 rgba(0, 0, 0, .18);
+    will-change: transform, opacity;
+  }
+
+  /* intro */
+  .intro { text-align: center; max-width: 720px; }
+  .demo {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: clamp(84px, 24vh, 230px);
+    margin-bottom: clamp(8px, 2vh, 20px);
+  }
+  .intro h1 {
+    margin: 0 0 8px;
+    font-family: var(--text);
+    font-weight: 700;
+    font-size: clamp(var(--t-lg), 3.4vw, var(--t-xl));
+    line-height: 1.15;
+    letter-spacing: -.01em;
+  }
+  .caption {
+    margin: 0 auto;
+    max-width: 34em;
+    min-height: 3em;
+    color: #d6d6d6;
+    font-size: var(--t-base);
+  }
+  .caption b { color: var(--fg); }
+  .sw {
+    display: inline-block;
+    width: .8em;
+    height: .8em;
+    margin: 0 .3em 0 .1em;
+    border-radius: 3px;
+    background: var(--c);
+    vertical-align: -.05em;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .25);
+  }
+  .intro-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 14px 28px;
+    margin-top: clamp(14px, 3vh, 28px);
+  }
+  .meta {
+    margin: 16px 0 0;
+    color: var(--muted);
+    font-size: var(--t-sm);
+  }
+  kbd {
+    display: inline-block;
+    min-width: 1.6em;
+    padding: .05em .4em;
+    border-radius: 5px;
+    border: 1px solid rgba(255, 255, 255, .2);
+    border-bottom-width: 2px;
+    background: rgba(255, 255, 255, .07);
+    color: var(--fg);
+    font: 700 .86em/1.4 var(--text);
+    text-align: center;
+  }
+
+  /* buttons share the chips' press language */
+  .btn {
+    --d: 4px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 50px;
+    padding: 12px 24px;
+    border-radius: 12px;
+    border: 0;
+    font-weight: 700;
+    font-size: var(--t-base);
+    cursor: pointer;
+    transform: translateY(0);
+    transition: transform .26s var(--ease-spring), box-shadow .26s var(--ease-spring), background .15s;
+    touch-action: manipulation;
+  }
+  .btn-primary {
+    background: var(--paper);
+    color: var(--paper-ink);
+    box-shadow: 0 var(--d) 0 var(--chip-edge), 0 calc(var(--d) + 10px) 22px -8px rgba(0, 0, 0, .6);
+  }
+  .btn-primary:hover { --d: 6px; transform: translateY(-2px); }
+  .btn-primary:active { --d: 1px; transform: translateY(3px); transition-duration: .06s; transition-timing-function: ease-out; }
+  .btn-ghost {
+    background: transparent;
+    color: var(--fg);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .24);
+  }
+  .btn-ghost:hover { background: rgba(255, 255, 255, .07); }
+  .btn-ghost:active { transform: translateY(2px); transition-duration: .06s; }
+  .btn kbd { font-size: .78em; color: inherit; border-color: currentColor; background: transparent; opacity: .6; }
+
+  /* switch */
+  .switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    font-size: var(--t-base);
+    color: #dcdcdc;
+  }
+  .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+  .switch-track {
+    position: relative;
+    flex: none;
+    width: 44px;
+    height: 26px;
+    border-radius: 99px;
+    background: rgba(255, 255, 255, .14);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .18);
+    transition: background .2s;
+  }
+  .switch-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--fg);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, .4);
+    transition: transform .25s var(--ease-spring), background .2s;
+  }
+  .switch input:checked + .switch-track { background: var(--paper); }
+  .switch input:checked + .switch-track::after { transform: translateX(18px); background: var(--booth); }
+  .switch input:focus-visible + .switch-track { outline: 3px solid var(--paper); outline-offset: 3px; }
+
+  /* play */
+  .view-play { align-items: center; }
+  .word-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .play-hint {
+    flex: none;
+    margin: 0 0 6px;
+    min-height: 1.5em;
+    color: var(--muted);
+    font-size: var(--t-base);
+    text-align: center;
+    transition: opacity .4s;
+  }
+  .play-hint.is-faded { opacity: 0; }
+
+  /* countdown & time's up */
+  .view-count { align-items: center; justify-content: center; overflow: hidden; }
+  .count-wrap { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  .count-num { color: var(--paper); }
+
+  /* pause */
+  .view-pause { align-items: center; justify-content: center; text-align: center; }
+  .view-pause h2 {
+    margin: 0 0 6px;
+    font-family: var(--display);
+    font-weight: 820;
+    font-stretch: 125%;
+    font-size: clamp(44px, 8vw, 84px);
+    line-height: 1;
+  }
+  .view-pause p { margin: 0 0 24px; color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+
+  /* results */
+  .results { max-width: 760px; }
+  .result-head {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 8px clamp(20px, 4vw, 44px);
+  }
+  .result-score { display: flex; flex-direction: column; }
+  .result-score-num {
+    font-family: var(--display);
+    font-weight: 880;
+    font-stretch: 112%;
+    font-size: clamp(96px, 17vw, 168px);
+    line-height: .86;
+    font-variant-numeric: tabular-nums;
+  }
+  .result-score-label { margin-top: 10px; color: var(--muted); font-size: var(--t-sm); }
+  .badge {
+    display: inline-block;
+    margin: 0 0 10px;
+    padding: 3px 12px;
+    border-radius: 99px;
+    background: var(--paper);
+    color: var(--paper-ink);
+    font-weight: 700;
+    font-size: var(--t-sm);
+  }
+  .badge[hidden] { display: none; }
+  .results h2 {
+    margin: 0 0 6px;
+    font-size: clamp(var(--t-lg), 3.4vw, var(--t-xl));
+    line-height: 1.15;
+    letter-spacing: -.01em;
+  }
+  .result-line { margin: 0; color: #d6d6d6; max-width: 32em; }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px 20px;
+    margin: clamp(22px, 4vh, 36px) 0 0;
+    padding: clamp(16px, 3vh, 24px) 0;
+    border-top: 1px solid var(--faint);
+    border-bottom: 1px solid var(--faint);
+  }
+  .stats div { display: flex; flex-direction: column; }
+  .stats dt { order: 2; color: var(--muted); font-size: var(--t-sm); margin-top: 4px; }
+  .stats dd {
+    order: 1;
+    margin: 0;
+    font-family: var(--display);
+    font-weight: 780;
+    font-stretch: 108%;
+    font-size: clamp(26px, 3.4vw, 34px);
+    line-height: 1.05;
+    font-variant-numeric: tabular-nums;
+  }
+  .stats dd small { font-family: var(--text); font-weight: 700; font-size: .5em; margin-left: 3px; color: var(--muted); }
+
+  .tape { margin-top: clamp(18px, 3vh, 26px); }
+  .tape-label { margin: 0 0 10px; color: var(--muted); font-size: var(--t-sm); }
+  .tape-row { display: flex; flex-wrap: wrap; gap: 5px; min-height: 18px; }
+  .tape-cell {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    background: var(--c);
+    animation: cellIn .28s var(--ease-spring) backwards;
+  }
+  .tape-cell.is-miss { background: transparent; box-shadow: inset 0 0 0 2px var(--c); }
+  .tape-cell.is-miss::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 1px;
+    bottom: 1px;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--c);
+    transform: rotate(45deg);
+  }
+  .tape-empty { color: var(--muted); font-size: var(--t-sm); margin: 0; }
+  @keyframes cellIn { from { opacity: 0; transform: scale(.3); } }
+
+  .result-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: clamp(22px, 4vh, 32px); }
+
+  /* ---------- chip tray ---------- */
+  .tray {
+    grid-area: tray;
+    align-self: end;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: clamp(10px, 1.6vw, 16px);
+    padding: 14px 0 8px;
+    transition: opacity .25s;
+  }
+  body[data-state="results"] .tray { display: none; }
+  body[data-state="paused"] .tray { opacity: .3; pointer-events: none; }
+
+  .chip {
+    --d: 6px;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 10px;
+    background: var(--paper);
+    cursor: pointer;
+    text-align: left;
+    transform: translateY(0);
+    box-shadow:
+      0 var(--d) 0 var(--chip-edge),
+      0 calc(var(--d) + 12px) 24px -10px rgba(0, 0, 0, .7);
+    transition:
+      transform .3s var(--ease-spring),
+      box-shadow .3s var(--ease-spring),
+      filter .15s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  @media (hover: hover) {
+    .chip:hover { --d: 9px; transform: translateY(-3px); }
+  }
+  .chip:active,
+  .chip.is-pressed {
+    --d: 1px;
+    transform: translateY(5px);
+    transition-duration: .05s, .05s, .15s;
+    transition-timing-function: ease-out;
+  }
+  .chip:focus-visible { outline-offset: 5px; }
+
+  .chip-swatch {
+    position: relative;
+    display: block;
+    height: clamp(56px, 12vh, 124px);
+    border-radius: 10px 10px 3px 3px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0) 45%),
+      var(--c);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08);
+    overflow: hidden;
+  }
+  .chip-swatch::before,
+  .chip-swatch::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* correct: a white flash across the swatch */
+  .chip-swatch::after { background: #fff; }
+  .chip.is-right .chip-swatch::after { animation: flash .38s ease-out; }
+  @keyframes flash { 0% { opacity: .75; } 100% { opacity: 0; } }
+  /* wrong: a printed cross */
+  .chip-swatch::before {
+    background:
+      linear-gradient(45deg, transparent calc(50% - 3px), rgba(20, 20, 20, .62) calc(50% - 3px) calc(50% + 3px), transparent calc(50% + 3px)) center / 40px 40px no-repeat,
+      linear-gradient(-45deg, transparent calc(50% - 3px), rgba(20, 20, 20, .62) calc(50% - 3px) calc(50% + 3px), transparent calc(50% + 3px)) center / 40px 40px no-repeat;
+  }
+  .chip.is-wrong .chip-swatch::before { animation: cross .5s ease-out; }
+  @keyframes cross { 0% { opacity: 0; transform: scale(1.4); } 18% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
+
+  .chip.is-answer { animation: answerRing .7s ease-out; }
+  @keyframes answerRing {
+    0% { outline: 3px solid rgba(245, 245, 243, 0); outline-offset: 12px; }
+    30% { outline: 3px solid rgba(245, 245, 243, 1); outline-offset: 4px; }
+    100% { outline: 3px solid rgba(245, 245, 243, 0); outline-offset: 4px; }
+  }
+
+  .ripple {
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .5);
+    pointer-events: none;
+    transform: translate(-50%, -50%) scale(0);
+  }
+
+  .chip-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 9px 11px 10px;
+    color: var(--paper-ink);
+  }
+  .chip-name {
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .chip-key {
+    flex: none;
+    min-width: 22px;
+    padding: 1px 5px;
+    border: 1px solid #cfcfcb;
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    background: #fff;
+    color: #5d5d5d;
+    font: 700 12px/1.3 var(--text);
+    text-align: center;
+  }
+
+  .tray.is-locked .chip { filter: saturate(.2) brightness(.78); cursor: not-allowed; }
+  .tray.is-locked .chip.is-answer { filter: none; }
+
+  /* ---------- effects layer ---------- */
+  .fx { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 20; }
+  .spark {
+    position: absolute;
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1.5px rgba(245, 245, 243, .9);
+  }
+  .confetti { position: absolute; top: -24px; border-radius: 2px; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 760px) {
+    .tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .chip-swatch { height: clamp(46px, 8.5vh, 84px); }
+    .result-head { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .result-actions .btn { flex: 1 1 auto; }
+  }
+  @media (max-width: 420px) {
+    .app { padding-left: 14px; padding-right: 14px; }
+    .hud-item { gap: 5px; }
+    .hud-label { font-size: 12px; }
+    .brand-name { font-size: 19px; }
+    .chip-label { padding: 7px 9px 8px; }
+    .chip-name { font-size: 14px; }
+    .intro-actions { gap: 14px; }
+    .intro-actions .btn { width: 100%; }
+  }
+  @media (max-width: 360px) {
+    .brand { gap: 9px; }
+    .brand-name { font-size: 17px; font-stretch: 108%; }
+  }
+  @media (max-height: 700px) and (max-width: 760px) {
+    .demo { height: 14vh; margin-bottom: 6px; }
+    .intro h1 { font-size: var(--t-md); margin-bottom: 4px; }
+    .caption { min-height: 0; font-size: 15px; }
+    .intro-actions { margin-top: 12px; gap: 12px; }
+    .meta { margin-top: 10px; }
+  }
+  @media (max-height: 560px) and (min-width: 600px) {
+    .tray { grid-template-columns: repeat(6, minmax(0, 1fr)); padding-top: 8px; }
+    .chip-swatch { height: 38px; }
+    .chip-label { padding: 5px 9px 6px; }
+    .hud { padding-top: 2px; }
+    .timebar { margin-top: 6px; }
+    .demo { height: 72px; margin-bottom: 4px; }
+    .intro h1 { font-size: var(--t-md); }
+    .caption { min-height: 0; }
+  }
+  @media (hover: none) and (pointer: coarse) {
+    .chip-key, .key-hint { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+  }
+</style>
+</head>
+<body data-state="intro">
+<div class="app" id="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <i style="--c: var(--red)"></i><i style="--c: var(--orange)"></i><i style="--c: var(--yellow)"></i>
+        <i style="--c: var(--green)"></i><i style="--c: var(--blue)"></i><i style="--c: var(--purple)"></i>
+      </span>
+      <span class="brand-name">Color Match</span>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="icon-btn" id="pauseBtn" aria-label="Pause round" hidden>
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>
+      </button>
+      <button type="button" class="icon-btn" id="soundBtn" aria-pressed="true" aria-label="Sound">
+        <svg class="ico-on" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <svg class="ico-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z" fill="currentColor"/><path d="m16 9 6 6"/><path d="m22 9-6 6"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="hud" id="hud" aria-label="Round status">
+    <div class="hud-item hud-score"><span class="hud-value" id="score">0</span><span class="hud-label">correct</span></div>
+    <div class="hud-item hud-time"><span class="hud-value" id="time">30</span><span class="hud-label">seconds left</span></div>
+    <div class="hud-item hud-streak"><span class="hud-value" id="streak">0</span><span class="hud-label">in a row</span></div>
+    <div class="timebar" aria-hidden="true"><span id="timefill"></span></div>
+  </section>
+
+  <main class="stage" id="stage">
+    <section class="view view-scroll is-active" id="viewIntro" aria-labelledby="introTitle">
+      <div class="view-inner intro">
+        <div class="demo" id="demoWrap"><span class="word" id="demoWord" aria-hidden="true"></span></div>
+        <h1 id="introTitle">Match the ink, not the word.</h1>
+        <p class="caption" id="demoCaption" aria-live="polite"></p>
+        <div class="intro-actions">
+          <button type="button" class="btn btn-primary" id="startBtn">Start 30-second round</button>
+          <label class="switch">
+            <input type="checkbox" id="shuffleToggle" role="switch">
+            <span class="switch-track" aria-hidden="true"></span>
+            <span>Shuffle chips after every word</span>
+          </label>
+        </div>
+        <p class="meta" id="introMeta"></p>
+      </div>
+    </section>
+
+    <section class="view view-count" id="viewCount" aria-live="assertive">
+      <div class="count-wrap" id="countWrap"><span class="word count-num" id="countNum">3</span></div>
+    </section>
+
+    <section class="view view-play" id="viewPlay">
+      <div class="word-wrap" id="wordWrap"><span class="word" id="word" aria-hidden="true"></span></div>
+      <p class="play-hint" id="playHint">Press the ink color, not the word</p>
+    </section>
+
+    <section class="view view-pause" id="viewPause" aria-labelledby="pauseTitle">
+      <h2 id="pauseTitle">Paused</h2>
+      <p>The clock is stopped and the word is hidden.</p>
+      <div class="row">
+        <button type="button" class="btn btn-primary" id="resumeBtn">Resume <kbd class="key-hint">Esc</kbd></button>
+        <button type="button" class="btn btn-ghost" id="quitBtn">End round</button>
+      </div>
+    </section>
+
+    <section class="view view-scroll" id="viewResults" aria-labelledby="resultTitle">
+      <div class="view-inner results">
+        <div class="result-head">
+          <div class="result-score">
+            <span class="result-score-num" id="rScore">0</span>
+            <span class="result-score-label">correct in 30 seconds</span>
+          </div>
+          <div>
+            <p class="badge" id="rBadge" hidden>New best</p>
+            <h2 id="resultTitle">Sharp eye</h2>
+            <p class="result-line" id="rLine"></p>
+          </div>
+        </div>
+        <dl class="stats">
+          <div><dt>accuracy</dt><dd id="rAcc">–</dd></div>
+          <div><dt>average correct answer</dt><dd id="rRt">–</dd></div>
+          <div><dt>longest run</dt><dd id="rRun">0</dd></div>
+          <div><dt>fooled by the word</dt><dd id="rFooled">0</dd></div>
+        </dl>
+        <div class="tape">
+          <p class="tape-label">Every word you answered, in order and in its ink. Outlined squares are misses.</p>
+          <div class="tape-row" id="rTape"></div>
+        </div>
+        <div class="result-actions">
+          <button type="button" class="btn btn-primary" id="againBtn">Play again <kbd class="key-hint">Enter</kbd></button>
+          <button type="button" class="btn btn-ghost" id="copyBtn">Copy result</button>
+          <button type="button" class="btn btn-ghost" id="homeBtn">Change settings</button>
+        </div>
+        <p class="meta" id="rBest"></p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tray" id="tray" aria-label="Color chips"></nav>
+</div>
+
+<div class="fx" id="fx" aria-hidden="true"></div>
+<div class="sr-only" id="live" aria-live="polite"></div>
+
+<noscript>
+  <p style="position:fixed;inset:auto 0 0;margin:0;padding:16px;background:#f5f5f3;color:#1f1f1f;text-align:center">Color Match needs JavaScript to run.</p>
+</noscript>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- constants ---------- */
+  const COLORS = [
+    { id: 'red',    name: 'Red',    key: 'r', hex: '#f43b4e', emoji: '🟥' },
+    { id: 'orange', name: 'Orange', key: 'o', hex: '#ff8c1a', emoji: '🟧' },
+    { id: 'yellow', name: 'Yellow', key: 'y', hex: '#ffd829', emoji: '🟨' },
+    { id: 'green',  name: 'Green',  key: 'g', hex: '#2bcb6b', emoji: '🟩' },
+    { id: 'blue',   name: 'Blue',   key: 'b', hex: '#3d8bff', emoji: '🟦' },
+    { id: 'purple', name: 'Purple', key: 'p', hex: '#b169ff', emoji: '🟪' },
+  ];
+  const BY_ID = Object.fromEntries(COLORS.map(c => [c.id, c]));
+  const BY_KEY = Object.fromEntries(COLORS.map(c => [c.key, c.id]));
+  const DEFAULT_ORDER = COLORS.map(c => c.id);
+
+  const ROUND_MS = 30000;
+  const LOCK_MS = 450;          // pause after a miss, so mashing never pays
+  const MATCH_RATE = 0.18;      // share of words printed in their own color
+  const STRETCH_MIN = 72;       // the word's width varies per trial (font-stretch %)
+  const STRETCH_MAX = 128;
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const motionOK = () => !reducedMotion.matches;
+
+  const $ = id => document.getElementById(id);
+  const els = {
+    stage: $('stage'), tray: $('tray'), fx: $('fx'), live: $('live'),
+    hud: $('hud'), score: $('score'), time: $('time'), streak: $('streak'), timefill: $('timefill'),
+    pauseBtn: $('pauseBtn'), soundBtn: $('soundBtn'),
+    demoWrap: $('demoWrap'), demoWord: $('demoWord'), demoCaption: $('demoCaption'),
+    startBtn: $('startBtn'), shuffleToggle: $('shuffleToggle'), introMeta: $('introMeta'),
+    countWrap: $('countWrap'), countNum: $('countNum'),
+    wordWrap: $('wordWrap'), word: $('word'), playHint: $('playHint'),
+    resumeBtn: $('resumeBtn'), quitBtn: $('quitBtn'),
+    rScore: $('rScore'), rBadge: $('rBadge'), rTitle: $('resultTitle'), rLine: $('rLine'),
+    rAcc: $('rAcc'), rRt: $('rRt'), rRun: $('rRun'), rFooled: $('rFooled'), rTape: $('rTape'),
+    rBest: $('rBest'), againBtn: $('againBtn'), copyBtn: $('copyBtn'), homeBtn: $('homeBtn'),
+  };
+  const views = {
+    intro: $('viewIntro'), count: $('viewCount'), play: $('viewPlay'),
+    pause: $('viewPause'), results: $('viewResults'),
+  };
+  const VIEW_FOR = {
+    intro: 'intro', countdown: 'count', playing: 'play',
+    paused: 'pause', timeup: 'count', results: 'results',
+  };
+
+  /* ---------- persistence ---------- */
+  const store = {
+    get(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw == null ? fallback : JSON.parse(raw);
+      } catch { return fallback; }
+    },
+    set(key, value) {
+      try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode: keep in memory only */ }
+    },
+  };
+  const prefs = {
+    sound: store.get('colormatch.sound', true) !== false,
+    shuffle: store.get('colormatch.shuffle', false) === true,
+  };
+  const bests = Object.assign({ classic: 0, shuffle: 0 }, store.get('colormatch.bests', {}));
+  const modeKey = () => (prefs.shuffle ? 'shuffle' : 'classic');
+
+  /* ---------- helpers ---------- */
+  const rand = n => Math.floor(Math.random() * n);
+  const pick = arr => arr[rand(arr.length)];
+  function shuffled(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = rand(i + 1);
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  const swatch = c => `<span class="sw" style="--c:${c.hex}"></span>`;
+  function announce(text) {
+    els.live.textContent = '';
+    requestAnimationFrame(() => { els.live.textContent = text; });
+  }
+
+  /* ---------- sound (synthesised, no files) ---------- */
+  const Sound = (() => {
+    let ctx = null;
+    let master = null;
+    function ensure() {
+      if (!prefs.sound) return null;
+      if (!ctx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return null;
+        ctx = new AC();
+        master = ctx.createGain();
+        master.gain.value = 0.55;
+        master.connect(ctx.destination);
+      }
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      return ctx;
+    }
+    function tone({ freq, dur = 0.12, type = 'sine', gain = 0.2, at = 0, slide = 0, attack = 0.004 }) {
+      const c = ensure();
+      if (!c || c.state !== 'running') return;
+      const t = c.currentTime + at;
+      const osc = c.createOscillator();
+      const amp = c.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      if (slide) osc.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+      amp.gain.setValueAtTime(0.0001, t);
+      amp.gain.exponentialRampToValueAtTime(gain, t + attack);
+      amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      osc.connect(amp);
+      amp.connect(master);
+      osc.start(t);
+      osc.stop(t + dur + 0.03);
+    }
+    // a run of correct answers climbs a major pentatonic scale
+    const STEPS = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24];
+    return {
+      wake: ensure,
+      correct(run) {
+        const step = STEPS[Math.min(Math.max(run, 1) - 1, STEPS.length - 1)];
+        const f = 523.25 * Math.pow(2, step / 12);
+        tone({ freq: f, dur: 0.16, type: 'triangle', gain: 0.24 });
+        tone({ freq: f * 2, dur: 0.09, type: 'sine', gain: 0.05 });
+      },
+      wrong() {
+        tone({ freq: 196, dur: 0.22, type: 'triangle', gain: 0.24, slide: 0.55 });
+        tone({ freq: 98, dur: 0.26, type: 'square', gain: 0.035, slide: 0.7 });
+      },
+      tick(sec) { tone({ freq: sec <= 3 ? 1320 : 990, dur: 0.05, type: 'square', gain: 0.035 }); },
+      count() { tone({ freq: 440, dur: 0.12, type: 'triangle', gain: 0.18 }); },
+      go() { tone({ freq: 880, dur: 0.28, type: 'triangle', gain: 0.2 }); },
+      end() {
+        [523.25, 659.25, 783.99, 1046.5].forEach((f, i) =>
+          tone({ freq: f, dur: 0.4, type: 'triangle', gain: 0.13, at: i * 0.085 }));
+      },
+      tap() { tone({ freq: 660, dur: 0.05, type: 'sine', gain: 0.06 }); },
+    };
+  })();
+  // browsers only unlock audio on certain gestures; retry on each of them
+  ['pointerup', 'keydown', 'touchend'].forEach(type =>
+    window.addEventListener(type, () => Sound.wake(), { capture: true, passive: true }));
+
+  /* ---------- chips ---------- */
+  const chipEls = {};
+  let visualOrder = DEFAULT_ORDER.slice();
+
+  function buildChips() {
+    COLORS.forEach(c => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.dataset.color = c.id;
+      b.style.setProperty('--c', c.hex);
+      b.setAttribute('aria-label', `${c.name}, key ${c.key.toUpperCase()}`);
+      b.innerHTML =
+        `<span class="chip-swatch" aria-hidden="true"></span>` +
+        `<span class="chip-label" aria-hidden="true"><span class="chip-name">${c.name}</span>` +
+        `<kbd class="chip-key">${c.key.toUpperCase()}</kbd></span>`;
+      b.addEventListener('pointerdown', e => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        e.preventDefault(); // keeps focus rings for keyboard users only
+        press(c.id, e.clientX, e.clientY);
+      });
+      // keyboard activation (Enter/Space on a focused chip) arrives as a click with detail 0
+      b.addEventListener('click', e => { if (e.detail === 0) press(c.id); });
+      els.tray.appendChild(b);
+      chipEls[c.id] = b;
+    });
+  }
+
+  // reorder visually with CSS `order` (keeps focus), animated with FLIP
+  function applyOrder(order, animate) {
+    const before = animate && motionOK()
+      ? new Map(order.map(id => [id, chipEls[id].getBoundingClientRect()]))
+      : null;
+    visualOrder = order.slice();
+    order.forEach((id, i) => { chipEls[id].style.order = i; });
+    if (!before) return;
+    order.forEach(id => {
+      const el = chipEls[id];
+      const a = before.get(id);
+      const b = el.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (Math.abs(dx) + Math.abs(dy) < 1) return;
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'translate(0, 0)' }],
+        { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)', composite: 'add' });
+    });
+  }
+  function shuffleOrder() {
+    let next;
+    do { next = shuffled(visualOrder); } while (next.every((id, i) => id === visualOrder[i]));
+    return next;
+  }
+
+  function pressVisual(el, x, y) {
+    el.classList.remove('is-pressed');
+    void el.offsetWidth;
+    el.classList.add('is-pressed');
+    clearTimeout(el._pressTimer);
+    el._pressTimer = setTimeout(() => el.classList.remove('is-pressed'), 130);
+    if (!motionOK()) return;
+    const sw = el.querySelector('.chip-swatch');
+    const r = sw.getBoundingClientRect();
+    const px = x == null ? r.left + r.width / 2 : x;
+    const py = y == null ? r.top + r.height / 2 : y;
+    const size = Math.max(r.width, r.height) * 2.4;
+    const dot = document.createElement('span');
+    dot.className = 'ripple';
+    dot.style.cssText = `left:${px - r.left}px;top:${py - r.top}px;width:${size}px;height:${size}px`;
+    sw.appendChild(dot);
+    dot.animate(
+      [{ transform: 'translate(-50%,-50%) scale(0)', opacity: 0.55 },
+       { transform: 'translate(-50%,-50%) scale(1)', opacity: 0 }],
+      { duration: 520, easing: 'cubic-bezier(.2,.7,.3,1)' }).onfinish = () => dot.remove();
+  }
+
+  function chipFlash(id, cls, ms = 720) {
+    const el = chipEls[id];
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+    el._flash = el._flash || {};
+    clearTimeout(el._flash[cls]);
+    el._flash[cls] = setTimeout(() => el.classList.remove(cls), ms);
+  }
+
+  function shake(el, amount = 10) {
+    if (!motionOK()) return;
+    el.animate(
+      [0, -amount, amount, -amount * .6, amount * .4, 0].map(x => ({ transform: `translateX(${x}px)` })),
+      { duration: 320, easing: 'ease-out', composite: 'add' });
+  }
+
+  function pop(el, scale = 1.22) {
+    if (!motionOK()) return;
+    el.animate(
+      [{ transform: 'scale(1)' }, { transform: `scale(${scale})` }, { transform: 'scale(1)' }],
+      { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+
+  function burst(chip, color) {
+    if (!motionOK()) return;
+    const r = chip.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height * 0.3;
+    for (let i = 0; i < 11; i++) {
+      const p = document.createElement('i');
+      p.className = 'spark';
+      p.style.background = color;
+      p.style.left = `${cx}px`;
+      p.style.top = `${cy}px`;
+      els.fx.appendChild(p);
+      const angle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 1.15;
+      const dist = 55 + Math.random() * 85;
+      const dx = Math.cos(angle) * dist;
+      const dy = Math.sin(angle) * dist;
+      const rot = (Math.random() - 0.5) * 540;
+      p.animate(
+        [{ transform: 'translate(-50%,-50%) scale(1) rotate(0deg)', opacity: 1 },
+         { transform: `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px)) scale(.35) rotate(${rot}deg)`, opacity: 0 }],
+        { duration: 520 + Math.random() * 240, easing: 'cubic-bezier(.15,.7,.3,1)' }).onfinish = () => p.remove();
+    }
+  }
+
+  function confetti() {
+    if (!motionOK()) return;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    for (let i = 0; i < 90; i++) {
+      const c = COLORS[i % COLORS.length];
+      const p = document.createElement('i');
+      const w = 7 + Math.random() * 8;
+      p.className = 'confetti';
+      p.style.cssText = `left:${Math.random() * W}px;width:${w}px;height:${w * 1.35}px;background:${c.hex}`;
+      els.fx.appendChild(p);
+      const drift = (Math.random() - 0.5) * 240;
+      const rot = (Math.random() - 0.5) * 1080;
+      p.animate(
+        [{ transform: 'translate(0,0) rotate(0deg)' },
+         { transform: `translate(${drift}px, ${H + 60}px) rotate(${rot}deg)` }],
+        { duration: 1900 + Math.random() * 1500, delay: Math.random() * 600,
+          easing: 'cubic-bezier(.3,.5,.5,1)', fill: 'backwards' }).onfinish = () => p.remove();
+    }
+  }
+
+  /* ---------- the word ---------- */
+  function makeTrial(prev, allowMatch = true) {
+    let ink;
+    do { ink = pick(COLORS).id; } while (prev && ink === prev.ink);
+    let word;
+    if (allowMatch && Math.random() < MATCH_RATE && !(prev && prev.word === ink)) {
+      word = ink;
+    } else {
+      do { word = pick(COLORS).id; } while (word === ink || (prev && word === prev.word));
+    }
+    const stretch = STRETCH_MIN + rand(STRETCH_MAX - STRETCH_MIN + 1);
+    return { word, ink, stretch, shownAt: 0 };
+  }
+
+  function setWord(el, trial) {
+    el.textContent = BY_ID[trial.word].name.toUpperCase();
+    el.style.color = BY_ID[trial.ink].hex;
+    el.style.fontStretch = `${trial.stretch}%`;
+  }
+
+  // largest size that fits the box, then shrink if this width of type overflows
+  function fitWord(el, box, heightShare, cap = 250) {
+    const w = box.clientWidth;
+    const h = box.clientHeight;
+    if (!w || !h) return;
+    const size = Math.min(h * heightShare, cap);
+    el.style.fontSize = `${size}px`;
+    const actual = el.offsetWidth;
+    const max = w * 0.95;
+    if (actual > max) el.style.fontSize = `${size * max / actual}px`;
+  }
+
+  function stampIn(el, from = 1.1) {
+    if (!motionOK()) return;
+    el.animate(
+      [{ opacity: 0.15, transform: `scale(${from})` }, { opacity: 1, transform: 'scale(1)' }],
+      { duration: 150, easing: 'cubic-bezier(.2,.8,.2,1)' });
+  }
+
+  /* ---------- state ---------- */
+  let state = 'intro';
+  let round = null;
+  let lastResult = null;
+  let raf = 0;
+  let lockTimer = 0;
+  let countTimer = 0;
+  let hintTimer = 0;
+  let countdownInterrupted = false;
+
+  function setState(next) {
+    state = next;
+    document.body.dataset.state = next;
+    const active = VIEW_FOR[next];
+    Object.entries(views).forEach(([name, el]) => el.classList.toggle('is-active', name === active));
+    els.pauseBtn.hidden = next !== 'playing';
+  }
+
+  /* ---------- intro practice ---------- */
+  let demo = null;
+  let demoBusy = false;
+  let demoHits = 0;
+  let demoTimer = 0;
+
+  function newDemo(animate = true) {
+    clearTimeout(demoTimer);
+    demo = makeTrial(demo, false);
+    demoBusy = false;
+    setWord(els.demoWord, demo);
+    fitWord(els.demoWord, els.demoWrap, 0.95, 200);
+    if (animate) stampIn(els.demoWord);
+    const said = BY_ID[demo.word].name.toLowerCase();
+    const ink = BY_ID[demo.ink];
+    if (demoHits === 0) {
+      els.demoCaption.innerHTML =
+        `This word says ${said}, but its ink is ${ink.name.toLowerCase()}. ` +
+        `Press ${swatch(ink)}<b>${ink.name}</b> to try it.`;
+    } else if (demoHits < 3) {
+      els.demoCaption.innerHTML = `This one says ${said}. Which chip matches its ink?`;
+    } else {
+      els.demoCaption.innerHTML = `You have it. Keep practicing, or start the round when you're ready.`;
+    }
+    if (prefs.shuffle && animate) applyOrder(shuffleOrder(), true);
+  }
+
+  function demoAnswer(id) {
+    if (!demo || demoBusy) return;
+    const ink = BY_ID[demo.ink];
+    if (id === demo.ink) {
+      demoBusy = true;
+      demoHits += 1;
+      Sound.correct(demoHits);
+      chipFlash(id, 'is-right', 420);
+      burst(chipEls[id], ink.hex);
+      els.demoCaption.innerHTML = `Right. ${swatch(ink)}${ink.name} ink, ${ink.name} chip.`;
+      demoTimer = setTimeout(() => { if (state === 'intro') newDemo(true); }, 950);
+    } else {
+      Sound.wrong();
+      chipFlash(id, 'is-wrong', 520);
+      chipFlash(demo.ink, 'is-answer');
+      shake(els.demoWord);
+      els.demoCaption.innerHTML = id === demo.word
+        ? `That's what the word says. The ink is ${ink.name.toLowerCase()}, so press ${swatch(ink)}<b>${ink.name}</b>.`
+        : `Not that one. Look at the color of the letters: ${swatch(ink)}<b>${ink.name.toLowerCase()}</b>.`;
+    }
+  }
+
+  function renderIntroMeta() {
+    const best = bests[modeKey()];
+    const bestText = best > 0
+      ? `Your best${prefs.shuffle ? ' with shuffled chips' : ''}: ${best} correct.`
+      : (prefs.shuffle ? 'No best score with shuffled chips yet.' : 'No best score yet.');
+    els.introMeta.innerHTML =
+      `${bestText}<span class="key-hint"> Keys: <kbd>R</kbd> <kbd>O</kbd> <kbd>Y</kbd> <kbd>G</kbd> <kbd>B</kbd> <kbd>P</kbd> ` +
+      `or <kbd>1</kbd>–<kbd>6</kbd> by position. <kbd>Esc</kbd> pauses.</span>`;
+  }
+
+  function goHome() {
+    cancelAnimationFrame(raf);
+    clearTimeout(countTimer);
+    clearTimeout(lockTimer);
+    unlockTray();
+    round = null;
+    setState('intro');
+    applyOrder(prefs.shuffle ? shuffleOrder() : DEFAULT_ORDER, true);
+    renderIntroMeta();
+    newDemo(true);
+    els.startBtn.focus({ preventScroll: true });
+  }
+
+  /* ---------- the round ---------- */
+  function startRound() {
+    if (state !== 'intro' && state !== 'results') return;
+    Sound.wake();
+    clearTimeout(demoTimer);
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    round = {
+      score: 0, streak: 0, bestStreak: 0, log: [],
+      endAt: 0, remaining: ROUND_MS, trial: null,
+      locked: false, needsTrial: false, lastTickSec: 6, mode: modeKey(),
+    };
+    applyOrder(DEFAULT_ORDER, state === 'intro');
+    renderHud();
+    drawTime(ROUND_MS);
+    clearTimeout(hintTimer);
+    els.playHint.textContent = 'Press the ink color, not the word';
+    els.playHint.classList.remove('is-faded');
+    setState('countdown');
+    countdown();
+  }
+
+  function countdown() {
+    let n = 3;
+    const step = () => {
+      if (state !== 'countdown') return;
+      if (n === 0) { Sound.go(); begin(); return; }
+      els.countNum.textContent = String(n);
+      els.countNum.style.fontStretch = '100%';
+      fitWord(els.countNum, els.countWrap, 0.62, 230);
+      stampIn(els.countNum, 1.5);
+      Sound.count();
+      n -= 1;
+      countTimer = setTimeout(step, 640);
+    };
+    step();
+  }
+
+  function begin() {
+    setState('playing');
+    round.endAt = performance.now() + ROUND_MS;
+    nextTrial();
+    runClock();
+  }
+
+  function nextTrial() {
+    round.trial = makeTrial(round.trial);
+    if (prefs.shuffle) applyOrder(shuffleOrder(), true);
+    setWord(els.word, round.trial);
+    fitWord(els.word, els.wordWrap, 0.82);
+    stampIn(els.word);
+    round.trial.shownAt = performance.now();
+  }
+
+  function runClock() {
+    cancelAnimationFrame(raf);
+    const frame = () => {
+      if (state !== 'playing') return;
+      const left = Math.max(0, round.endAt - performance.now());
+      round.remaining = left;
+      drawTime(left);
+      const sec = Math.ceil(left / 1000);
+      if (left > 0 && sec <= 5 && sec < round.lastTickSec) {
+        round.lastTickSec = sec;
+        Sound.tick(sec);
+      }
+      if (left <= 0) { finishRound(); return; }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+  }
+
+  let lastTimeText = '';
+  function drawTime(left) {
+    els.timefill.style.transform = `scaleX(${left / ROUND_MS})`;
+    const text = left > 10000
+      ? String(Math.ceil(left / 1000))
+      : (Math.ceil(left / 100) / 10).toFixed(1);
+    if (text !== lastTimeText) {
+      els.time.textContent = text;
+      lastTimeText = text;
+    }
+    els.hud.classList.toggle('is-urgent', left > 0 && left <= 5000 && state === 'playing');
+  }
+
+  function renderHud() {
+    els.score.textContent = round.score;
+    els.streak.textContent = round.streak;
+  }
+
+  function flashHint(text, ms = 1100) {
+    els.playHint.textContent = text;
+    els.playHint.classList.remove('is-faded');
+    pop(els.playHint, 1.08);
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => els.playHint.classList.add('is-faded'), ms);
+  }
+
+  function answer(id) {
+    if (!round || round.locked || !round.trial) return;
+    const t = round.trial;
+    const rt = performance.now() - t.shownAt;
+    const correct = id === t.ink;
+    const fooled = !correct && id === t.word;
+    round.log.push({ word: t.word, ink: t.ink, pick: id, correct, fooled, rt });
+
+    if (correct) {
+      round.score += 1;
+      round.streak += 1;
+      round.bestStreak = Math.max(round.bestStreak, round.streak);
+      Sound.correct(round.streak);
+      chipFlash(id, 'is-right', 420);
+      burst(chipEls[id], BY_ID[id].hex);
+      renderHud();
+      pop(els.score);
+      if (round.streak >= 5 && round.streak % 5 === 0) {
+        pop(els.streak, 1.4);
+        flashHint(`${round.streak} in a row`);
+      } else if (round.log.length === 3) {
+        els.playHint.classList.add('is-faded');
+      }
+      nextTrial();
+    } else {
+      const lostRun = round.streak;
+      round.streak = 0;
+      renderHud();
+      if (lostRun > 0) shake(els.streak, 4);
+      Sound.wrong();
+      chipFlash(id, 'is-wrong', 520);
+      chipFlash(t.ink, 'is-answer');
+      shake(els.word);
+      if (fooled) flashHint("That's the word. Match the ink.");
+      lockTray();
+    }
+  }
+
+  function lockTray() {
+    round.locked = true;
+    els.tray.classList.add('is-locked');
+    clearTimeout(lockTimer);
+    lockTimer = setTimeout(() => {
+      unlockTray();
+      if (state === 'playing') nextTrial();
+    }, LOCK_MS);
+  }
+  function unlockTray() {
+    if (round) round.locked = false;
+    els.tray.classList.remove('is-locked');
+  }
+
+  function pause() {
+    if (state !== 'playing') return;
+    round.remaining = Math.max(0, round.endAt - performance.now());
+    cancelAnimationFrame(raf);
+    if (round.locked) {
+      clearTimeout(lockTimer);
+      unlockTray();
+      round.needsTrial = true;
+    }
+    els.hud.classList.remove('is-urgent');
+    setState('paused');
+    els.resumeBtn.focus({ preventScroll: true });
+  }
+
+  function resume() {
+    if (state !== 'paused') return;
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    setState('playing');
+    round.endAt = performance.now() + round.remaining;
+    if (round.needsTrial) {
+      round.needsTrial = false;
+      nextTrial();
+    } else {
+      fitWord(els.word, els.wordWrap, 0.82);
+      stampIn(els.word);
+      round.trial.shownAt = performance.now();
+    }
+    runClock();
+  }
+
+  function finishRound() {
+    if (!round) return;
+    cancelAnimationFrame(raf);
+    clearTimeout(lockTimer);
+    clearTimeout(hintTimer);
+    unlockTray();
+    round.remaining = 0;
+    drawTime(0);
+    els.hud.classList.remove('is-urgent');
+    setState('timeup');
+    els.countNum.textContent = 'TIME';
+    els.countNum.style.fontStretch = '130%';
+    fitWord(els.countNum, els.countWrap, 0.5, 200);
+    stampIn(els.countNum, 1.3);
+    Sound.end();
+    clearTimeout(countTimer);
+    countTimer = setTimeout(showResults, 900);
+  }
+
+  /* ---------- results ---------- */
+  function rating(score) {
+    if (score === 0) return ['No matches this time', 'Look at the color of the letters and ignore what they spell. Speed comes later.'];
+    if (score < 10) return ['The words are winning', 'Your brain reads the word before it sees the ink. That is normal. Trust the color.'];
+    if (score < 20) return ['Getting the hang of it', "You're reading the ink now. Next time, trust your first look."];
+    if (score < 30) return ['Sharp eye', 'Most people slow down by this point. You kept your pace.'];
+    if (score < 40) return ['Fast and steady', 'The words barely slowed you down.'];
+    return ['Ink reader', 'You saw the color before the word, again and again.'];
+  }
+
+  function countUp(el, to) {
+    if (!motionOK() || to === 0) { el.textContent = to; return; }
+    const start = performance.now();
+    const dur = Math.min(1000, 320 + to * 24);
+    const frame = now => {
+      const p = Math.min(1, (now - start) / dur);
+      el.textContent = Math.round(to * (1 - Math.pow(1 - p, 3)));
+      if (p < 1) requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  }
+
+  function showResults() {
+    const r = round;
+    if (!r) return;
+    const total = r.log.length;
+    const hits = r.log.filter(e => e.correct);
+    const accuracy = total ? Math.round((hits.length / total) * 100) : null;
+    const avg = hits.length ? Math.round(hits.reduce((s, e) => s + e.rt, 0) / hits.length) : null;
+    const fooled = r.log.filter(e => e.fooled).length;
+    const prevBest = bests[r.mode] || 0;
+    const isNewBest = r.score > prevBest;
+    if (isNewBest) {
+      bests[r.mode] = r.score;
+      store.set('colormatch.bests', bests);
+    }
+    lastResult = { ...r, accuracy, avg, fooled };
+
+    const [title, line] = rating(r.score);
+    els.rTitle.textContent = title;
+    els.rLine.textContent = line;
+    els.rBadge.hidden = !isNewBest;
+    els.rAcc.innerHTML = accuracy == null ? '–' : `${accuracy}<small>%</small>`;
+    els.rRt.innerHTML = avg == null ? '–' : `${avg}<small>ms</small>`;
+    els.rRun.textContent = r.bestStreak;
+    els.rFooled.textContent = fooled;
+
+    els.rTape.innerHTML = '';
+    if (!total) {
+      els.rTape.innerHTML = '<p class="tape-empty">No answers this round.</p>';
+    } else {
+      const frag = document.createDocumentFragment();
+      r.log.forEach((e, i) => {
+        const cell = document.createElement('span');
+        cell.className = e.correct ? 'tape-cell' : 'tape-cell is-miss';
+        cell.style.setProperty('--c', BY_ID[e.ink].hex);
+        cell.style.animationDelay = `${Math.min(i * 18, 900)}ms`;
+        cell.title = e.correct
+          ? `${BY_ID[e.word].name} in ${BY_ID[e.ink].name.toLowerCase()} ink, matched in ${Math.round(e.rt)} ms`
+          : `${BY_ID[e.word].name} in ${BY_ID[e.ink].name.toLowerCase()} ink, you pressed ${BY_ID[e.pick].name}`;
+        frag.appendChild(cell);
+      });
+      els.rTape.appendChild(frag);
+    }
+
+    const modeNote = r.mode === 'shuffle' ? ' with shuffled chips' : '';
+    if (isNewBest && prevBest > 0) els.rBest.textContent = `Previous best${modeNote}: ${prevBest} correct.`;
+    else if (isNewBest) els.rBest.textContent = `This is your first best score${modeNote}.`;
+    else els.rBest.textContent = `Your best${modeNote}: ${bests[r.mode]} correct.`;
+
+    els.copyBtn.textContent = 'Copy result';
+    setState('results');
+    views.results.scrollTop = 0;
+    countUp(els.rScore, r.score);
+    if (isNewBest && r.score > 0) setTimeout(confetti, 250);
+    els.againBtn.focus({ preventScroll: true });
+    announce(`Round over. ${r.score} correct${accuracy == null ? '' : `, ${accuracy} percent accuracy`}.`);
+  }
+
+  function shareText() {
+    const r = lastResult;
+    const cells = r.log.map(e => (e.correct ? BY_ID[e.ink].emoji : '⬛'));
+    const lines = [];
+    for (let i = 0; i < cells.length; i += 10) lines.push(cells.slice(i, i + 10).join(''));
+    const mode = r.mode === 'shuffle' ? ', shuffled chips' : '';
+    const acc = r.accuracy == null ? '' : `, ${r.accuracy}% accuracy`;
+    return `Color Match: ${r.score} correct in 30 seconds${acc}${mode}\n${lines.join('\n')}`;
+  }
+
+  async function copyResult() {
+    if (!lastResult) return;
+    const text = shareText();
+    let ok = false;
+    try {
+      await navigator.clipboard.writeText(text);
+      ok = true;
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch { ok = false; }
+      ta.remove();
+    }
+    els.copyBtn.textContent = ok ? 'Copied' : 'Copy failed. Select it from the console.';
+    if (!ok) console.log(text);
+    announce(ok ? 'Result copied' : 'Could not copy the result');
+    setTimeout(() => { els.copyBtn.textContent = 'Copy result'; }, 1800);
+  }
+
+  /* ---------- input ---------- */
+  function press(id, x, y) {
+    const chip = chipEls[id];
+    pressVisual(chip, x, y);
+    if (state === 'playing') {
+      if (round && round.locked) { shake(chip, 3); return; }
+      answer(id);
+    } else if (state === 'intro') {
+      demoAnswer(id);
+    } else if (state === 'countdown') {
+      Sound.tap();
+    }
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    const onControl = e.target instanceof Element && e.target.closest('button, input, a, label');
+
+    if (key === 'Escape') {
+      if (state === 'playing') { e.preventDefault(); pause(); }
+      else if (state === 'paused') { e.preventDefault(); resume(); }
+      return;
+    }
+    if (key === ' ' || key === 'Enter') {
+      if (onControl) return; // let the focused control handle it
+      if (state === 'intro' || state === 'results') { e.preventDefault(); startRound(); }
+      else if (state === 'paused') { e.preventDefault(); resume(); }
+      else if (state === 'playing') e.preventDefault();
+      return;
+    }
+    if (e.repeat) return;
+    let id = BY_KEY[key];
+    if (!id && /^[1-6]$/.test(key)) id = visualOrder[Number(key) - 1];
+    if (id && (state === 'playing' || state === 'intro' || state === 'countdown')) {
+      e.preventDefault();
+      press(id);
+    }
+  });
+
+  els.startBtn.addEventListener('click', startRound);
+  els.againBtn.addEventListener('click', startRound);
+  els.homeBtn.addEventListener('click', goHome);
+  els.copyBtn.addEventListener('click', copyResult);
+  els.pauseBtn.addEventListener('click', pause);
+  els.resumeBtn.addEventListener('click', resume);
+  els.quitBtn.addEventListener('click', () => { if (state === 'paused') finishRound(); });
+
+  function syncSound() {
+    els.soundBtn.setAttribute('aria-pressed', String(prefs.sound));
+    els.soundBtn.setAttribute('aria-label', prefs.sound ? 'Sound on. Turn off' : 'Sound off. Turn on');
+    els.soundBtn.title = prefs.sound ? 'Sound on' : 'Sound off';
+  }
+  els.soundBtn.addEventListener('click', () => {
+    prefs.sound = !prefs.sound;
+    store.set('colormatch.sound', prefs.sound);
+    syncSound();
+    if (prefs.sound) { Sound.wake(); Sound.tap(); }
+  });
+
+  els.shuffleToggle.checked = prefs.shuffle;
+  els.shuffleToggle.addEventListener('change', () => {
+    prefs.shuffle = els.shuffleToggle.checked;
+    store.set('colormatch.shuffle', prefs.shuffle);
+    renderIntroMeta();
+    applyOrder(prefs.shuffle ? shuffleOrder() : DEFAULT_ORDER, true);
+  });
+
+  // leaving the tab pauses the round so the clock never runs unseen
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state === 'playing') pause();
+      else if (state === 'countdown') { clearTimeout(countTimer); countdownInterrupted = true; }
+    } else if (countdownInterrupted) {
+      countdownInterrupted = false;
+      if (state === 'countdown') countdown();
+    }
+  });
+
+  function refit() {
+    if (state === 'intro') fitWord(els.demoWord, els.demoWrap, 0.95, 200);
+    else if (state === 'playing') fitWord(els.word, els.wordWrap, 0.82);
+    else if (state === 'countdown') fitWord(els.countNum, els.countWrap, 0.62, 230);
+    else if (state === 'timeup') fitWord(els.countNum, els.countWrap, 0.5, 200);
+  }
+  if ('ResizeObserver' in window) new ResizeObserver(refit).observe(els.stage);
+  else window.addEventListener('resize', refit);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(refit);
+
+  /* ---------- boot ---------- */
+  buildChips();
+  applyOrder(prefs.shuffle ? shuffleOrder() : DEFAULT_ORDER, false);
+  syncSound();
+  renderIntroMeta();
+  setState('intro');
+  newDemo(true);
+  if (motionOK()) {
+    COLORS.forEach((c, i) => {
+      chipEls[c.id].animate(
+        [{ transform: 'translateY(40px)', opacity: 0 }, { transform: 'translateY(0)', opacity: 1 }],
+        { duration: 520, delay: 120 + i * 55, easing: 'cubic-bezier(.34,1.4,.64,1)', fill: 'backwards' });
+    });
+  }
+
+  // test hook: lets automated checks read state without reaching into closures
+  window.__colorMatch = {
+    get state() { return state; },
+    get round() { return round; },
+    get demo() { return demo; },
+    finish: () => { if (state === 'playing') { round.endAt = performance.now(); } },
+  };
+})();
+</script>
+</body>
+</html>

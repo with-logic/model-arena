@@ -64,7 +64,7 @@ const apps = [
     tags: ["interactive"],
     poster: "/ocean.png",
     previews: {
-      "gpt-6-astra": "/previews/gpt-6-astra/ocean-wave-simulation.jpg",
+      "fable-5.2": "/previews/fable-5.2/ocean-wave-simulation.jpg",
     },
     iframeUrl: "/",
   },
@@ -75,7 +75,7 @@ const apps = [
     tags: ["game"],
     poster: "/game.png",
     previews: {
-      "gpt-6-astra": "/previews/gpt-6-astra/new-app-without-stats.jpg",
+      "fable-5.2": "/previews/fable-5.2/new-app-without-stats.jpg",
     },
     iframeUrl: "/",
   },
@@ -157,19 +157,19 @@ async function history(direction) {
   });
 }
 
-test("fresh visitors land in a live Astra app with a searchable collection index", async () => {
+test("fresh visitors land in a live Fable app with a searchable collection index", async () => {
   await render();
   assert.equal(activeFrames().length, 1);
   assert.equal(
     new URL(activeFrames()[0].src).pathname,
-    "/apps/gpt-6-astra/ocean-wave-simulation/",
+    "/apps/fable-5.2/ocean-wave-simulation/",
   );
   assert.equal(document.querySelectorAll(".thumb").length, apps.length);
   assert.equal(
     document
       .querySelector('.live-options a[target="_blank"]')
       .getAttribute("href"),
-    "/apps/gpt-6-astra/ocean-wave-simulation/",
+    "/apps/fable-5.2/ocean-wave-simulation/",
   );
   assert.equal(
     document.querySelector(".arena-live").classList.contains("expanded"),
@@ -262,14 +262,14 @@ for (const permission of ["camera", "microphone"]) {
   });
 }
 
-test("returning visitors open Astra instead of restoring their old Opus default", async () => {
+test("returning visitors open Fable instead of restoring their old Opus default", async () => {
   localStorage.setItem(
     SELECTION_STORAGE_KEY,
     JSON.stringify(["opus-5", "gpt-6-astra"]),
   );
   await render();
   assert.equal(activeFrames().length, 1);
-  assert.match(activeFrames()[0].src, /gpt-6-astra\/ocean-wave-simulation/);
+  assert.match(activeFrames()[0].src, /fable-5\.2\/ocean-wave-simulation/);
   assert.deepEqual(JSON.parse(localStorage.getItem(SELECTION_STORAGE_KEY)), [
     ...DEFAULT_COMPARISON_MODELS,
   ]);
@@ -341,13 +341,13 @@ test("repeated Return requests wait for the pending history traversal", async ()
 test("compare uses the default three models and clicking a focused model again restores split view", async () => {
   await render();
   const frame = activeFrames()[0];
-  assert.match(frame.src, /gpt-6-astra/);
+  assert.match(frame.src, /fable-5\.2/);
   await click(document.querySelector('[aria-label="Compare side by side"]'));
   assert.deepEqual(
     activeFrames().map((frame) => new URL(frame.src).pathname),
     [
-      "/apps/gpt-6-astra/ocean-wave-simulation/",
-      "/apps/opus-5/ocean-wave-simulation/",
+      "/apps/fable-5.2/ocean-wave-simulation/",
+      "/apps/gpt-6.1-sol/ocean-wave-simulation/",
       "/apps/qwen-3.8-27b/ocean-wave-simulation/",
     ],
   );
@@ -361,7 +361,7 @@ test("compare uses the default three models and clicking a focused model again r
   await click(tabs()[0]);
   await click(tabs()[1]);
   assert.equal(activeFrames().length, 1);
-  assert.match(activeFrames()[0].src, /opus-5/);
+  assert.match(activeFrames()[0].src, /gpt-6\.1-sol/);
   await click(tabs()[1]);
   assert.equal(activeFrames().length, 3);
 });
@@ -391,7 +391,7 @@ test("legacy comparison links retain model order and mobile displays the chosen 
   ]);
 });
 
-test("single model picker replaces the live model and keeps Astra thumbnail fallbacks", async () => {
+test("single model picker replaces the live model and keeps Fable thumbnail fallbacks", async () => {
   window.history.replaceState({}, "", "/?models=gpt-6-astra");
   await render();
   await click(document.querySelector('[aria-label^="Change model"]'));
@@ -404,10 +404,10 @@ test("single model picker replaces the live model and keeps Astra thumbnail fall
   assert.match(activeFrames()[0].src, /opus-5/);
   assert.ok(
     [...document.querySelectorAll(".thumb img")].every((img) =>
-      img.src.includes("/previews/gpt-6-astra/"),
+      img.src.includes("/previews/fable-5.2/"),
     ),
   );
-  assert.match(document.querySelector(".thumb img").title, /Astra/);
+  assert.match(document.querySelector(".thumb img").title, /Fable/);
   assert.equal(document.querySelector('[role="dialog"]'), null);
 });
 
@@ -555,11 +555,11 @@ test("exploring a model from arena statistics returns to live apps", async () =>
   await option("Code stats");
   await click(document.querySelector('.live-options a[href*="page=stats"]'));
   await click(
-    document.querySelector('[aria-label="Explore apps by GPT-6 Astra"]'),
+    document.querySelector('[aria-label="Explore apps by Fable 5.2"]'),
   );
   assert.ok(!document.querySelector(".live-app-stats"));
   assert.equal(activeFrames().length, 1);
-  assert.match(activeFrames()[0].src, /gpt-6-astra/);
+  assert.match(activeFrames()[0].src, /fable-5\.2/);
   assert.equal(
     new URLSearchParams(window.location.search).get("content") ?? "demo",
     "demo",

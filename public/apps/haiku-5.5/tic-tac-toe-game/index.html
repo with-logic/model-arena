@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en" data-theme="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3eee4">
+<meta name="description" content="Ludus Romanus: a Roman Empire themed Tic Tac Toe with perfect-play minimax AI, SPQR styling and confetti victories.">
+<title>Ludus Romanus · Tic Tac Toe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
+<style>
+/* ---------- Tokens ---------- */
+:root {
+  --board: min(80vmin, 600px, calc(100vh - 360px));
+  --font-display: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-body: "Cormorant Garamond", Garamond, Georgia, serif;
+}
+@supports (height: 100dvh) {
+  :root { --board: max(200px, min(80vmin, 600px, calc(100dvh - 360px))); }
+}
+
+[data-theme="day"] {
+  --marble-base: #f3eee4;
+  --veins: rgba(120, 98, 68, 0.13);
+  --grain: 0.32;
+  --ink: #2d231b;
+  --muted: #6e5f4f;
+  --gold: #b8913c;
+  --gold-hi: #f6e0a0;
+  --gold-lo: #7a5a1c;
+  --x: #8e1f1f;
+  --o: #2b4a72;
+  --tile: #fbf8f1;
+  --tile-2: #ece4d3;
+  --frame: linear-gradient(145deg, #f7e2a0 0%, #c39a3f 38%, #8a6420 62%, #e2b95e 100%);
+  --panel: rgba(255, 252, 246, 0.74);
+  --sheet: #fbf7ee;
+  --line: rgba(122, 90, 28, 0.25);
+  --focus: #1d5fb0;
+  --shadow: rgba(70, 50, 20, 0.24);
+  --crest-red: #7d1b1b;
+  color-scheme: light;
+}
+
+[data-theme="night"] {
+  --marble-base: #14161e;
+  --veins: rgba(214, 171, 79, 0.07);
+  --grain: 0.22;
+  --ink: #f1e7d0;
+  --muted: #b7ab92;
+  --gold: #d6ab4f;
+  --gold-hi: #f6dc8f;
+  --gold-lo: #7d5d1d;
+  --x: #ef7d6a;
+  --o: #8fb8ef;
+  --tile: #1f2330;
+  --tile-2: #262b3b;
+  --frame: linear-gradient(145deg, #f6dc8f 0%, #b9872e 38%, #6e4f14 62%, #d9b262 100%);
+  --panel: rgba(28, 31, 42, 0.8);
+  --sheet: #1c1f29;
+  --line: rgba(214, 171, 79, 0.28);
+  --focus: #f6dc8f;
+  --shadow: rgba(0, 0, 0, 0.55);
+  --crest-red: #7a1f1f;
+  color-scheme: dark;
+}
+
+/* ---------- Base ---------- */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-body);
+  color: var(--ink);
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(1200px 700px at 15% -10%, rgba(255, 255, 255, 0.55), transparent 60%),
+    radial-gradient(900px 600px at 100% 110%, rgba(255, 255, 255, 0.3), transparent 60%),
+    linear-gradient(118deg, transparent 0 24%, var(--veins) 24.3%, transparent 25.4% 61%, var(--veins) 61.3%, transparent 62.4%),
+    linear-gradient(202deg, transparent 0 38%, var(--veins) 38.3%, transparent 39.6% 79%, var(--veins) 79.2%, transparent 80.4%),
+    var(--marble-base);
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+/* Marble grain overlay */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 .45  0 0 0 0 .36  0 0 0 0 .26  0 0 0 .22 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
+}
+
+/* ---------- Layout ---------- */
+.app {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(10px, 2.2vmin, 22px);
+  width: min(100%, 880px);
+  margin: 0 auto;
+  padding: clamp(12px, 2.6vmin, 28px) clamp(12px, 3vw, 32px) 0;
+}
+
+/* ---------- Top bar ---------- */
+.topbar {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.crest {
+  width: clamp(40px, 7vmin, 60px);
+  height: auto;
+  flex: none;
+  color: var(--gold);
+  filter: drop-shadow(0 2px 3px var(--shadow));
+}
+.brand h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.02rem, 2.4vmin + 0.45rem, 1.6rem);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+.tagline {
+  margin: 3px 0 0;
+  font-style: italic;
+  color: var(--muted);
+  font-size: clamp(0.85rem, 1.7vmin, 1.02rem);
+}
+.actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(0.7rem, 1.5vmin, 0.88rem);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #2a1b03;
+  padding: 0.72em 1.25em;
+  border-radius: 999px;
+  border: 1px solid var(--gold-lo);
+  background: linear-gradient(180deg, #fff7d9 0%, #ecd58f 48%, #c99c3e 100%);
+  box-shadow: 0 3px 0 var(--gold-lo), 0 8px 16px -8px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  white-space: nowrap;
+  touch-action: manipulation;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, filter 0.15s ease;
+}
+@media (hover: hover) {
+  .btn:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 4px 0 var(--gold-lo), 0 12px 20px -8px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.7); }
+}
+.btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--gold-lo), 0 3px 6px -3px var(--shadow), inset 0 1px 0 rgba(255,255,255,0.5); }
+.btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+/* ---------- Scoreboard ---------- */
+.scoreboard {
+  width: min(100%, 560px);
+  display: grid;
+  grid-template-columns: 1fr 0.8fr 1fr;
+  gap: clamp(8px, 2vmin, 16px);
+}
+.score {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: clamp(8px, 1.6vmin, 14px) 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+  box-shadow: 0 10px 24px -14px var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.score.active {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-hi), 0 10px 24px -14px var(--shadow);
+}
+.score-label {
+  font-family: var(--font-display);
+  font-size: clamp(0.66rem, 1.4vmin, 0.82rem);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.score-val {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.4rem, 4.2vmin, 2.1rem);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+#card-X .score-val { color: var(--x); }
+#card-O .score-val { color: var(--o); }
+#card-D .score-val { color: var(--gold); }
+[data-theme="day"] #card-D .score-val { color: var(--gold-lo); }
+.score-val.bump { animation: bump 0.45s ease-out; }
+@keyframes bump {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Victory / status banner (in flow, never overlays the board) ---------- */
+.banner-slot {
+  width: min(100%, 600px);
+  height: clamp(44px, 7vmin, 56px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.banner {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 4px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: clamp(0.8rem, 2.1vmin, 1.1rem);
+  line-height: 1.2;
+  letter-spacing: 0.03em;
+  box-shadow: 0 8px 18px -12px var(--shadow);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+.banner.win {
+  background: linear-gradient(180deg, #fff4c8 0%, #e6bb4f 55%, #b8862a 100%);
+  color: #2a1b03;
+  border-color: var(--gold-lo);
+  animation: rise 0.5s ease-out;
+}
+.banner.draw { font-style: italic; font-weight: 500; font-size: clamp(0.9rem, 2.3vmin, 1.2rem); }
+@keyframes rise {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* ---------- Board ---------- */
+.stage {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.board {
+  --glyph: calc(var(--board) * 0.19);
+  position: relative;
+  width: var(--board);
+  height: var(--board);
+  padding: calc(var(--board) * 0.028);
+  border-radius: calc(var(--board) * 0.07);
+  background: var(--frame);
+  box-shadow: 0 30px 50px -28px var(--shadow), inset 0 2px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.12);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: calc(var(--board) * 0.022);
+}
+.board.over .cell:not(.win) { opacity: 0.5; }
+.row { display: contents; }
+.cell {
+  position: relative;
+  display: grid;
+  place-items: center;
+  border-radius: calc(var(--board) * 0.04);
+  background: radial-gradient(circle at 30% 20%, var(--tile) 0%, var(--tile-2) 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.55), inset 0 -4px 8px rgba(60, 40, 10, 0.1), 0 3px 6px -2px rgba(40, 25, 5, 0.25);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  transition: transform 0.14s ease, box-shadow 0.2s ease, background 0.35s ease, opacity 0.3s ease;
+}
+.cell:focus-visible {
+  box-shadow: 0 0 0 3px var(--focus), inset 0 2px 0 rgba(255, 255, 255, 0.55), 0 3px 6px -2px rgba(40, 25, 5, 0.25);
+}
+@media (hover: hover) {
+  .board:not([data-busy]) .cell:not(.filled):hover {
+    transform: translateY(-2px);
+    box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.6), 0 9px 14px -6px rgba(40, 25, 5, 0.35);
+  }
+}
+.board:not([data-busy]) .cell:not(.filled):active { transform: scale(0.95); }
+.board[data-busy] .cell { cursor: default; }
+.cell.win {
+  background: radial-gradient(circle at 30% 20%, #fff6cf 0%, #e9bd55 60%, #b8862a 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.7), 0 0 0 2px var(--gold-lo), 0 0 22px 2px rgba(233, 189, 85, 0.55);
+}
+
+/* Marks */
+.mark {
+  display: block;
+  width: var(--glyph);
+  height: var(--glyph);
+  line-height: 1;
+  overflow: visible;
+  pointer-events: none;
+}
+.mark.t {
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: calc(var(--glyph) * 1.05);
+  text-align: center;
+}
+.mark.x { color: var(--x); }
+.mark.o { color: var(--o); }
+.cell.win .mark { color: #2a1b03; text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35); }
+.mark.pop { animation: pop 0.34s cubic-bezier(0.2, 1.5, 0.4, 1); }
+@keyframes pop {
+  from { transform: scale(0.3) rotate(-18deg); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* Ghost preview of the next mark on hover / keyboard focus */
+.ghost {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+.ghost .mark { opacity: 0.3; }
+.board[data-turn="X"]:not([data-busy]) .cell:not(.filled):hover .gx,
+.board[data-turn="O"]:not([data-busy]) .cell:not(.filled):hover .go,
+.board[data-turn="X"]:not([data-busy]) .cell:not(.filled):focus-visible .gx,
+.board[data-turn="O"]:not([data-busy]) .cell:not(.filled):focus-visible .go { opacity: 1; }
+
+/* ---------- Footer ---------- */
+.site-footer {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  margin-top: auto;
+  padding-top: clamp(6px, 1.6vmin, 16px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.colosseum {
+  display: block;
+  width: min(100%, 420px);
+  height: auto;
+  color: var(--gold);
+  opacity: 0.4;
+}
+.site-footer p {
+  margin: 0;
+  padding-bottom: 10px;
+  font-family: var(--font-display);
+  font-size: 0.66rem;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ---------- Canvas confetti ---------- */
+#confetti {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 50;
+}
+
+/* ---------- Customize dialog ---------- */
+dialog {
+  width: min(94vw, 540px);
+  max-height: 90vh;
+  max-height: 90dvh;
+  padding: 0;
+  margin: auto;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--sheet);
+  color: var(--ink);
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.5);
+}
+dialog::backdrop { background: rgba(20, 12, 4, 0.5); backdrop-filter: blur(3px); }
+dialog[open] { animation: sheet-in 0.25s ease-out; }
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.sheet {
+  margin: 0;
+  padding: clamp(18px, 3vmin, 28px);
+  display: grid;
+  gap: 18px;
+}
+.sheet h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.1rem, 2.6vmin, 1.4rem);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sheet-sub { margin: 4px 0 0; color: var(--muted); font-style: italic; font-size: 1rem; }
+fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
+legend {
+  padding: 0;
+  margin-bottom: 8px;
+  font-family: var(--font-display);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-lo);
+}
+[data-theme="night"] legend { color: var(--gold); }
+.seg { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg label { position: relative; flex: 1 1 140px; cursor: pointer; }
+.seg input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  pointer-events: none;
+}
+.seg span {
+  display: block;
+  text-align: center;
+  padding: 0.62em 0.8em;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--tile);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 1.04rem;
+  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+@media (hover: hover) {
+  .seg label:hover span { transform: translateY(-1px); }
+}
+.seg label:active span { transform: scale(0.97); }
+.seg input:checked + span {
+  background: linear-gradient(180deg, #fff4c8 0%, #e0b04a 100%);
+  color: #2a1b03;
+  border-color: var(--gold-lo);
+  box-shadow: 0 3px 0 var(--gold-lo);
+}
+.seg input:focus-visible + span { outline: 3px solid var(--focus); outline-offset: 2px; }
+fieldset:disabled .seg span { opacity: 0.42; }
+fieldset:disabled .seg label { cursor: not-allowed; }
+.hint { min-height: 1.4em; margin: 8px 0 0; color: var(--muted); font-size: 0.98rem; font-style: italic; }
+.sheet-actions { display: flex; justify-content: flex-end; }
+
+/* ---------- Mobile portrait ---------- */
+@media (max-width: 600px) {
+  .topbar { flex-direction: column; align-items: center; text-align: center; }
+  .brand { flex-direction: row; }
+  .actions { width: 100%; justify-content: center; gap: 8px; }
+  .actions .btn { flex: 1 1 0; white-space: normal; padding: 0.7em 0.4em; }
+}
+
+/* ---------- Landscape phones / short viewports ---------- */
+@media (orientation: landscape) and (max-height: 560px) {
+  :root { --board: min(88vh, 480px); }
+  @supports (height: 100dvh) {
+    :root { --board: max(200px, min(88dvh, 480px)); }
+  }
+  .app {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    align-content: center;
+    align-items: center;
+    column-gap: clamp(16px, 4vw, 40px);
+    row-gap: 10px;
+    width: 100%;
+    padding: 12px 20px;
+  }
+  .stage { grid-column: 1; grid-row: 1 / span 3; flex: none; }
+  .topbar { grid-column: 2; grid-row: 1; flex-direction: column; align-items: stretch; text-align: left; }
+  .brand { flex-direction: row; }
+  .actions { width: 100%; }
+  .actions .btn { flex: 1 1 0; white-space: normal; }
+  .scoreboard { grid-column: 2; grid-row: 2; width: 100%; }
+  .banner-slot { grid-column: 2; grid-row: 3; width: 100%; }
+  .site-footer { display: none; }
+}
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- Shared SVG symbols for the Gladius / Laurel glyph set (filled by script) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="sym-gladius" viewBox="0 0 100 100"></symbol>
+    <symbol id="sym-laurel" viewBox="0 0 100 100"></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <svg class="crest" viewBox="0 0 100 100" role="img" aria-label="SPQR crest">
+        <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <use href="#sym-laurel" x="4" y="4" width="92" height="92"/>
+        <path d="M31 28 H69 V55 C69 71 60 80 50 85 C40 80 31 71 31 55 Z" fill="var(--crest-red)" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M31 40 H69" stroke="currentColor" stroke-width="1" opacity="0.7"/>
+        <text x="50" y="58" text-anchor="middle" font-family="Cinzel, Georgia, serif" font-weight="700" font-size="11.5" letter-spacing="0.8" fill="#f6dc8f">SPQR</text>
+      </svg>
+      <div>
+        <h1>Ludus Romanus</h1>
+        <p class="tagline">Tic Tac Toe · Senatus Populusque Romanus</p>
+      </div>
+    </div>
+    <nav class="actions" aria-label="Game actions">
+      <button type="button" class="btn" id="btn-new">New Round</button>
+      <button type="button" class="btn" id="btn-customize" aria-haspopup="dialog">Customize</button>
+      <button type="button" class="btn" id="btn-reset">Reset Scores</button>
+    </nav>
+  </header>
+
+  <section class="scoreboard" aria-label="Scoreboard">
+    <div class="score" id="card-X">
+      <span class="score-label" id="label-X">You · X</span>
+      <span class="score-val" id="score-X">0</span>
+    </div>
+    <div class="score" id="card-D">
+      <span class="score-label">Draws</span>
+      <span class="score-val" id="score-D">0</span>
+    </div>
+    <div class="score" id="card-O">
+      <span class="score-label" id="label-O">Rival · O</span>
+      <span class="score-val" id="score-O">0</span>
+    </div>
+  </section>
+
+  <div class="banner-slot">
+    <p class="banner turn" id="banner" role="status" aria-live="polite" aria-atomic="true"></p>
+  </div>
+
+  <main class="stage">
+    <div class="board" id="board" role="grid" aria-label="Tic-tac-toe board" aria-rowcount="3" aria-colcount="3"></div>
+  </main>
+
+  <footer class="site-footer">
+    <svg class="colosseum" viewBox="0 0 600 96" aria-hidden="true" focusable="false">
+      <defs>
+        <mask id="arcades">
+          <rect width="600" height="96" fill="#fff"/>
+          <g fill="#000">
+            <rect x="14" y="40" width="40" height="80" rx="20"/>
+            <rect x="98" y="40" width="40" height="80" rx="20"/>
+            <rect x="182" y="40" width="40" height="80" rx="20"/>
+            <rect x="266" y="40" width="40" height="80" rx="20"/>
+            <rect x="350" y="40" width="40" height="80" rx="20"/>
+            <rect x="434" y="40" width="40" height="80" rx="20"/>
+            <rect x="518" y="40" width="40" height="80" rx="20"/>
+            <rect x="56" y="14" width="12" height="14" rx="3"/>
+            <rect x="140" y="14" width="12" height="14" rx="3"/>
+            <rect x="224" y="14" width="12" height="14" rx="3"/>
+            <rect x="308" y="14" width="12" height="14" rx="3"/>
+            <rect x="392" y="14" width="12" height="14" rx="3"/>
+            <rect x="476" y="14" width="12" height="14" rx="3"/>
+          </g>
+        </mask>
+      </defs>
+      <rect width="600" height="96" fill="currentColor" mask="url(#arcades)"/>
+    </svg>
+    <p>S · P · Q · R</p>
+  </footer>
+</div>
+
+<canvas id="confetti" aria-hidden="true"></canvas>
+
+<dialog id="customize" aria-labelledby="customize-title">
+  <form method="dialog" class="sheet">
+    <div>
+      <h2 id="customize-title">Customize</h2>
+      <p class="sheet-sub">Settings save automatically. Mode and first move start a fresh round when you close this sheet.</p>
+    </div>
+
+    <fieldset>
+      <legend>Theme</legend>
+      <div class="seg">
+        <label><input type="radio" name="theme" value="day"><span>Marble Day</span></label>
+        <label><input type="radio" name="theme" value="night"><span>Night Legion</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Glyphs</legend>
+      <div class="seg">
+        <label><input type="radio" name="glyphs" value="standard"><span>Standard X / O</span></label>
+        <label><input type="radio" name="glyphs" value="laurel"><span>Gladius / Laurel</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Mode</legend>
+      <div class="seg">
+        <label><input type="radio" name="mode" value="ai"><span>vs AI</span></label>
+        <label><input type="radio" name="mode" value="pvp"><span>2-Player</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>First move</legend>
+      <div class="seg">
+        <label><input type="radio" name="first" value="X"><span>X</span></label>
+        <label><input type="radio" name="first" value="O"><span>O</span></label>
+      </div>
+    </fieldset>
+
+    <fieldset id="disc-group">
+      <legend>AI discipline</legend>
+      <div class="seg">
+        <label><input type="radio" name="discipline" value="perfect"><span>Perfect</span></label>
+        <label><input type="radio" name="discipline" value="pragmatic"><span>Pragmatic</span></label>
+        <label><input type="radio" name="discipline" value="reckless"><span>Reckless</span></label>
+      </div>
+      <p class="hint" id="disc-hint" aria-live="polite"></p>
+    </fieldset>
+
+    <div class="sheet-actions">
+      <button type="submit" class="btn" value="done">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ================= Constants & settings ================= */
+  const $ = (sel) => document.querySelector(sel);
+  const NS = 'http://www.w3.org/2000/svg';
+  const STORE_KEY = 'ludus-romanus-ttt-v1';
+  const OPTIONS = {
+    theme: ['day', 'night'],
+    glyphs: ['standard', 'laurel'],
+    mode: ['ai', 'pvp'],
+    first: ['X', 'O'],
+    discipline: ['perfect', 'pragmatic', 'reckless'],
+  };
+  const DEFAULTS = { theme: 'day', glyphs: 'standard', mode: 'ai', first: 'X', discipline: 'perfect' };
+  // Share of turns the AI ignores the minimax result and plays a random legal move.
+  const HANDICAP = { perfect: 0, pragmatic: 0.3, reckless: 0.7 };
+  const HINTS = {
+    perfect: 'Flawless minimax. Against it, the best you can hope for is a draw.',
+    pragmatic: 'Sound most of the time, but it gets distracted now and then.',
+    reckless: 'Charges on instinct. Expect the occasional gift.',
+  };
+  const LINES = [
+    [0, 1, 2], [3, 4, 5], [6, 7, 8],
+    [0, 3, 6], [1, 4, 7], [2, 5, 8],
+    [0, 4, 8], [2, 4, 6],
+  ];
+  const AI_DELAY_MS = 450;
+  const REDUCED_MOTION = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  let settings = { ...DEFAULTS };
+  let scores = { X: 0, O: 0, D: 0 };
+  let game = null;
+  let cells = [];
+  let animateIdx = -1;
+  let pendingRound = false;
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && typeof saved === 'object') {
+        for (const key of Object.keys(OPTIONS)) {
+          const value = saved.settings && saved.settings[key];
+          if (OPTIONS[key].includes(value)) settings[key] = value;
+        }
+        for (const key of ['X', 'O', 'D']) {
+          const value = saved.scores && saved.scores[key];
+          if (Number.isInteger(value) && value >= 0) scores[key] = value;
+        }
+      }
+    } catch (_) { /* storage unavailable or corrupt: fall back to defaults */ }
+  }
+
+  function persist() {
+    try { localStorage.setItem(STORE_KEY, JSON.stringify({ settings, scores })); } catch (_) { /* ignore */ }
+  }
+
+  /* ================= SVG glyph symbols ================= */
+  function svgEl(tag, attrs) {
+    const node = document.createElementNS(NS, tag);
+    for (const k of Object.keys(attrs)) node.setAttribute(k, attrs[k]);
+    return node;
+  }
+
+  function buildSymbols() {
+    const gladius = document.getElementById('sym-gladius');
+    const laurel = document.getElementById('sym-laurel');
+
+    // Gladius: a short sword, drawn upright; the X glyph crosses two of them.
+    gladius.append(
+      svgEl('path', { d: 'M50 4 L57 18 L57 66 L43 66 L43 18 Z', fill: 'currentColor' }),
+      svgEl('rect', { x: 30, y: 65, width: 40, height: 7, rx: 3.5, fill: 'currentColor' }),
+      svgEl('rect', { x: 45.5, y: 72, width: 9, height: 18, rx: 2, fill: 'currentColor' }),
+      svgEl('circle', { cx: 50, cy: 93, r: 5, fill: 'currentColor' })
+    );
+
+    // Laurel: two curved branches meeting at the top and bottom, with paired leaves.
+    laurel.append(
+      svgEl('path', { d: 'M43.4 87.4 A38 38 0 0 1 43.4 12.6', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.4, 'stroke-linecap': 'round' }),
+      svgEl('path', { d: 'M56.6 87.4 A38 38 0 0 0 56.6 12.6', fill: 'none', stroke: 'currentColor', 'stroke-width': 2.4, 'stroke-linecap': 'round' })
+    );
+    const NODES = 8;
+    for (const side of [1, -1]) {
+      for (let i = 0; i < NODES; i++) {
+        const t = i / (NODES - 1);
+        const angle = side === 1 ? 100 + t * 160 : 80 - t * 160; // degrees, SVG space
+        const rad = (angle * Math.PI) / 180;
+        const cx = 50 + 38 * Math.cos(rad);
+        const cy = 50 + 38 * Math.sin(rad);
+        for (const tilt of [-38, 38]) {
+          laurel.append(svgEl('ellipse', {
+            cx: cx.toFixed(2), cy: cy.toFixed(2), rx: 3.4, ry: 8.5,
+            transform: `rotate(${(angle + tilt).toFixed(2)} ${cx.toFixed(2)} ${cy.toFixed(2)})`,
+            fill: 'currentColor',
+          }));
+        }
+      }
+    }
+  }
+
+  function glyph(player, animate) {
+    const cls = `mark ${player === 'X' ? 'x' : 'o'}${animate ? ' pop' : ''}`;
+    if (settings.glyphs === 'laurel') {
+      if (player === 'X') {
+        return `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true" focusable="false">` +
+          `<use href="#sym-gladius" transform="rotate(45 50 50)"/>` +
+          `<use href="#sym-gladius" transform="rotate(-45 50 50)"/></svg>`;
+      }
+      return `<svg class="${cls}" viewBox="0 0 100 100" aria-hidden="true" focusable="false"><use href="#sym-laurel"/></svg>`;
+    }
+    return `<span class="${cls} t" aria-hidden="true">${player}</span>`;
+  }
+
+  function ghostHTML() {
+    return `<span class="ghost gx">${glyph('X')}</span><span class="ghost go">${glyph('O')}</span>`;
+  }
+
+  /* ================= Game logic ================= */
+  const other = (p) => (p === 'X' ? 'O' : 'X');
+
+  function winnerOf(board) {
+    for (const [a, b, c] of LINES) {
+      if (board[a] && board[a] === board[b] && board[a] === board[c]) {
+        return { player: board[a], line: [a, b, c] };
+      }
+    }
+    return null;
+  }
+
+  // Negamax minimax with memoisation. Scores are from the perspective of `turn`
+  // (the side to move). Wins are weighted by how early they happen, so the AI
+  // prefers quick wins and slow defeats. The filled-cell count is a pure function
+  // of the board, so the memo stays valid across calls.
+  const memo = new Map();
+  function search(board, turn) {
+    const key = board.map((c) => c || '-').join('') + turn;
+    const cached = memo.get(key);
+    if (cached !== undefined) return cached;
+
+    const filled = board.reduce((n, c) => n + (c ? 1 : 0), 0);
+    let result;
+    if (winnerOf(board)) {
+      result = -(10 - filled); // the previous mover won, so the side to move has lost
+    } else if (filled === 9) {
+      result = 0;
+    } else {
+      result = -Infinity;
+      for (let i = 0; i < 9; i++) {
+        if (board[i]) continue;
+        board[i] = turn;
+        result = Math.max(result, -search(board, other(turn)));
+        board[i] = null;
+      }
+    }
+    memo.set(key, result);
+    return result;
+  }
+
+  function pick(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function chooseAIMove(board, me) {
+    const empties = [];
+    for (let i = 0; i < 9; i++) if (!board[i]) empties.push(i);
+
+    if (Math.random() < HANDICAP[settings.discipline]) return pick(empties);
+
+    let best = -Infinity;
+    let options = [];
+    for (const i of empties) {
+      board[i] = me;
+      const score = -search(board, other(me));
+      board[i] = null;
+      if (score > best) { best = score; options = [i]; }
+      else if (score === best) options.push(i);
+    }
+    return pick(options);
+  }
+
+  function newRound() {
+    game = {
+      board: Array(9).fill(null),
+      turn: settings.first,
+      over: false,
+      winner: null,
+      line: null,
+      thinking: false,
+      focus: 4,
+      mode: settings.mode,
+    };
+    roving(game.focus);
+    render();
+    maybeAI();
+  }
+
+  function place(i, player) {
+    game.board[i] = player;
+    animateIdx = i;
+    const win = winnerOf(game.board);
+    if (win) return finish(win.player, win.line);
+    if (game.board.every(Boolean)) return finish(null, null);
+    game.turn = other(player);
+    render();
+    maybeAI();
+  }
+
+  function finish(winner, line) {
+    game.over = true;
+    game.winner = winner;
+    game.line = line;
+    game.thinking = false;
+    scores[winner || 'D'] += 1;
+    persist();
+    render();
+    if (winner) celebrate();
+  }
+
+  function humanPlay(i) {
+    if (!game || game.over || game.thinking || game.board[i]) return;
+    const player = game.turn;
+    if (game.mode === 'ai' && player === 'O') return; // the rival moves on its own
+    place(i, player);
+  }
+
+  function maybeAI() {
+    if (!game || game.over || game.mode !== 'ai' || game.turn !== 'O') return;
+    game.thinking = true;
+    render();
+    const round = game;
+    setTimeout(() => {
+      if (round !== game || round.over) return; // round was replaced or reset
+      const i = chooseAIMove(round.board.slice(), 'O');
+      round.thinking = false;
+      place(i, 'O');
+    }, AI_DELAY_MS);
+  }
+
+  /* ================= Rendering ================= */
+  function buildBoard() {
+    const board = $('#board');
+    board.replaceChildren();
+    cells = [];
+    for (let r = 0; r < 3; r++) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.setAttribute('role', 'row');
+      for (let c = 0; c < 3; c++) {
+        const i = r * 3 + c;
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        cell.setAttribute('role', 'gridcell');
+        cell.tabIndex = -1;
+        cell.dataset.i = String(i);
+        cell.addEventListener('click', () => { focusCell(i); humanPlay(i); });
+        cell.addEventListener('keydown', onCellKey);
+        cell.addEventListener('focus', () => { if (game) game.focus = i; roving(i); });
+        row.append(cell);
+        cells.push(cell);
+      }
+      board.append(row);
+    }
+    // Lets iOS Safari apply :active press states on the cells.
+    board.addEventListener('touchstart', () => {}, { passive: true });
+  }
+
+  function roving(i) {
+    cells.forEach((cell, j) => { cell.tabIndex = j === i ? 0 : -1; });
+  }
+
+  function focusCell(i) {
+    roving(i);
+    if (game) game.focus = i;
+    cells[i].focus({ preventScroll: true });
+  }
+
+  function onCellKey(e) {
+    const i = Number(e.currentTarget.dataset.i);
+    let r = Math.floor(i / 3);
+    let c = i % 3;
+    switch (e.key) {
+      case 'ArrowUp': r = Math.max(0, r - 1); break;
+      case 'ArrowDown': r = Math.min(2, r + 1); break;
+      case 'ArrowLeft': c = Math.max(0, c - 1); break;
+      case 'ArrowRight': c = Math.min(2, c + 1); break;
+      case 'Home': c = 0; break;
+      case 'End': c = 2; break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        humanPlay(i);
+        return;
+      default:
+        return;
+    }
+    e.preventDefault();
+    focusCell(r * 3 + c);
+  }
+
+  function paintCell(cell, value, animate) {
+    cell.dataset.v = value || '';
+    cell.classList.toggle('filled', Boolean(value));
+    cell.innerHTML = value ? glyph(value, animate) : ghostHTML();
+  }
+
+  function repaintAll() {
+    cells.forEach((cell) => { delete cell.dataset.v; }); // force a fresh paint
+    render();
+  }
+
+  function render() {
+    const board = $('#board');
+    board.dataset.turn = game.turn;
+    board.toggleAttribute('data-busy', game.over || game.thinking);
+    board.classList.toggle('over', game.over);
+    board.setAttribute('aria-busy', String(game.thinking));
+
+    cells.forEach((cell, i) => {
+      const value = game.board[i];
+      if (cell.dataset.v !== (value || '')) {
+        paintCell(cell, value, i === animateIdx);
+      }
+      cell.classList.toggle('win', Boolean(game.line && game.line.includes(i)));
+      const r = Math.floor(i / 3) + 1;
+      const c = (i % 3) + 1;
+      const state = value ? `${value} placed` : 'empty';
+      cell.setAttribute('aria-label', `Row ${r}, column ${c}, ${state}`);
+    });
+    animateIdx = -1;
+
+    renderBanner();
+    renderScore();
+  }
+
+  function renderBanner() {
+    const banner = $('#banner');
+    const ai = game.mode === 'ai';
+    let kind = 'turn';
+    let text;
+    if (game.over) {
+      if (game.winner) {
+        kind = 'win';
+        if (ai && game.winner === 'O') text = 'Caesar prevails. Vae victis!';
+        else if (ai) text = 'Victory! Veni, vidi, vici.';
+        else text = `Victory for ${game.winner}. Veni, vidi, vici.`;
+      } else {
+        kind = 'draw';
+        text = 'Pax. A drawn battle, no legion prevails.';
+      }
+    } else if (game.thinking) {
+      text = 'The rival weighs his strategy…';
+    } else if (ai && game.turn === 'X') {
+      text = 'Your move, Centurion (X).';
+    } else {
+      text = `${game.turn} to move`;
+    }
+    banner.className = `banner ${kind}`;
+    if (banner.textContent !== text) banner.textContent = text;
+  }
+
+  function renderScore() {
+    const ai = settings.mode === 'ai';
+    $('#label-X').textContent = ai ? 'You · X' : 'Player X';
+    $('#label-O').textContent = ai ? 'Rival · O' : 'Player O';
+    for (const key of ['X', 'O', 'D']) {
+      const el = $(`#score-${key}`);
+      const next = String(scores[key]);
+      if (el.textContent !== next) {
+        el.textContent = next;
+        el.classList.remove('bump');
+        void el.offsetWidth; // restart the animation
+        el.classList.add('bump');
+      }
+    }
+    const live = game && !game.over;
+    $('#card-X').classList.toggle('active', Boolean(live && game.turn === 'X'));
+    $('#card-O').classList.toggle('active', Boolean(live && game.turn === 'O'));
+  }
+
+  function applyTheme() {
+    document.documentElement.dataset.theme = settings.theme;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = settings.theme === 'night' ? '#14161e' : '#f3eee4';
+  }
+
+  function syncDialog() {
+    const dialog = $('#customize');
+    for (const key of Object.keys(OPTIONS)) {
+      const input = dialog.querySelector(`input[name="${key}"][value="${settings[key]}"]`);
+      if (input) input.checked = true;
+    }
+    const pvp = settings.mode === 'pvp';
+    $('#disc-group').disabled = pvp;
+    $('#disc-hint').textContent = pvp ? 'Discipline applies only to matches against the AI.' : HINTS[settings.discipline];
+  }
+
+  function applySettings() {
+    applyTheme();
+    syncDialog();
+    persist();
+    if (game) repaintAll();
+    renderScore();
+  }
+
+  /* ================= Confetti (single canvas, no DOM spam) ================= */
+  const canvas = $('#confetti');
+  const ctx = canvas.getContext('2d');
+  let confetti = [];
+  let confettiRaf = 0;
+  let lastFrame = 0;
+
+  function sizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = Math.round(window.innerWidth * dpr);
+    canvas.height = Math.round(window.innerHeight * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function celebrate() {
+    if (REDUCED_MOTION.matches) return;
+    const palette = ['#e9b84f', '#f7e3a1', '#b98a2c', '#8e1f1f', '#f4efe6', '#c9a24a', '#2b4a72'];
+    const count = 180;
+    for (let i = 0; i < count; i++) {
+      confetti.push({
+        x: Math.random() * window.innerWidth,
+        y: -20 - Math.random() * window.innerHeight * 0.25,
+        vx: (Math.random() - 0.5) * 4,
+        vy: 2 + Math.random() * 4,
+        w: 6 + Math.random() * 6,
+        h: 4 + Math.random() * 4,
+        rot: Math.random() * Math.PI * 2,
+        vr: (Math.random() - 0.5) * 0.3,
+        flip: Math.random() * Math.PI * 2,
+        vf: 0.05 + Math.random() * 0.1,
+        color: palette[i % palette.length],
+      });
+    }
+    if (!confettiRaf) {
+      sizeCanvas();
+      lastFrame = performance.now();
+      confettiRaf = requestAnimationFrame(stepConfetti);
+    }
+  }
+
+  function stepConfetti(now) {
+    const dt = Math.min(2, (now - lastFrame) / 16.67);
+    lastFrame = now;
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    confetti = confetti.filter((p) => p.y < window.innerHeight + 30);
+    for (const p of confetti) {
+      p.vy += 0.09 * dt;
+      p.vx *= 0.995;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      p.flip += p.vf * dt;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot);
+      ctx.scale(1, Math.cos(p.flip));
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      ctx.restore();
+    }
+    if (confetti.length) {
+      confettiRaf = requestAnimationFrame(stepConfetti);
+    } else {
+      confettiRaf = 0;
+      ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    }
+  }
+
+  window.addEventListener('resize', sizeCanvas);
+
+  /* ================= Controls ================= */
+  const dialog = $('#customize');
+
+  $('#btn-new').addEventListener('click', newRound);
+
+  $('#btn-reset').addEventListener('click', () => {
+    scores = { X: 0, O: 0, D: 0 };
+    persist();
+    renderScore();
+  });
+
+  $('#btn-customize').addEventListener('click', () => {
+    syncDialog();
+    dialog.showModal();
+  });
+
+  dialog.addEventListener('change', (e) => {
+    const input = e.target;
+    if (!(input instanceof HTMLInputElement) || !OPTIONS[input.name]) return;
+    settings[input.name] = input.value;
+    if (input.name === 'mode' || input.name === 'first') pendingRound = true;
+    applySettings();
+  });
+
+  dialog.addEventListener('close', () => {
+    if (pendingRound) {
+      pendingRound = false;
+      newRound();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key.toLowerCase() !== 'n' || e.metaKey || e.ctrlKey || e.altKey || dialog.open) return;
+    if (e.target instanceof HTMLElement && e.target.matches('input, textarea, select')) return;
+    newRound();
+  });
+
+  // Replay the score bump animation cleanly
+  document.querySelectorAll('.score-val').forEach((el) => {
+    el.addEventListener('animationend', () => el.classList.remove('bump'));
+  });
+
+  /* ================= Boot ================= */
+  buildSymbols();
+  buildBoard();
+  load();
+  applyTheme();
+  syncDialog();
+  sizeCanvas();
+  newRound();
+  renderScore();
+})();
+</script>
+</body>
+</html>

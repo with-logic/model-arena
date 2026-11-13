@@ -1,0 +1,848 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Target Clicker</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1e1b4b;
+    background: linear-gradient(160deg, #f8faff 0%, #eef2ff 50%, #fdf4ff 100%);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+
+  /* ---------- Background ---------- */
+  .blobs, .grid { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .grid {
+    background-image: radial-gradient(rgba(99, 102, 241, 0.14) 1px, transparent 1px);
+    background-size: 28px 28px;
+    -webkit-mask-image: radial-gradient(ellipse at center, #000 40%, transparent 85%);
+            mask-image: radial-gradient(ellipse at center, #000 40%, transparent 85%);
+  }
+  .blob {
+    position: absolute; width: 42vmax; height: 42vmax; border-radius: 50%;
+    filter: blur(70px); opacity: 0.45;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  .b1 { background: #a5d8ff; top: -12vmax; left: -10vmax; }
+  .b2 { background: #ffc9e3; bottom: -14vmax; right: -8vmax; animation-duration: 28s; animation-delay: -6s; }
+  .b3 { background: #d0bfff; top: 20%; left: 40%; width: 34vmax; height: 34vmax; animation-duration: 19s; animation-delay: -11s; }
+  @keyframes drift {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(6vmax, 4vmax) scale(1.12); }
+  }
+
+  /* ---------- HUD ---------- */
+  .hud {
+    position: fixed; top: 14px; left: 14px; right: 14px; z-index: 5;
+    display: flex; gap: 10px; align-items: stretch;
+    pointer-events: none;
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border: 1px solid rgba(255, 255, 255, 0.95);
+    box-shadow: 0 10px 30px -12px rgba(49, 46, 129, 0.25);
+    border-radius: 18px;
+    padding: 10px 16px;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 104px; text-align: center; }
+  .timer-card { flex: 1; max-width: 420px; margin: 0 auto; text-align: center; }
+  .label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: #6b6b93; font-weight: 600; }
+  .value { display: inline-block; font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .sub { font-size: 12px; font-weight: 700; color: #6366f1; font-variant-numeric: tabular-nums; }
+  .bar { height: 6px; border-radius: 99px; background: #e0e7ff; margin-top: 8px; overflow: hidden; }
+  .fill {
+    height: 100%; width: 100%; border-radius: inherit; transform-origin: left center;
+    background: linear-gradient(90deg, #6366f1, #ec4899, #f59e0b);
+  }
+  .timer-card.warn .value { color: #e11d48; animation: pulse 0.5s ease-in-out infinite alternate; }
+  .timer-card.warn .fill { background: linear-gradient(90deg, #f43f5e, #fb7185); }
+  @keyframes pulse { to { transform: scale(1.06); } }
+  .bump { animation: bump 0.3s ease; }
+  @keyframes bump { 40% { transform: scale(1.25); } }
+  .btn-ghost {
+    pointer-events: auto; cursor: pointer; font: inherit; font-weight: 600; font-size: 13px;
+    color: #3730a3; align-self: center; white-space: nowrap;
+  }
+  .btn-ghost:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 2px; }
+
+  /* ---------- Playfield ---------- */
+  .field { position: fixed; inset: 0; z-index: 1; cursor: crosshair; }
+  .paused *, .paused { animation-play-state: paused !important; }
+
+  .target {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: radial-gradient(circle closest-side,
+      var(--c) 0 16%, #fff 16% 34%, var(--c) 34% 52%, #fff 52% 70%, var(--c) 70% 88%, #fff 88%);
+    border: 3px solid #fff;
+    box-shadow: 0 14px 30px -8px var(--c), 0 0 0 1px rgba(30, 27, 75, 0.06);
+    cursor: pointer;
+    animation: spawn 0.38s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+    will-change: transform, opacity;
+  }
+  .target:hover { filter: brightness(1.06); }
+  @keyframes spawn { from { scale: 0; opacity: 0; } to { scale: 1; opacity: 1; } }
+  .target.hit { animation: hit 0.32s ease-out forwards; pointer-events: none; }
+  @keyframes hit { to { scale: 1.5; opacity: 0; } }
+  .target.expire { animation: expire 0.38s ease-in forwards; pointer-events: none; }
+  @keyframes expire { to { scale: 0.4; opacity: 0; } }
+
+  .ring {
+    position: absolute; left: -12px; top: -12px;
+    width: calc(100% + 24px); height: calc(100% + 24px);
+    transform: rotate(-90deg); overflow: visible; pointer-events: none;
+  }
+  .ring circle {
+    fill: none; stroke: var(--c); stroke-width: 4; stroke-linecap: round;
+    animation-name: drain; animation-timing-function: linear; animation-fill-mode: forwards;
+  }
+  @keyframes drain { from { stroke-dashoffset: 0; } to { stroke-dashoffset: var(--len); } }
+
+  .pop {
+    position: absolute; transform: translate(-50%, -50%);
+    font-weight: 900; font-size: 24px; color: var(--c);
+    text-shadow: 0 2px 0 #fff, 0 0 18px rgba(255, 255, 255, 0.9);
+    white-space: nowrap; pointer-events: none;
+    animation: pop-up 0.95s cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  }
+  .pop small {
+    display: block; font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: #4b4b75; text-align: center; text-shadow: none;
+  }
+  @keyframes pop-up {
+    0%   { opacity: 0; margin-top: 0; scale: 0.6; }
+    15%  { opacity: 1; scale: 1.12; }
+    100% { opacity: 0; margin-top: -80px; scale: 1; }
+  }
+
+  .spark {
+    position: absolute; width: 10px; height: 10px; border-radius: 50%;
+    background: var(--c); transform: translate(-50%, -50%); pointer-events: none;
+    animation: spark 0.65s ease-out forwards;
+  }
+  @keyframes spark {
+    to { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))); opacity: 0; scale: 0.3; }
+  }
+
+  .ripple {
+    position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border-radius: 50%; border: 3px solid #f43f5e; pointer-events: none;
+    animation: ripple 0.45s ease-out forwards;
+  }
+  @keyframes ripple { from { scale: 0.4; opacity: 0.9; } to { scale: 1.6; opacity: 0; } }
+
+  /* ---------- Overlay & panels ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: grid; place-items: center;
+    background: rgba(238, 242, 255, 0.45);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transition: opacity 0.35s ease, visibility 0.35s;
+  }
+  .overlay.off { opacity: 0; visibility: hidden; pointer-events: none; }
+  .hidden { display: none !important; }
+
+  .panel {
+    width: min(440px, calc(100vw - 32px));
+    max-height: calc(100vh - 32px); overflow-y: auto;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid #fff; border-radius: 28px;
+    padding: 32px 28px; text-align: center;
+    box-shadow: 0 30px 60px -20px rgba(49, 46, 129, 0.35);
+    animation: panel-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  }
+  .panel.plain { background: none; border: 0; box-shadow: none; overflow: visible; }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(16px) scale(0.96); } }
+
+  .gradient-text {
+    background: linear-gradient(90deg, #6366f1, #ec4899, #f59e0b);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .icon { width: 64px; height: 64px; animation: wobble 2.4s ease-in-out infinite; }
+  @keyframes wobble { 50% { transform: rotate(8deg) scale(1.05); } }
+  .title { font-size: 40px; font-weight: 900; letter-spacing: -0.02em; margin: 8px 0 8px; }
+  .sub-copy { color: #4b4b75; line-height: 1.5; margin: 0 0 16px; font-size: 15px; }
+  .rules { list-style: none; padding: 0; margin: 0 0 22px; display: grid; gap: 6px; color: #4b4b75; font-size: 14px; }
+  .rules li::before { content: "\2022"; color: #ec4899; margin-right: 8px; font-weight: 900; }
+
+  .cta {
+    width: 100%; font: inherit; font-weight: 800; font-size: 18px; color: #fff;
+    border: 0; border-radius: 16px; padding: 16px 32px; cursor: pointer;
+    background: linear-gradient(135deg, #6366f1, #ec4899 60%, #f59e0b);
+    box-shadow: 0 12px 28px -8px rgba(236, 72, 153, 0.6);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .cta:hover { transform: translateY(-2px); box-shadow: 0 16px 32px -8px rgba(236, 72, 153, 0.65); }
+  .cta:active { transform: scale(0.98); }
+  .cta:focus-visible { outline: 3px solid #a5b4fc; outline-offset: 3px; }
+
+  .hint { font-size: 13px; color: #6b6b93; margin: 12px 0 0; }
+  kbd {
+    font: inherit; font-size: 12px; color: #3730a3;
+    background: #eef2ff; border: 1px solid #c7d2fe; border-bottom-width: 2px;
+    border-radius: 6px; padding: 1px 6px;
+  }
+  .best-line { font-size: 13px; color: #6b6b93; margin: 14px 0 0; }
+  .best-line strong { color: #4338ca; }
+
+  .countdown {
+    font-size: 150px; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums;
+    text-shadow: 0 10px 40px rgba(99, 102, 241, 0.25);
+  }
+  .countdown.tick { animation: count-in 0.7s ease-out; }
+  @keyframes count-in {
+    0%   { opacity: 0; scale: 0.4; }
+    35%  { opacity: 1; scale: 1.1; }
+    100% { opacity: 1; scale: 1; }
+  }
+
+  /* ---------- Scoreboard ---------- */
+  .eyebrow {
+    text-transform: uppercase; letter-spacing: 0.2em; font-size: 12px; font-weight: 800;
+    color: #6366f1; margin: 0;
+  }
+  .final-score {
+    font-size: 80px; font-weight: 900; line-height: 1.05; margin: 4px 0 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .rank { margin: 0; font-weight: 700; color: #4338ca; }
+  .new-best {
+    display: inline-block; margin-top: 10px; padding: 5px 14px; border-radius: 99px;
+    background: linear-gradient(90deg, #fde68a, #fdba74); color: #7c2d12;
+    font-size: 12px; font-weight: 800; letter-spacing: 0.05em;
+    animation: bob 1.2s ease-in-out infinite alternate;
+  }
+  @keyframes bob { to { transform: translateY(-3px); } }
+
+  .stats { display: flex; justify-content: space-around; align-items: center; gap: 8px; margin: 22px 0 12px; }
+  .acc { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .ring-box { position: relative; width: 96px; height: 96px; }
+  .ring-box svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+  .ring-box .track { fill: none; stroke: #e0e7ff; stroke-width: 10; }
+  .ring-box .meter { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .ring-box span {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    font-weight: 900; font-size: 20px; font-variant-numeric: tabular-nums;
+  }
+  .kv { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .kv b { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #6b6b93; font-weight: 700; }
+
+  h3 {
+    margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em;
+    color: #6b6b93; text-align: left;
+  }
+  .board { list-style: none; margin: 0 0 22px; padding: 0; display: grid; gap: 6px; }
+  .board li {
+    display: grid; grid-template-columns: 26px 1fr 52px 84px; gap: 10px; align-items: center;
+    padding: 9px 12px; border-radius: 12px; background: #f5f7ff;
+    font-size: 14px; font-variant-numeric: tabular-nums; text-align: left;
+  }
+  .board li.me {
+    background: linear-gradient(90deg, #e0e7ff, #fce7f3);
+    box-shadow: inset 0 0 0 2px #a5b4fc;
+  }
+  .board .pos { font-weight: 900; color: #6366f1; }
+  .board .when { color: #4b4b75; }
+  .board .acc-col { color: #6b6b93; text-align: right; }
+  .board .score-col { font-weight: 800; text-align: right; }
+  .board .empty { display: block; text-align: center; color: #6b6b93; font-size: 14px; }
+
+  @media (max-width: 720px) {
+    .hud { flex-wrap: wrap; top: 10px; left: 10px; right: 10px; gap: 8px; }
+    .stat { min-width: 0; flex: 1 1 30%; padding: 8px 10px; }
+    .timer-card { order: -1; flex-basis: 100%; max-width: none; margin: 0; }
+    .value { font-size: 22px; }
+    .btn-ghost { flex: 1 1 100%; text-align: center; }
+    .panel { padding: 24px 20px; }
+    .title { font-size: 34px; }
+    .final-score { font-size: 64px; }
+    .countdown { font-size: 120px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blob { animation: none; }
+    .target, .pop, .panel { animation-duration: 0.01s !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="blobs" aria-hidden="true">
+    <span class="blob b1"></span><span class="blob b2"></span><span class="blob b3"></span>
+  </div>
+  <div class="grid" aria-hidden="true"></div>
+
+  <header class="hud" id="hud">
+    <div class="card stat">
+      <span class="label">Score</span>
+      <span class="value" id="score">0</span>
+    </div>
+    <div class="card timer-card" id="timer-card">
+      <span class="label">Time left</span>
+      <div><span class="value" id="time">20.0</span></div>
+      <div class="bar"><div class="fill" id="fill"></div></div>
+    </div>
+    <div class="card stat">
+      <span class="label">Streak</span>
+      <span class="value" id="streak">0</span>
+      <span class="sub" id="mult">×1.0</span>
+    </div>
+    <div class="card stat">
+      <span class="label">Best</span>
+      <span class="value" id="best">0</span>
+    </div>
+    <button class="card btn-ghost" id="sound" type="button">Sound: on</button>
+  </header>
+
+  <main class="field" id="field" aria-label="Play area"></main>
+
+  <div class="overlay" id="overlay">
+    <section class="panel" id="panel-start" role="dialog" aria-labelledby="title">
+      <svg class="icon" viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" fill="#ff5d73"/>
+        <circle cx="32" cy="32" r="21" fill="#ffffff"/>
+        <circle cx="32" cy="32" r="13" fill="#3a86ff"/>
+        <circle cx="32" cy="32" r="5" fill="#ffffff"/>
+      </svg>
+      <h1 class="title gradient-text" id="title">Target Clicker</h1>
+      <p class="sub-copy">Colorful targets pop up all over the screen. Hit them before they fade. Faster hits score more, bullseyes add a bonus, and streaks multiply everything.</p>
+      <ul class="rules">
+        <li>20 seconds on the clock</li>
+        <li>Empty clicks and expired targets break your streak</li>
+        <li>Accuracy = targets hit ÷ total clicks</li>
+      </ul>
+      <button class="cta" id="start" type="button">Start game</button>
+      <p class="hint">or press <kbd>Space</kbd></p>
+      <p class="best-line">Personal best: <strong id="start-best">0</strong></p>
+    </section>
+
+    <section class="panel plain hidden" id="panel-count" aria-live="assertive">
+      <div class="countdown gradient-text" id="count">3</div>
+    </section>
+
+    <section class="panel hidden" id="panel-end" role="dialog" aria-label="Final scoreboard">
+      <p class="eyebrow">Time's up</p>
+      <div class="final-score gradient-text" id="final-score">0</div>
+      <p class="rank" id="rank"></p>
+      <span class="new-best hidden" id="new-best">New personal best!</span>
+
+      <div class="stats">
+        <div class="acc">
+          <div class="ring-box">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <defs>
+                <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0" stop-color="#6366f1"/>
+                  <stop offset="1" stop-color="#ec4899"/>
+                </linearGradient>
+              </defs>
+              <circle class="track" cx="60" cy="60" r="52"/>
+              <circle class="meter" id="acc-ring" cx="60" cy="60" r="52" stroke="url(#grad)"/>
+            </svg>
+            <span id="acc-text">0%</span>
+          </div>
+          <span class="lbl">Accuracy</span>
+        </div>
+        <div class="kv"><b id="hits">0</b><span class="lbl">Hits</span></div>
+        <div class="kv"><b id="shots">0</b><span class="lbl">Clicks</span></div>
+        <div class="kv"><b id="streak-best">0</b><span class="lbl">Best streak</span></div>
+      </div>
+
+      <h3>Leaderboard</h3>
+      <ol class="board" id="board"></ol>
+
+      <button class="cta" id="again" type="button">Play again</button>
+      <p class="hint">or press <kbd>Space</kbd></p>
+    </section>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const GAME_MS = 20000;
+  const COLORS = ['#ff5d73', '#ff9f1c', '#f4c20d', '#2ec4b6', '#3a86ff', '#8338ec', '#ff006e', '#06d6a0'];
+  const BOARD_KEY = 'target-clicker-board-v1';
+  const SOUND_KEY = 'target-clicker-sound-v1';
+  const SIDE_PAD = 24;
+  const BOTTOM_PAD = 24;
+  const HUD_GAP = 14;
+  const ACC_C = 2 * Math.PI * 52;
+
+  const $ = (id) => document.getElementById(id);
+  const hud = $('hud');
+  const field = $('field');
+  const overlay = $('overlay');
+  const scoreEl = $('score');
+  const timeEl = $('time');
+  const timerCard = $('timer-card');
+  const fillEl = $('fill');
+  const streakEl = $('streak');
+  const multEl = $('mult');
+  const bestEl = $('best');
+  const soundBtn = $('sound');
+  const countEl = $('count');
+  const finalEl = $('final-score');
+  const rankEl = $('rank');
+  const newBestEl = $('new-best');
+  const accRing = $('acc-ring');
+  const accText = $('acc-text');
+  const hitsEl = $('hits');
+  const shotsEl = $('shots');
+  const streakBestEl = $('streak-best');
+  const boardEl = $('board');
+  const startBestEl = $('start-best');
+  const panels = { start: $('panel-start'), count: $('panel-count'), end: $('panel-end') };
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const multiplier = (streak) => Math.min(3, 1 + Math.floor(streak / 5) * 0.5);
+
+  function safeGet(key) {
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function safeSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable: play without persistence */ }
+  }
+  function loadBoard() {
+    try {
+      const parsed = JSON.parse(safeGet(BOARD_KEY));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function freshState() {
+    return {
+      phase: 'idle', // idle | countdown | playing | paused | over
+      start: 0, pausedAt: 0, nextSpawn: 0, raf: 0,
+      score: 0, hits: 0, shots: 0, streak: 0, bestStreak: 0,
+      targets: [],
+    };
+  }
+
+  let state = freshState();
+  let soundOn = safeGet(SOUND_KEY) !== 'off';
+  let audioCtx = null;
+  let bestScore = loadBoard().reduce((max, run) => Math.max(max, run.score || 0), 0);
+
+  // ---------- Audio (lazily created on first user gesture) ----------
+  function ensureAudio() {
+    if (!audioCtx) {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    return audioCtx;
+  }
+  function tone(from, to, dur, type, vol) {
+    if (!soundOn) return;
+    const ctx = ensureAudio();
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(from, t);
+    osc.frequency.exponentialRampToValueAtTime(to, t + dur);
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.02);
+  }
+  const sfxHit = () => tone(660, 1320, 0.14, 'triangle', 0.18);
+  const sfxBull = () => { tone(988, 1976, 0.22, 'sine', 0.22); setTimeout(() => tone(1480, 1760, 0.18, 'sine', 0.12), 70); };
+  const sfxMiss = () => tone(220, 120, 0.12, 'square', 0.05);
+
+  soundBtn.addEventListener('click', () => {
+    soundOn = !soundOn;
+    safeSet(SOUND_KEY, soundOn ? 'on' : 'off');
+    soundBtn.textContent = soundOn ? 'Sound: on' : 'Sound: off';
+    soundBtn.blur();
+  });
+  soundBtn.textContent = soundOn ? 'Sound: on' : 'Sound: off';
+
+  // ---------- Helpers ----------
+  function bump(node) {
+    node.classList.remove('bump');
+    void node.offsetWidth; // restart animation
+    node.classList.add('bump');
+  }
+  function removeLater(node, ms) {
+    setTimeout(() => node.remove(), ms);
+  }
+  function showPanel(name) {
+    for (const key of Object.keys(panels)) panels[key].classList.toggle('hidden', key !== name);
+  }
+  function setCount(text) {
+    countEl.textContent = text;
+    countEl.classList.remove('tick');
+    void countEl.offsetWidth;
+    countEl.classList.add('tick');
+  }
+  function countUp(node, to, ms, fmt) {
+    const t0 = performance.now();
+    const step = (now) => {
+      const p = Math.min(1, (now - t0) / ms);
+      const eased = 1 - Math.pow(1 - p, 3);
+      node.textContent = fmt(to * eased);
+      if (p < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  const fmtInt = (v) => Math.round(v).toLocaleString();
+  const fmtPct = (v) => `${Math.round(v)}%`;
+
+  function renderHud(remaining) {
+    scoreEl.textContent = state.score.toLocaleString();
+    timeEl.textContent = (remaining / 1000).toFixed(1);
+    fillEl.style.transform = `scaleX(${clamp(remaining / GAME_MS, 0, 1)})`;
+    timerCard.classList.toggle('warn', state.phase === 'playing' && remaining <= 5000);
+    streakEl.textContent = state.streak;
+    multEl.textContent = `×${multiplier(state.streak).toFixed(1)}`;
+    bestEl.textContent = bestScore.toLocaleString();
+  }
+
+  // ---------- Targets ----------
+  function topPad() {
+    return hud.getBoundingClientRect().bottom + HUD_GAP;
+  }
+
+  function spawnTarget(now) {
+    const d = clamp((now - state.start) / GAME_MS, 0, 1);
+    const size = Math.round(lerp(120, 64, d) * rand(0.9, 1.1));
+    const life = Math.round(lerp(1800, 950, d));
+    const W = field.clientWidth;
+    const H = field.clientHeight;
+    const minX = SIDE_PAD + size / 2;
+    const maxX = W - SIDE_PAD - size / 2;
+    const minY = topPad() + size / 2;
+    const maxY = H - BOTTOM_PAD - size / 2;
+    if (maxX < minX || maxY < minY) return;
+
+    let x = 0;
+    let y = 0;
+    let placed = false;
+    for (let i = 0; i < 40 && !placed; i++) {
+      x = rand(minX, maxX);
+      y = rand(minY, maxY);
+      placed = state.targets.every((t) => Math.hypot(t.x - x, t.y - y) > (t.size + size) / 2 + 14);
+    }
+    if (!placed) return;
+
+    const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+    const node = document.createElement('div');
+    node.className = 'target';
+    node.style.cssText = `left:${x}px;top:${y}px;width:${size}px;height:${size}px;--c:${color}`;
+
+    // Countdown ring sits just outside the target and drains over its lifetime.
+    const r = ((size / 2 + 7) / (size + 24)) * 100;
+    const len = 2 * Math.PI * r;
+    node.innerHTML =
+      `<svg class="ring" viewBox="0 0 100 100" aria-hidden="true">` +
+      `<circle cx="50" cy="50" r="${r.toFixed(3)}" style="--len:${len.toFixed(3)};stroke-dasharray:${len.toFixed(3)};animation-duration:${life}ms"></circle>` +
+      `</svg>`;
+    field.appendChild(node);
+
+    state.targets.push({ node, x, y, size, color, life, expireAt: now + life });
+  }
+
+  function removeTarget(t) {
+    state.targets = state.targets.filter((other) => other !== t);
+  }
+
+  function spawnSparks(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + rand(-0.2, 0.2);
+      const dist = rand(50, 100);
+      const s = document.createElement('span');
+      s.className = 'spark';
+      s.style.left = `${x}px`;
+      s.style.top = `${y}px`;
+      s.style.setProperty('--c', color);
+      s.style.setProperty('--dx', `${(Math.cos(angle) * dist).toFixed(1)}px`);
+      s.style.setProperty('--dy', `${(Math.sin(angle) * dist).toFixed(1)}px`);
+      field.appendChild(s);
+      removeLater(s, 700);
+    }
+  }
+
+  function spawnPopText(x, y, text, color, sub) {
+    const p = document.createElement('div');
+    p.className = 'pop';
+    p.style.left = `${x}px`;
+    p.style.top = `${y}px`;
+    p.style.setProperty('--c', color);
+    const main = document.createElement('span');
+    main.textContent = text;
+    p.appendChild(main);
+    if (sub) {
+      const small = document.createElement('small');
+      small.textContent = sub;
+      p.appendChild(small);
+    }
+    field.appendChild(p);
+    removeLater(p, 1000);
+  }
+
+  function spawnRipple(x, y) {
+    const r = document.createElement('div');
+    r.className = 'ripple';
+    r.style.left = `${x}px`;
+    r.style.top = `${y}px`;
+    field.appendChild(r);
+    removeLater(r, 480);
+  }
+
+  function onHit(t, e, now) {
+    t.node.classList.add('hit');
+    removeLater(t.node, 330);
+    removeTarget(t);
+
+    const dist = Math.hypot(e.clientX - t.x, e.clientY - t.y);
+    const bull = dist <= t.size * 0.17;
+    const remaining = clamp((t.expireAt - now) / t.life, 0, 1);
+    const sizeBonus = Math.round((120 - t.size) * 0.5);
+
+    state.streak += 1;
+    state.bestStreak = Math.max(state.bestStreak, state.streak);
+    const mult = multiplier(state.streak);
+    const pts = Math.round((60 + 140 * remaining + sizeBonus + (bull ? 60 : 0)) * mult);
+    state.score += pts;
+    state.hits += 1;
+
+    spawnSparks(t.x, t.y, t.color, bull ? 18 : 10);
+    const sub = bull ? 'Bullseye!' : (mult > 1 ? `${mult.toFixed(1)}× combo` : '');
+    spawnPopText(t.x, t.y - t.size / 2 - 10, `+${pts}`, t.color, sub);
+
+    if (bull) sfxBull(); else sfxHit();
+    bump(scoreEl);
+    renderHud(GAME_MS - (now - state.start));
+  }
+
+  function onMiss(e) {
+    state.streak = 0;
+    spawnRipple(e.clientX, e.clientY);
+    sfxMiss();
+    bump(streakEl);
+    renderHud(GAME_MS - (performance.now() - state.start));
+  }
+
+  function expireTarget(t) {
+    removeTarget(t);
+    t.node.classList.add('expire');
+    removeLater(t.node, 400);
+    state.streak = 0;
+  }
+
+  // ---------- Input ----------
+  field.addEventListener('pointerdown', (e) => {
+    if (state.phase !== 'playing') return;
+    ensureAudio();
+    const node = e.target.closest ? e.target.closest('.target') : null;
+    if (node) {
+      const t = state.targets.find((x) => x.node === node);
+      if (!t) return; // already hit or fading out; not a new shot
+      state.shots += 1;
+      onHit(t, e, performance.now());
+    } else {
+      state.shots += 1;
+      onMiss(e);
+    }
+  });
+
+  $('start').addEventListener('click', startCountdown);
+  $('again').addEventListener('click', startCountdown);
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' && e.code !== 'Enter') return;
+    if (state.phase !== 'idle' && state.phase !== 'over') return;
+    if (e.repeat) return;
+    e.preventDefault();
+    startCountdown();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pause();
+    else resume();
+  });
+
+  function pause() {
+    if (state.phase !== 'playing') return;
+    state.phase = 'paused';
+    cancelAnimationFrame(state.raf);
+    state.pausedAt = performance.now();
+    field.classList.add('paused');
+  }
+
+  function resume() {
+    if (state.phase !== 'paused') return;
+    const offset = performance.now() - state.pausedAt;
+    state.start += offset;
+    state.nextSpawn += offset;
+    state.targets.forEach((t) => { t.expireAt += offset; });
+    state.phase = 'playing';
+    field.classList.remove('paused');
+    state.raf = requestAnimationFrame(tick);
+  }
+
+  // ---------- Game flow ----------
+  function startCountdown() {
+    if (state.phase !== 'idle' && state.phase !== 'over') return;
+    state = freshState();
+    state.phase = 'countdown';
+    field.replaceChildren();
+    ensureAudio();
+    overlay.classList.remove('off');
+    showPanel('count');
+
+    const labels = ['3', '2', '1', 'Go!'];
+    let i = 0;
+    const run = () => {
+      setCount(labels[i]);
+      i += 1;
+      if (i < labels.length) setTimeout(run, 800);
+      else setTimeout(beginPlay, 650);
+    };
+    run();
+  }
+
+  function beginPlay() {
+    if (state.phase !== 'countdown') return;
+    overlay.classList.add('off');
+    state.phase = 'playing';
+    state.start = performance.now();
+    state.nextSpawn = state.start + 500;
+    renderHud(GAME_MS);
+    state.raf = requestAnimationFrame(tick);
+  }
+
+  function tick(now) {
+    if (state.phase !== 'playing') return;
+    const elapsed = now - state.start;
+    const remaining = Math.max(0, GAME_MS - elapsed);
+    renderHud(remaining);
+
+    if (now >= state.nextSpawn) {
+      const d = clamp(elapsed / GAME_MS, 0, 1);
+      spawnTarget(now);
+      if (Math.random() < 0.15 + 0.25 * d) spawnTarget(now);
+      state.nextSpawn = now + lerp(900, 430, d) * rand(0.8, 1.2);
+    }
+
+    for (const t of [...state.targets]) {
+      if (now >= t.expireAt) expireTarget(t);
+    }
+
+    if (elapsed >= GAME_MS) {
+      endGame();
+      return;
+    }
+    state.raf = requestAnimationFrame(tick);
+  }
+
+  function endGame() {
+    state.phase = 'over';
+    cancelAnimationFrame(state.raf);
+    field.classList.remove('paused');
+    state.targets.forEach((t) => { t.node.classList.add('expire'); removeLater(t.node, 400); });
+    state.targets = [];
+    renderHud(0);
+
+    const acc = state.shots ? (state.hits / state.shots) * 100 : 0;
+    const previousBest = bestScore;
+    const entry = {
+      score: state.score,
+      acc: Math.round(acc),
+      hits: state.hits,
+      shots: state.shots,
+      streak: state.bestStreak,
+      date: Date.now(),
+    };
+    const board = loadBoard().concat(entry).sort((a, b) => b.score - a.score).slice(0, 5);
+    safeSet(BOARD_KEY, JSON.stringify(board));
+    const rankIndex = board.indexOf(entry);
+    const isNewBest = state.score > 0 && state.score > previousBest;
+    bestScore = Math.max(bestScore, state.score);
+    renderHud(0);
+
+    setTimeout(() => showEnd({ acc, board, rankIndex, isNewBest }), 450);
+  }
+
+  function titleFor(acc) {
+    if (acc >= 90) return 'Sharpshooter';
+    if (acc >= 75) return 'Marksman';
+    if (acc >= 50) return 'Steady Hand';
+    return 'Keep Practicing';
+  }
+
+  function showEnd({ acc, board, rankIndex, isNewBest }) {
+    overlay.classList.remove('off');
+    showPanel('end');
+
+    countUp(finalEl, state.score, 1000, fmtInt);
+    rankEl.textContent = `${titleFor(acc)} · ${Math.round(acc)}% accuracy`;
+    newBestEl.classList.toggle('hidden', !isNewBest);
+
+    hitsEl.textContent = state.hits;
+    shotsEl.textContent = state.shots;
+    streakBestEl.textContent = state.bestStreak;
+
+    accRing.style.strokeDasharray = ACC_C;
+    accRing.style.strokeDashoffset = ACC_C;
+    countUp(accText, acc, 1200, fmtPct);
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      accRing.style.strokeDashoffset = ACC_C * (1 - acc / 100);
+    }));
+
+    boardEl.replaceChildren();
+    if (board.length === 0) {
+      const li = document.createElement('li');
+      const span = document.createElement('span');
+      span.className = 'empty';
+      span.textContent = 'No runs yet';
+      li.appendChild(span);
+      boardEl.appendChild(li);
+    }
+    board.forEach((run, index) => {
+      const li = document.createElement('li');
+      if (index === rankIndex) li.className = 'me';
+      const cells = [
+        ['pos', `${index + 1}`],
+        ['when', new Date(run.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })],
+        ['acc-col', `${run.acc}%`],
+        ['score-col', (run.score || 0).toLocaleString()],
+      ];
+      for (const [cls, text] of cells) {
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = text;
+        li.appendChild(span);
+      }
+      boardEl.appendChild(li);
+    });
+  }
+
+  // ---------- Init ----------
+  startBestEl.textContent = bestScore.toLocaleString();
+  renderHud(GAME_MS);
+  showPanel('start');
+})();
+</script>
+</body>
+</html>

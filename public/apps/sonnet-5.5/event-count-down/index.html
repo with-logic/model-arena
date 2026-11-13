@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event Countdown</title>
+<style>
+  :root{
+    --accent:#ff7a59; --accent2:#7c5cff; --glass:rgba(18,16,32,.55); --line:rgba(255,255,255,.14);
+    --text:#fff; --muted:rgba(255,255,255,.66);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:#0b0a16;overflow-x:hidden;min-height:100vh}
+  /* ---------- parallax stage ---------- */
+  .stage{position:fixed;inset:0;overflow:hidden;z-index:0}
+  .layer{position:absolute;inset:-8%;will-change:transform;transition:transform .25s cubic-bezier(.2,.7,.3,1)}
+  #bg{background:
+      radial-gradient(60% 50% at 20% 25%,rgba(255,122,89,.55),transparent 70%),
+      radial-gradient(55% 55% at 80% 30%,rgba(124,92,255,.6),transparent 70%),
+      radial-gradient(70% 60% at 50% 90%,rgba(0,190,200,.4),transparent 70%),
+      linear-gradient(160deg,#171233,#0b0a16);
+    background-size:cover;background-position:center;inset:-10%}
+  #bg.img{background-size:cover;background-position:center}
+  #shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,6,20,.55),rgba(8,6,20,.35) 40%,rgba(8,6,20,.7));pointer-events:none}
+  .orb{position:absolute;border-radius:50%;filter:blur(40px);opacity:.5;animation:drift 18s ease-in-out infinite alternate}
+  .orb.a{width:34vmax;height:34vmax;left:-6%;top:8%;background:radial-gradient(circle,rgba(255,122,89,.55),transparent 65%)}
+  .orb.b{width:40vmax;height:40vmax;right:-10%;bottom:-8%;background:radial-gradient(circle,rgba(124,92,255,.55),transparent 65%);animation-duration:24s}
+  @keyframes drift{to{transform:translate(4vmax,-3vmax) scale(1.12)}}
+  #stars{position:absolute;inset:0;width:100%;height:100%}
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.07;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>")}
+  /* ---------- layout ---------- */
+  .app{position:relative;z-index:2;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:clamp(20px,4vw,48px) 20px 120px;gap:clamp(24px,4vh,44px);text-align:center}
+  .eyebrow{font-size:.78rem;letter-spacing:.35em;text-transform:uppercase;color:var(--muted);display:inline-flex;align-items:center;gap:10px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 var(--accent);animation:pulse 2s infinite}
+  @keyframes pulse{70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  h1{font-size:clamp(2rem,6.5vw,5rem);font-weight:800;letter-spacing:-.03em;line-height:1.05;margin-top:14px;
+     background:linear-gradient(120deg,#fff 30%,#ffd2c4 60%,#cdbfff);-webkit-background-clip:text;background-clip:text;color:transparent;
+     text-shadow:none;overflow-wrap:anywhere;max-width:18ch;margin-inline:auto}
+  .meta{margin-top:16px;display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center;color:var(--muted);font-size:1rem}
+  .meta span{display:inline-flex;align-items:center;gap:8px}
+  .meta svg{width:17px;height:17px;opacity:.85}
+  .meta a{color:inherit;text-decoration:underline;text-decoration-color:rgba(255,255,255,.3);text-underline-offset:4px}
+  .meta a:hover{color:#fff}
+  /* ---------- countdown ---------- */
+  .count{display:flex;gap:clamp(8px,2vw,24px);justify-content:center;flex-wrap:nowrap;perspective:900px}
+  .unit{display:flex;flex-direction:column;align-items:center;gap:12px}
+  .digits{display:flex;gap:4px;padding:clamp(10px,1.8vw,22px) clamp(8px,1.6vw,20px);border-radius:clamp(14px,2vw,26px);
+    background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.04));border:1px solid var(--line);
+    backdrop-filter:blur(14px) saturate(140%);-webkit-backdrop-filter:blur(14px) saturate(140%);
+    box-shadow:0 20px 50px -20px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.25);position:relative}
+  .digits::after{content:"";position:absolute;left:8px;right:8px;top:50%;height:1px;background:rgba(0,0,0,.25);pointer-events:none}
+  .d{position:relative;width:.64em;height:1.1em;font-size:clamp(2.6rem,10.5vw,8rem);font-weight:800;font-variant-numeric:tabular-nums;line-height:1.1;overflow:hidden}
+  .d span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:transform .6s cubic-bezier(.2,.9,.25,1),opacity .6s,filter .6s}
+  .d .cur{transform:translateY(0)}
+  .d .old{transform:translateY(-100%);opacity:0;filter:blur(4px)}
+  .d.roll .cur{animation:rollIn .6s cubic-bezier(.2,.9,.25,1)}
+  .d.roll .old{animation:rollOut .6s cubic-bezier(.2,.9,.25,1) forwards}
+  @keyframes rollIn{from{transform:translateY(100%);opacity:0;filter:blur(4px)}to{transform:none;opacity:1;filter:none}}
+  @keyframes rollOut{from{transform:none;opacity:1;filter:none}to{transform:translateY(-100%);opacity:0;filter:blur(4px)}}
+  .label{font-size:clamp(.62rem,1.5vw,.85rem);letter-spacing:.3em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .unit.sec .digits{border-color:rgba(255,122,89,.5);box-shadow:0 20px 50px -20px rgba(255,122,89,.5),inset 0 1px 0 rgba(255,255,255,.25)}
+  .sep{align-self:flex-start;font-size:clamp(1.8rem,6vw,5rem);font-weight:800;color:var(--accent);opacity:.7;padding-top:clamp(14px,2.4vw,30px);animation:blink 1s steps(2) infinite}
+  @keyframes blink{50%{opacity:.15}}
+  @media(max-width:560px){.sep{display:none}.count{gap:6px}.digits{padding:8px 6px}}
+  .done{display:none;font-size:clamp(1.6rem,5vw,3.5rem);font-weight:800}
+  .reached .count{display:none}.reached .done{display:block}
+  .progress{width:min(560px,86vw);height:4px;border-radius:4px;background:rgba(255,255,255,.12);overflow:hidden}
+  .progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px;transition:width 1s linear}
+  .plabel{font-size:.78rem;color:var(--muted);margin-top:8px;letter-spacing:.08em}
+  /* ---------- buttons ---------- */
+  .btn{appearance:none;border:0;cursor:pointer;font:inherit;font-weight:600;color:#fff;padding:14px 24px;border-radius:999px;display:inline-flex;align-items:center;gap:10px;transition:transform .2s,box-shadow .2s,background .2s}
+  .btn svg{width:18px;height:18px}
+  .btn.primary{background:linear-gradient(120deg,var(--accent),#ff4f7b 60%,var(--accent2));box-shadow:0 12px 30px -10px rgba(255,90,100,.7)}
+  .btn.primary:hover{transform:translateY(-2px);box-shadow:0 18px 36px -10px rgba(255,90,100,.85)}
+  .btn.ghost{background:rgba(255,255,255,.1);border:1px solid var(--line);backdrop-filter:blur(10px)}
+  .btn.ghost:hover{background:rgba(255,255,255,.18);transform:translateY(-2px)}
+  .btn:focus-visible,input:focus-visible,.drop:focus-visible{outline:2px solid #fff;outline-offset:3px}
+  .actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;position:relative}
+  .menu{position:absolute;top:calc(100% + 10px);left:0;min-width:240px;background:rgba(20,17,38,.92);border:1px solid var(--line);border-radius:16px;padding:6px;backdrop-filter:blur(18px);text-align:left;
+    opacity:0;transform:translateY(-6px) scale(.97);pointer-events:none;transition:.18s;z-index:20;box-shadow:0 20px 50px rgba(0,0,0,.5)}
+  .menu.open{opacity:1;transform:none;pointer-events:auto}
+  .menu a,.menu button{display:flex;width:100%;gap:10px;align-items:center;padding:12px 14px;border-radius:10px;color:#fff;text-decoration:none;font:inherit;font-size:.95rem;background:none;border:0;cursor:pointer;text-align:left}
+  .menu a:hover,.menu button:hover{background:rgba(255,255,255,.1)}
+  .calwrap{position:relative}
+  /* ---------- editor panel ---------- */
+  .fab{position:fixed;right:20px;bottom:20px;z-index:30}
+  .panel{position:fixed;z-index:40;right:20px;bottom:84px;width:min(400px,calc(100vw - 40px));max-height:calc(100vh - 110px);overflow:auto;background:var(--glass);backdrop-filter:blur(24px) saturate(150%);-webkit-backdrop-filter:blur(24px) saturate(150%);
+    border:1px solid var(--line);border-radius:24px;padding:22px;text-align:left;box-shadow:0 30px 80px -20px rgba(0,0,0,.7);
+    opacity:0;transform:translateY(16px) scale(.97);pointer-events:none;transition:.28s cubic-bezier(.2,.9,.25,1)}
+  .panel.open{opacity:1;transform:none;pointer-events:auto}
+  .panel h2{font-size:1.1rem;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center}
+  .panel h2 button{background:none;border:0;color:var(--muted);font-size:1.5rem;cursor:pointer;line-height:1}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;font-weight:600}
+  input[type=text],input[type=datetime-local]{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:#fff;font:inherit;font-size:.98rem;color-scheme:dark;transition:border .2s,background .2s}
+  input:focus{border-color:var(--accent);background:rgba(255,255,255,.12);outline:none}
+  input::placeholder{color:rgba(255,255,255,.35)}
+  .drop{display:flex;align-items:center;gap:12px;padding:14px;border-radius:14px;border:1.5px dashed rgba(255,255,255,.28);cursor:pointer;transition:.2s;font-size:.9rem;color:var(--muted)}
+  .drop:hover,.drop.over{border-color:var(--accent);background:rgba(255,122,89,.1);color:#fff}
+  .drop .thumb{width:46px;height:46px;border-radius:10px;background:rgba(255,255,255,.1) center/cover;flex:none;display:grid;place-items:center}
+  .drop .thumb svg{width:20px;height:20px}
+  .row{display:flex;gap:10px}
+  .row .btn{flex:1;justify-content:center;padding:12px 14px;font-size:.9rem}
+  .hint{font-size:.74rem;color:var(--muted);margin-top:8px;min-height:1em}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translate(-50%,30px);background:#fff;color:#14112a;padding:12px 20px;border-radius:999px;font-weight:600;font-size:.92rem;opacity:0;transition:.3s;z-index:60;pointer-events:none}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+  canvas#confetti{position:fixed;inset:0;z-index:50;pointer-events:none}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .enter{animation:enter .9s cubic-bezier(.2,.9,.25,1) both}
+  @keyframes enter{from{opacity:0;transform:translateY(24px)}}
+  @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="stage" aria-hidden="true">
+  <div class="layer" id="bg" data-depth="14"></div>
+  <div class="layer" data-depth="26" style="inset:0"><div class="orb a"></div><div class="orb b"></div></div>
+  <div class="layer" data-depth="42" style="inset:-4%"><canvas id="stars"></canvas></div>
+  <div id="shade"></div>
+</div>
+<div class="grain"></div>
+
+<main class="app" id="app">
+  <header class="enter">
+    <div class="eyebrow"><span class="dot"></span><span id="eyebrow">Counting down to</span></div>
+    <h1 id="title">New Year</h1>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section class="enter" style="animation-delay:.15s" aria-live="off">
+    <div class="count" id="count" role="timer" aria-label="Time remaining"></div>
+    <div class="done" id="done">🎉 It's happening now!</div>
+  </section>
+
+  <div class="enter" style="animation-delay:.3s">
+    <div class="progress"><i id="bar"></i></div>
+    <div class="plabel" id="plabel"></div>
+  </div>
+
+  <div class="actions enter" style="animation-delay:.4s">
+    <div class="calwrap">
+      <button class="btn primary" id="calBtn" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18M12 14v4M10 16h4"/></svg>
+        Save to Calendar
+      </button>
+      <div class="menu" id="menu" role="menu">
+        <button role="menuitem" id="icsBtn">⬇️&nbsp; Download .ics (Apple / Outlook)</button>
+        <a role="menuitem" id="gcal" target="_blank" rel="noopener">📅&nbsp; Google Calendar</a>
+        <a role="menuitem" id="outlook" target="_blank" rel="noopener">✉️&nbsp; Outlook.com</a>
+      </div>
+    </div>
+    <button class="btn ghost" id="shareBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+      Copy link
+    </button>
+  </div>
+</main>
+
+<button class="btn ghost fab" id="fab" aria-expanded="false" aria-controls="panel">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+  Customize
+</button>
+
+<aside class="panel" id="panel" aria-label="Event settings">
+  <h2>Your event <button id="closeP" aria-label="Close">×</button></h2>
+  <div class="field"><label for="iName">Event name</label><input type="text" id="iName" maxlength="80" placeholder="e.g. Summer Wedding"></div>
+  <div class="field"><label for="iDate">Date &amp; time</label><input type="datetime-local" id="iDate"><div class="hint" id="tzHint"></div></div>
+  <div class="field"><label for="iLoc">Location</label><input type="text" id="iLoc" maxlength="120" placeholder="e.g. Central Park, New York"></div>
+  <div class="field">
+    <label>Background image</label>
+    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Upload background image">
+      <div class="thumb" id="thumb"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="9" cy="9" r="2"/><path d="m21 15-5-5L5 21"/></svg></div>
+      <span id="dropTxt">Click or drop an image here</span>
+    </div>
+    <input type="file" id="file" accept="image/*" class="sr" tabindex="-1">
+    <div class="hint" id="imgHint"></div>
+  </div>
+  <div class="row"><button class="btn ghost" id="clearImg">Remove image</button><button class="btn ghost" id="reset">Reset all</button></div>
+</aside>
+
+<canvas id="confetti"></canvas>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const KEY = 'eventCountdown.v1';
+  const pad = n => String(n).padStart(2, '0');
+
+  // ---------- state ----------
+  const defaultDate = () => {
+    const now = new Date(); let y = now.getFullYear() + 1;
+    return new Date(y, 0, 1, 0, 0, 0);
+  };
+  const toLocalInput = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const defaults = () => { const d = defaultDate(); return { name: `New Year ${d.getFullYear()}`, date: toLocalInput(d), loc: 'Everywhere, Earth', img: '' }; };
+  let state = defaults();
+  let startTs = Date.now();
+
+  try {
+    const hash = location.hash.slice(1);
+    if (hash.startsWith('e=')) {
+      const o = JSON.parse(decodeURIComponent(escape(atob(hash.slice(2)))));
+      state = { ...state, ...o };
+    } else {
+      const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (saved) state = { ...state, ...saved };
+    }
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) { $('imgHint').textContent = 'Image too large to remember across reloads.'; } };
+
+  const target = () => { const t = new Date(state.date); return isNaN(t) ? defaultDate() : t; };
+
+  // ---------- countdown digits ----------
+  const units = [['days','Days'],['hours','Hours'],['minutes','Minutes'],['seconds','Seconds']];
+  const cells = {};
+  const countEl = $('count');
+  units.forEach(([k, label], i) => {
+    if (i) { const s = document.createElement('div'); s.className = 'sep'; s.textContent = ':'; countEl.appendChild(s); }
+    const u = document.createElement('div'); u.className = 'unit' + (k === 'seconds' ? ' sec' : '');
+    u.innerHTML = `<div class="digits"></div><div class="label">${label}</div>`;
+    countEl.appendChild(u);
+    cells[k] = { box: u.querySelector('.digits'), ds: [], val: '' };
+  });
+  function setUnit(k, str) {
+    const c = cells[k];
+    if (str === c.val) return;
+    while (c.ds.length < str.length) {
+      const d = document.createElement('div'); d.className = 'd';
+      d.innerHTML = '<span class="old"></span><span class="cur">0</span>';
+      c.box.appendChild(d); c.ds.push({ el: d, v: null });
+    }
+    while (c.ds.length > str.length) c.box.removeChild(c.ds.pop().el);
+    [...str].forEach((ch, i) => {
+      const o = c.ds[i];
+      if (o.v === ch) return;
+      const first = o.v === null;
+      o.el.querySelector('.old').textContent = o.v ?? '';
+      o.el.querySelector('.cur').textContent = ch;
+      o.v = ch;
+      if (!first) { o.el.classList.remove('roll'); void o.el.offsetWidth; o.el.classList.add('roll'); }
+    });
+    c.val = str;
+  }
+
+  let reachedFired = false;
+  function tick() {
+    const t = target(), diff = t - Date.now();
+    const reached = diff <= 0;
+    $('app').classList.toggle('reached', reached);
+    const s = Math.max(0, Math.floor(diff / 1000));
+    setUnit('days', pad(Math.floor(s / 86400)));
+    setUnit('hours', pad(Math.floor(s % 86400 / 3600)));
+    setUnit('minutes', pad(Math.floor(s % 3600 / 60)));
+    setUnit('seconds', pad(s % 60));
+    const total = t - startTs, pct = reached ? 100 : total > 0 ? Math.min(100, Math.max(0, (Date.now() - startTs) / total * 100)) : 0;
+    $('bar').style.width = pct + '%';
+    $('plabel').textContent = reached ? 'The wait is over' : `${pct.toFixed(1)}% of the final 30 days elapsed`;
+    document.title = reached ? `${state.name} — now!` : `${pad(Math.floor(s/86400))}d ${pad(Math.floor(s%86400/3600))}h ${pad(Math.floor(s%3600/60))}m · ${state.name}`;
+    if (reached && !reachedFired && Math.abs(diff) < 60000) confetti();
+    reachedFired = reached;
+  }
+
+  // ---------- render meta ----------
+  const ic = {
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s7-6.5 7-12a7 7 0 1 0-14 0c0 5.5 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/></svg>'
+  };
+  const esc = s => s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  function render() {
+    const t = target();
+    $('title').textContent = state.name || 'Untitled event';
+    const fmt = t.toLocaleString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    let html = `<span>${ic.cal}${esc(fmt)}</span>`;
+    if (state.loc) html += `<span>${ic.pin}<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(state.loc)}">${esc(state.loc)}</a></span>`;
+    $('meta').innerHTML = html;
+    $('eyebrow').textContent = t - Date.now() > 0 ? 'Counting down to' : 'Happening now';
+    const bg = $('bg');
+    if (state.img) { bg.style.backgroundImage = `url("${state.img}")`; bg.classList.add('img'); }
+    else { bg.style.backgroundImage = ''; bg.classList.remove('img'); }
+    $('thumb').style.backgroundImage = state.img ? `url("${state.img}")` : '';
+    $('thumb').firstElementChild.style.display = state.img ? 'none' : '';
+    $('dropTxt').textContent = state.img ? 'Replace image' : 'Click or drop an image here';
+    $('clearImg').style.display = state.img ? '' : 'none';
+    updateCalLinks();
+    tick();
+  }
+
+  // ---------- calendar ----------
+  const utc = d => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  const icsEsc = s => String(s).replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  function updateCalLinks() {
+    const s = target(), e = new Date(s.getTime() + 3600e3);
+    const g = new URLSearchParams({ action: 'TEMPLATE', text: state.name, dates: `${utc(s)}/${utc(e)}`, location: state.loc || '', details: `${state.name} — created with Event Countdown` });
+    $('gcal').href = 'https://calendar.google.com/calendar/render?' + g;
+    const o = new URLSearchParams({ path: '/calendar/action/compose', rncs: '1', subject: state.name, startdt: s.toISOString(), enddt: e.toISOString(), location: state.loc || '' });
+    $('outlook').href = 'https://outlook.live.com/calendar/0/deeplink/compose?' + o;
+  }
+  function downloadICS() {
+    const s = target(), e = new Date(s.getTime() + 3600e3);
+    const uid = Date.now() + '@event-countdown';
+    const ics = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Event Countdown//EN','CALSCALE:GREGORIAN','METHOD:PUBLISH','BEGIN:VEVENT',
+      `UID:${uid}`,`DTSTAMP:${utc(new Date())}`,`DTSTART:${utc(s)}`,`DTEND:${utc(e)}`,`SUMMARY:${icsEsc(state.name)}`,
+      state.loc ? `LOCATION:${icsEsc(state.loc)}` : null,
+      'BEGIN:VALARM','TRIGGER:-PT1H','ACTION:DISPLAY',`DESCRIPTION:${icsEsc(state.name)} starts in 1 hour`,'END:VALARM',
+      'END:VEVENT','END:VCALENDAR'].filter(Boolean).join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+    a.download = (state.name.replace(/[^\w\-]+/g, '_').slice(0, 40) || 'event') + '.ics';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('Calendar file downloaded');
+  }
+
+  // ---------- menu / panel ----------
+  const menu = $('menu'), calBtn = $('calBtn');
+  const setMenu = o => { menu.classList.toggle('open', o); calBtn.setAttribute('aria-expanded', o); };
+  calBtn.onclick = e => { e.stopPropagation(); setMenu(!menu.classList.contains('open')); };
+  $('icsBtn').onclick = () => { downloadICS(); setMenu(false); };
+  $('gcal').onclick = $('outlook').onclick = () => setMenu(false);
+  document.addEventListener('click', e => { if (!menu.contains(e.target)) setMenu(false); });
+  const panel = $('panel');
+  const setPanel = o => { panel.classList.toggle('open', o); $('fab').setAttribute('aria-expanded', o); };
+  $('fab').onclick = e => { e.stopPropagation(); setPanel(!panel.classList.contains('open')); };
+  $('closeP').onclick = () => setPanel(false);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { setPanel(false); setMenu(false); } });
+
+  // ---------- inputs ----------
+  $('iName').value = state.name; $('iDate').value = state.date; $('iLoc').value = state.loc;
+  $('tzHint').textContent = 'Your timezone: ' + (Intl.DateTimeFormat().resolvedOptions().timeZone || 'local');
+  $('iName').oninput = e => { state.name = e.target.value.trim() || 'Untitled event'; save(); render(); };
+  $('iLoc').oninput = e => { state.loc = e.target.value.trim(); save(); render(); };
+  $('iDate').oninput = e => { if (!e.target.value) return; state.date = e.target.value; startTs = target().getTime() - 30*864e5; reachedFired = false; save(); render(); };
+
+  function loadImage(file) {
+    if (!file || !file.type.startsWith('image/')) return toast('Please choose an image file');
+    const r = new FileReader();
+    r.onload = () => {
+      const im = new Image();
+      im.onload = () => {
+        const max = 1920, k = Math.min(1, max / Math.max(im.width, im.height));
+        const c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        state.img = c.toDataURL('image/jpeg', .82); $('imgHint').textContent = ''; save(); render(); toast('Background updated');
+      };
+      im.onerror = () => toast('Could not read that image');
+      im.src = r.result;
+    };
+    r.readAsDataURL(file);
+  }
+  const drop = $('drop');
+  drop.onclick = () => $('file').click();
+  drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('file').click(); } };
+  $('file').onchange = e => { loadImage(e.target.files[0]); e.target.value = ''; };
+  ['dragenter','dragover'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave','drop'].forEach(n => drop.addEventListener(n, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => loadImage(e.dataTransfer.files[0]));
+  // allow dropping anywhere on page
+  addEventListener('dragover', e => e.preventDefault());
+  addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files[0]) loadImage(e.dataTransfer.files[0]); });
+  $('clearImg').onclick = () => { state.img = ''; save(); render(); };
+  $('reset').onclick = () => {
+    state = defaults(); startTs = Date.now(); try { localStorage.removeItem(KEY); } catch (e) {}
+    history.replaceState(null, '', location.pathname + location.search);
+    $('iName').value = state.name; $('iDate').value = state.date; $('iLoc').value = state.loc; render(); toast('Reset to defaults');
+  };
+  $('shareBtn').onclick = async () => {
+    const o = { name: state.name, date: state.date, loc: state.loc };
+    const url = location.href.split('#')[0] + '#e=' + btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+    try { await navigator.clipboard.writeText(url); toast('Link copied (image not included)'); }
+    catch (e) { prompt('Copy this link:', url); }
+  };
+
+  let tt;
+  function toast(m) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('show'), 2200); }
+
+  // ---------- parallax ----------
+  const layers = [...document.querySelectorAll('.layer')];
+  let px = 0, py = 0, sy = 0;
+  const applyPar = () => layers.forEach(l => {
+    const d = +l.dataset.depth;
+    l.style.transform = `translate3d(${-px * d}px,${-py * d - sy * d * .04}px,0) scale(1.02)`;
+  });
+  addEventListener('mousemove', e => { px = e.clientX / innerWidth - .5; py = e.clientY / innerHeight - .5; applyPar(); });
+  addEventListener('deviceorientation', e => { if (e.gamma == null) return; px = Math.max(-.5, Math.min(.5, e.gamma / 45)); py = Math.max(-.5, Math.min(.5, (e.beta - 45) / 90)); applyPar(); });
+  addEventListener('scroll', () => { sy = scrollY; applyPar(); }, { passive: true });
+  applyPar();
+
+  // ---------- starfield ----------
+  const sc = $('stars'), sx = sc.getContext('2d'); let stars = [];
+  function sizeStars() {
+    sc.width = innerWidth * 1.08; sc.height = innerHeight * 1.08;
+    stars = Array.from({ length: Math.round(sc.width * sc.height / 9000) }, () => ({ x: Math.random() * sc.width, y: Math.random() * sc.height, r: Math.random() * 1.6 + .3, p: Math.random() * 6.28, s: Math.random() * .02 + .005 }));
+  }
+  function drawStars() {
+    sx.clearRect(0, 0, sc.width, sc.height);
+    for (const s of stars) { s.p += s.s; sx.globalAlpha = .25 + .55 * (Math.sin(s.p) * .5 + .5); sx.fillStyle = '#fff'; sx.beginPath(); sx.arc(s.x, s.y, s.r, 0, 6.283); sx.fill(); }
+    requestAnimationFrame(drawStars);
+  }
+  sizeStars(); drawStars(); addEventListener('resize', sizeStars);
+
+  // ---------- confetti ----------
+  function confetti() {
+    const c = $('confetti'), x = c.getContext('2d'); c.width = innerWidth; c.height = innerHeight;
+    const cols = ['#ff7a59', '#ff4f7b', '#7c5cff', '#ffd166', '#06d6a0', '#fff'];
+    const ps = Array.from({ length: 220 }, () => ({ x: innerWidth / 2, y: innerHeight * .4, vx: (Math.random() - .5) * 18, vy: Math.random() * -16 - 4, w: Math.random() * 9 + 4, h: Math.random() * 5 + 3, a: Math.random() * 6, va: (Math.random() - .5) * .4, c: cols[Math.random() * cols.length | 0] }));
+    let f = 0;
+    (function loop() {
+      x.clearRect(0, 0, c.width, c.height);
+      ps.forEach(p => { p.vy += .35; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.a += p.va; x.save(); x.translate(p.x, p.y); x.rotate(p.a); x.fillStyle = p.c; x.globalAlpha = Math.max(0, 1 - f / 220); x.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); x.restore(); });
+      if (++f < 220) requestAnimationFrame(loop); else x.clearRect(0, 0, c.width, c.height);
+    })();
+  }
+
+  // ---------- go ----------
+  // progress start: assume the wait began 30 days before target (or now if sooner)
+  startTs = target().getTime() - 30*864e5;
+  render();
+  setInterval(tick, 250);
+  if (!localStorage.getItem(KEY) && !location.hash) setTimeout(() => setPanel(true), 1400);
+})();
+</script>
+</body>
+</html>

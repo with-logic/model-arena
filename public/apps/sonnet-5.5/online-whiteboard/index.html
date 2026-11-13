@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Online Whiteboard</title>
+<style>
+:root{
+  --ui:#fff; --ink:#1f2330; --muted:#7a8092; --line:#e6e8ef; --accent:#5b6cff; --accent-soft:#eceeff;
+  --shadow:0 8px 30px rgba(20,24,50,.14),0 1px 3px rgba(20,24,50,.08);
+}
+body.dark{--ui:#23262f;--ink:#e9ebf2;--muted:#9096a8;--line:#363a46;--accent:#8c98ff;--accent-soft:#33375a;--shadow:0 8px 30px rgba(0,0,0,.5)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;color:var(--ink);user-select:none;-webkit-user-select:none;overscroll-behavior:none}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#draw{cursor:crosshair}
+.panel{position:fixed;background:var(--ui);border-radius:16px;box-shadow:var(--shadow);border:1px solid var(--line);display:flex;align-items:center;gap:4px;padding:6px;z-index:10}
+#tools{bottom:18px;left:50%;transform:translateX(-50%)}
+#brand{top:16px;left:16px;padding:8px 14px 8px 10px;gap:10px;font-weight:600;letter-spacing:.2px}
+#brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#5b6cff,#c14bff);display:grid;place-items:center}
+#brand small{font-weight:500;color:var(--muted);font-size:11px;display:block;line-height:1.1}
+#actions{top:16px;right:16px}
+#zoom{bottom:18px;right:16px}
+#style{left:16px;top:50%;transform:translateY(-50%);flex-direction:column;padding:12px 10px;gap:10px;width:62px}
+button{font:inherit;color:inherit;background:none;border:0;border-radius:10px;cursor:pointer;display:grid;place-items:center;width:40px;height:40px;position:relative;transition:background .12s,transform .08s}
+button:hover{background:var(--accent-soft)}
+button:active{transform:scale(.92)}
+button.active{background:var(--accent);color:#fff}
+button:disabled{opacity:.35;pointer-events:none}
+button svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+button[data-tip]:hover::after{content:attr(data-tip);position:absolute;white-space:nowrap;background:#14161d;color:#fff;font-size:11.5px;padding:5px 8px;border-radius:6px;pointer-events:none;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);z-index:20}
+#actions button[data-tip]:hover::after,#brand+*{bottom:auto;top:calc(100% + 8px)}
+#style button[data-tip]:hover::after{bottom:auto;left:calc(100% + 8px);top:50%;transform:translateY(-50%)}
+.sep{width:1px;height:26px;background:var(--line);margin:0 4px}
+.sw{width:26px;height:26px;border-radius:50%;border:2px solid var(--ui);box-shadow:0 0 0 1px var(--line);cursor:pointer;padding:0}
+.sw.active{box-shadow:0 0 0 2.5px var(--accent)}
+.sw:hover{transform:scale(1.12);background-clip:padding-box}
+#colors{display:grid;grid-template-columns:repeat(2,26px);gap:8px}
+input[type=color]{width:26px;height:26px;border:0;padding:0;background:none;border-radius:50%;cursor:pointer;grid-column:span 2;width:100%;height:24px;border-radius:8px}
+.lbl{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;text-align:center;width:100%}
+#size{writing-mode:vertical-lr;direction:rtl;height:110px;width:24px;accent-color:var(--accent)}
+#sizeVal{font-size:12px;font-weight:600}
+#zoomVal{width:52px;font-size:13px;font-weight:600}
+#cursor{position:fixed;border:1.5px solid #000;border-radius:50%;pointer-events:none;z-index:5;display:none;transform:translate(-50%,-50%);box-shadow:0 0 0 1px #fff}
+#textEd{position:fixed;z-index:8;border:1.5px dashed var(--accent);background:transparent;outline:none;resize:none;overflow:hidden;padding:0;margin:0;font-family:"Segoe UI",Roboto,sans-serif;line-height:1.25;white-space:pre;user-select:text;-webkit-user-select:text;display:none}
+#toast{position:fixed;top:76px;left:50%;transform:translate(-50%,-10px);background:#14161d;color:#fff;padding:9px 16px;border-radius:999px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:30}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#sync{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;padding:0 8px}
+#sync i{width:7px;height:7px;border-radius:50%;background:#2ecc71;display:inline-block}
+#help{position:fixed;inset:0;background:rgba(10,12,25,.45);z-index:40;display:none;place-items:center}
+#help.show{display:grid}
+#help .card{background:var(--ui);border-radius:18px;padding:24px 28px;box-shadow:var(--shadow);max-width:420px;width:90%}
+#help h3{margin:0 0 12px}
+#help .row{display:flex;justify-content:space-between;padding:5px 0;font-size:14px;border-bottom:1px solid var(--line)}
+kbd{background:var(--accent-soft);border-radius:5px;padding:1px 7px;font-size:12px;font-family:inherit;font-weight:600}
+@media(max-width:700px){#style{top:auto;bottom:80px;left:10px;transform:none;flex-direction:row;width:auto}#size{writing-mode:horizontal-tb;direction:ltr;height:24px;width:90px}#colors{grid-template-columns:repeat(4,26px)}input[type=color]{grid-column:span 4}#tools{max-width:98vw;overflow-x:auto;bottom:10px}#zoom{display:none}#brand small,#sync{display:none}button{width:36px;height:36px}.sep{display:none}}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas>
+<canvas id="draw"></canvas>
+<div id="cursor"></div>
+<textarea id="textEd" spellcheck="false"></textarea>
+
+<div class="panel" id="brand">
+  <div class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17c4-9 6-9 8-4s4 3 6-3 3 0 4 2"/></svg></div>
+  <div>Online Whiteboard<small>Local-only · autosaves</small></div>
+</div>
+
+<div class="panel" id="actions">
+  <span id="sync" title="Open this page in another tab to collaborate live"><i></i><span id="syncTxt">Live</span></span>
+  <button id="undo" data-tip="Undo (Ctrl+Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg></button>
+  <button id="redo" data-tip="Redo (Ctrl+Shift+Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg></button>
+  <span class="sep"></span>
+  <button id="theme" data-tip="Toggle dark canvas"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+  <button id="gridBtn" data-tip="Background: grid / dots / plain"><svg viewBox="0 0 24 24"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/></svg></button>
+  <button id="help-btn" data-tip="Shortcuts (?)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 .9-1 1.7M12 17h.01"/></svg></button>
+  <button id="clear" data-tip="Clear board"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14M10 10v6M14 10v6"/></svg></button>
+  <button id="save" data-tip="Save as image (Ctrl+S)" style="background:var(--accent);color:#fff;width:auto;padding:0 14px;display:flex;gap:6px;font-size:14px;font-weight:600"><svg viewBox="0 0 24 24" style="width:18px;height:18px"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v3h16v-3"/></svg>Save</button>
+</div>
+
+<div class="panel" id="style">
+  <div class="lbl">Color</div>
+  <div id="colors"></div>
+  <input type="color" id="picker" value="#1f2330" title="Custom color">
+  <div class="lbl">Size</div>
+  <input type="range" id="size" min="1" max="40" value="4">
+  <div id="sizeVal">4</div>
+</div>
+
+<div class="panel" id="tools"></div>
+
+<div class="panel" id="zoom">
+  <button id="zout" data-tip="Zoom out">−</button>
+  <button id="zoomVal" data-tip="Reset view">100%</button>
+  <button id="zin" data-tip="Zoom in">+</button>
+</div>
+
+<div id="toast"></div>
+<div id="help"><div class="card">
+  <h3>Keyboard shortcuts</h3>
+  <div class="row"><span>Pen / Highlighter / Eraser</span><span><kbd>P</kbd> <kbd>H</kbd> <kbd>E</kbd></span></div>
+  <div class="row"><span>Line / Arrow</span><span><kbd>L</kbd> <kbd>A</kbd></span></div>
+  <div class="row"><span>Rectangle / Ellipse</span><span><kbd>R</kbd> <kbd>O</kbd></span></div>
+  <div class="row"><span>Text / Hand (pan)</span><span><kbd>T</kbd> <kbd>V</kbd></span></div>
+  <div class="row"><span>Pan temporarily</span><span><kbd>Space</kbd>+drag</span></div>
+  <div class="row"><span>Zoom</span><span><kbd>Wheel</kbd> / pinch</span></div>
+  <div class="row"><span>Undo / Redo</span><span><kbd>Ctrl Z</kbd> <kbd>Ctrl ⇧ Z</kbd></span></div>
+  <div class="row"><span>Straight line while drawing</span><span>hold <kbd>Shift</kbd></span></div>
+  <div class="row"><span>Save PNG</span><span><kbd>Ctrl S</kbd></span></div>
+  <p style="color:var(--muted);font-size:12px;margin:12px 0 0">Click anywhere to close. Boards sync live between tabs of this browser.</p>
+</div></div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const bg=$('bg'),cv=$('draw'),bctx=bg.getContext('2d'),ctx=cv.getContext('2d');
+const cursorEl=$('cursor'),textEd=$('textEd');
+const COLORS=['#1f2330','#e03131','#f08c00','#2f9e44','#1971c2','#7048e8','#e64980','#868e96','#ffffff','#fcc419','#12b886','#74c0fc'];
+const TOOLS=[
+ ['select','V','Hand / pan (V)','<path d="M8 11V5a1.5 1.5 0 0 1 3 0v5m0-1V4a1.5 1.5 0 0 1 3 0v6m0-4.5a1.5 1.5 0 0 1 3 0V14c0 4-2.5 7-6 7-3 0-4.5-1.5-6-4l-2-3.5a1.5 1.5 0 0 1 2.5-1.5L8 14"/>'],
+ ['pen','P','Pen (P)','<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'],
+ ['hl','H','Highlighter (H)','<path d="m9 11-6 6v3h9l3-3M22 12l-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/>'],
+ ['erase','E','Eraser (E)','<path d="m7 21-4.3-4.3a1 1 0 0 1 0-1.4l10-10a1 1 0 0 1 1.4 0l5.2 5.2a1 1 0 0 1 0 1.4L11 21zM22 21H7M5 11l9 9"/>'],
+ ['sep'],
+ ['line','L','Line (L)','<path d="M5 19 19 5"/>'],
+ ['arrow','A','Arrow (A)','<path d="M5 19 19 5M9 5h10v10"/>'],
+ ['rect','R','Rectangle (R)','<rect x="3.5" y="5" width="17" height="14" rx="2"/>'],
+ ['ellipse','O','Ellipse (O)','<ellipse cx="12" cy="12" rx="9" ry="7"/>'],
+ ['text','T','Text (T)','<path d="M5 6V4h14v2M12 4v16M9 20h6"/>'],
+];
+let tool='pen',color='#1f2330',size=4,items=[],redo=[],view={x:0,y:0,k:1},dark=false,gridMode=1;
+let cur=null,panning=null,spaceDown=false,dpr=1,W=0,H=0;
+const toolsEl=$('tools');
+TOOLS.forEach(t=>{
+  if(t[0]==='sep'){const s=document.createElement('span');s.className='sep';toolsEl.appendChild(s);return}
+  const b=document.createElement('button');b.dataset.tool=t[0];b.dataset.tip=t[2];
+  b.innerHTML=`<svg viewBox="0 0 24 24">${t[3]}</svg>`;
+  b.onclick=()=>setTool(t[0]);toolsEl.appendChild(b);
+});
+function setTool(t){commitText();tool=t;toolsEl.querySelectorAll('button').forEach(b=>b.classList.toggle('active',b.dataset.tool===t));updateCursor();}
+const colorsEl=$('colors');
+COLORS.forEach(c=>{const s=document.createElement('button');s.className='sw';s.style.background=c;s.dataset.c=c;s.onclick=()=>setColor(c);colorsEl.appendChild(s)});
+function setColor(c){color=c;$('picker').value=c;colorsEl.querySelectorAll('.sw').forEach(s=>s.classList.toggle('active',s.dataset.c===c));
+  if(tool==='erase'||tool==='select')setTool('pen');if(textEd.style.display==='block')textEd.style.color=c;updateCursor();}
+$('picker').oninput=e=>setColor(e.target.value);
+$('size').oninput=e=>{size=+e.target.value;$('sizeVal').textContent=size;updateCursor();};
+
+/* ---------- layout ---------- */
+function resize(){
+  dpr=window.devicePixelRatio||1;W=innerWidth;H=innerHeight;
+  for(const c of [bg,cv]){c.width=W*dpr;c.height=H*dpr}
+  drawBg();redraw();
+}
+addEventListener('resize',resize);
+function w2s(x,y){return[x*view.k+view.x,y*view.k+view.y]}
+function s2w(x,y){return[(x-view.x)/view.k,(y-view.y)/view.k]}
+function drawBg(){
+  bctx.setTransform(dpr,0,0,dpr,0,0);
+  bctx.fillStyle=dark?'#1b1d24':'#fbfbfd';bctx.fillRect(0,0,W,H);
+  if(!gridMode)return;
+  let step=32*view.k;while(step<14)step*=2;
+  const ox=((view.x%step)+step)%step,oy=((view.y%step)+step)%step;
+  bctx.strokeStyle=bctx.fillStyle=dark?'rgba(255,255,255,.09)':'rgba(30,40,80,.09)';bctx.lineWidth=1;
+  if(gridMode===1){bctx.beginPath();for(let x=ox;x<W;x+=step){bctx.moveTo(Math.round(x)+.5,0);bctx.lineTo(Math.round(x)+.5,H)}
+    for(let y=oy;y<H;y+=step){bctx.moveTo(0,Math.round(y)+.5);bctx.lineTo(W,Math.round(y)+.5)}bctx.stroke()}
+  else{bctx.fillStyle=dark?'rgba(255,255,255,.22)':'rgba(30,40,80,.25)';
+    for(let x=ox;x<W;x+=step)for(let y=oy;y<H;y+=step){bctx.beginPath();bctx.arc(x,y,1.3,0,7);bctx.fill()}}
+}
+
+/* ---------- rendering ---------- */
+function drawFreehand(c,it){
+  const p=it.pts;c.beginPath();
+  if(p.length===1){c.arc(p[0][0],p[0][1],c.lineWidth/2,0,7);c.fillStyle=c.strokeStyle;c.fill();return}
+  c.moveTo(p[0][0],p[0][1]);
+  for(let i=1;i<p.length-1;i++){const mx=(p[i][0]+p[i+1][0])/2,my=(p[i][1]+p[i+1][1])/2;c.quadraticCurveTo(p[i][0],p[i][1],mx,my)}
+  const l=p[p.length-1];c.lineTo(l[0],l[1]);c.stroke();
+}
+function drawItem(c,it){
+  c.save();c.lineCap='round';c.lineJoin='round';
+  c.strokeStyle=c.fillStyle=it.color;c.lineWidth=it.size;c.globalAlpha=1;c.globalCompositeOperation='source-over';
+  switch(it.t){
+    case'erase':c.globalCompositeOperation='destination-out';c.strokeStyle='#000';c.lineWidth=it.size*3;drawFreehand(c,it);break;
+    case'hl':c.globalAlpha=.35;c.lineWidth=it.size*3.5;c.lineCap='butt';drawFreehand(c,it);break;
+    case'pen':drawFreehand(c,it);break;
+    case'line':c.beginPath();c.moveTo(it.a[0],it.a[1]);c.lineTo(it.b[0],it.b[1]);c.stroke();break;
+    case'arrow':{const[a,b]=[it.a,it.b],ang=Math.atan2(b[1]-a[1],b[0]-a[0]),h=Math.max(12,it.size*4);
+      c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.moveTo(b[0]-h*Math.cos(ang-.45),b[1]-h*Math.sin(ang-.45));c.lineTo(b[0],b[1]);c.lineTo(b[0]-h*Math.cos(ang+.45),b[1]-h*Math.sin(ang+.45));c.stroke();break}
+    case'rect':c.strokeRect(Math.min(it.a[0],it.b[0]),Math.min(it.a[1],it.b[1]),Math.abs(it.b[0]-it.a[0]),Math.abs(it.b[1]-it.a[1]));break;
+    case'ellipse':c.beginPath();c.ellipse((it.a[0]+it.b[0])/2,(it.a[1]+it.b[1])/2,Math.abs(it.b[0]-it.a[0])/2,Math.abs(it.b[1]-it.a[1])/2,0,0,7);c.stroke();break;
+    case'text':c.font=`${it.fs}px "Segoe UI",Roboto,sans-serif`;c.textBaseline='top';it.text.split('\n').forEach((ln,i)=>c.fillText(ln,it.a[0],it.a[1]+i*it.fs*1.25));break;
+  }
+  c.restore();
+}
+function redraw(){
+  ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.setTransform(dpr*view.k,0,0,dpr*view.k,dpr*view.x,dpr*view.y);
+  for(const it of items)drawItem(ctx,it);
+  if(cur)drawItem(ctx,cur);
+}
+function applyView(){drawBg();redraw();$('zoomVal').textContent=Math.round(view.k*100)+'%';positionText();}
+
+/* ---------- persistence & sync ---------- */
+const KEY='online-whiteboard-v1';
+let chan=null;try{chan=new BroadcastChannel('online-whiteboard')}catch(e){}
+const myId=Math.random().toString(36).slice(2);
+let saveT;
+function persist(broadcast=true){
+  clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify({items,dark,gridMode}))}catch(e){}},200);
+  if(broadcast&&chan)try{chan.postMessage({from:myId,items})}catch(e){}
+  updateBtns();
+}
+if(chan)chan.onmessage=e=>{if(e.data.from===myId)return;items=e.data.items;redo=[];redraw();updateBtns();
+  const s=$('syncTxt');s.textContent='Synced';setTimeout(()=>s.textContent='Live',1200)};
+else $('sync').style.display='none';
+function load(){try{const d=JSON.parse(localStorage.getItem(KEY)||'null');if(d){items=d.items||[];dark=!!d.dark;gridMode=d.gridMode??1}}catch(e){}
+  document.body.classList.toggle('dark',dark);}
+function updateBtns(){$('undo').disabled=!items.length;$('redo').disabled=!redo.length;}
+function commit(it){items.push(it);redo=[];persist();}
+function undo(){if(!items.length)return;redo.push(items.pop());redraw();persist();}
+function redoF(){if(!redo.length)return;items.push(redo.pop());redraw();persist();}
+$('undo').onclick=undo;$('redo').onclick=redoF;
+$('clear').onclick=()=>{if(!items.length)return;if(confirm('Clear the whole board? (You can undo this.)')){const old=items;items=[];redo=[];redraw();persist();
+  toast('Board cleared — Undo to restore');lastClear=old}};
+let lastClear=null;
+$('theme').onclick=()=>{dark=!dark;document.body.classList.toggle('dark',dark);drawBg();persist(false)};
+$('gridBtn').onclick=()=>{gridMode=(gridMode+1)%3;drawBg();persist(false)};
+$('help-btn').onclick=()=>$('help').classList.add('show');
+$('help').onclick=()=>$('help').classList.remove('show');
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('show'),2200)}
+
+/* ---------- save image ---------- */
+function bounds(){
+  let x0=1/0,y0=1/0,x1=-1/0,y1=-1/0;
+  for(const it of items){if(it.t==='erase')continue;const pad=it.size*(it.t==='hl'?2:1)+4;let pts;
+    if(it.pts)pts=it.pts;else if(it.t==='text'){const ls=it.text.split('\n');const w=Math.max(...ls.map(l=>l.length))*it.fs*.62;pts=[it.a,[it.a[0]+w,it.a[1]+ls.length*it.fs*1.25]]}else pts=[it.a,it.b];
+    for(const p of pts){x0=Math.min(x0,p[0]-pad);y0=Math.min(y0,p[1]-pad);x1=Math.max(x1,p[0]+pad);y1=Math.max(y1,p[1]+pad)}}
+  return x0===1/0?null:[x0,y0,x1,y1];
+}
+$('save').onclick=saveImg;
+function saveImg(){
+  const b=bounds();let x0,y0,x1,y1;
+  if(b){const m=40;[x0,y0,x1,y1]=[b[0]-m,b[1]-m,b[2]+m,b[3]+m]}else{[x0,y0]=s2w(0,0);[x1,y1]=s2w(W,H)}
+  const sc=Math.min(2,6000/Math.max(x1-x0,y1-y0));
+  const c=document.createElement('canvas');c.width=Math.ceil((x1-x0)*sc);c.height=Math.ceil((y1-y0)*sc);
+  const g=c.getContext('2d');g.fillStyle=dark?'#1b1d24':'#ffffff';g.fillRect(0,0,c.width,c.height);
+  // draw strokes on a transparent layer so eraser works, then composite
+  const l=document.createElement('canvas');l.width=c.width;l.height=c.height;const lg=l.getContext('2d');
+  lg.setTransform(sc,0,0,sc,-x0*sc,-y0*sc);for(const it of items)drawItem(lg,it);
+  g.drawImage(l,0,0);
+  c.toBlob(bl=>{const a=document.createElement('a');a.href=URL.createObjectURL(bl);
+    a.download='whiteboard-'+new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')+'.png';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),2000);toast('Image saved')},'image/png');
+}
+
+/* ---------- text ---------- */
+let textPos=null;
+function fsFor(){return Math.round(size*3+14)}
+function startText(wx,wy){
+  commitText();textPos=[wx,wy];textEd.dataset.fs=fsFor();textEd.dataset.color=color;
+  textEd.value='';textEd.style.display='block';textEd.style.color=color;positionText();setTimeout(()=>textEd.focus(),0);
+}
+function positionText(){
+  if(!textPos||textEd.style.display!=='block')return;
+  const[sx,sy]=w2s(...textPos),fs=textEd.dataset.fs*view.k;
+  textEd.style.left=sx+'px';textEd.style.top=sy+'px';textEd.style.fontSize=fs+'px';sizeText();
+}
+function sizeText(){const ls=textEd.value.split('\n'),fs=textEd.dataset.fs*view.k;
+  textEd.style.width=Math.max(60,Math.max(...ls.map(l=>l.length))*fs*.62+fs)+'px';textEd.style.height=(ls.length*fs*1.25+4)+'px'}
+textEd.oninput=sizeText;
+textEd.onkeydown=e=>{e.stopPropagation();if(e.key==='Escape'||(e.key==='Enter'&&(e.ctrlKey||e.metaKey)))commitText()};
+textEd.onblur=()=>commitText();
+function commitText(){
+  if(textEd.style.display!=='block')return;
+  const v=textEd.value.replace(/\s+$/,'');textEd.style.display='none';
+  if(v&&textPos)commit({t:'text',a:textPos,text:v,color:textEd.dataset.color,fs:+textEd.dataset.fs,size:1});
+  textPos=null;redraw();
+}
+
+/* ---------- pointer interaction ---------- */
+const pts=new Map();let pinch=null;
+function updateCursor(){
+  const show=['pen','hl','erase'].includes(tool);
+  const d=Math.max(6,(tool==='erase'?size*3:tool==='hl'?size*3.5:size)*view.k);
+  cursorEl.style.width=cursorEl.style.height=d+'px';
+  cursorEl.style.borderColor=tool==='erase'?'#555':(color==='#ffffff'?'#555':color);
+  cursorEl.style.background=tool==='erase'?'rgba(255,255,255,.25)':'transparent';
+  cursorEl.dataset.on=show?1:0;
+  cv.style.cursor=show?'none':tool==='select'?'grab':tool==='text'?'text':'crosshair';
+  if(!show)cursorEl.style.display='none';
+}
+cv.addEventListener('pointermove',e=>{if(cursorEl.dataset.on==='1'&&e.pointerType==='mouse'){cursorEl.style.display='block';cursorEl.style.left=e.clientX+'px';cursorEl.style.top=e.clientY+'px'}});
+cv.addEventListener('pointerleave',()=>cursorEl.style.display='none');
+
+cv.addEventListener('pointerdown',e=>{
+  cv.setPointerCapture(e.pointerId);pts.set(e.pointerId,[e.clientX,e.clientY]);
+  if(pts.size===2){ // pinch zoom / two finger pan: abort current stroke
+    cur=null;redraw();const[a,b]=[...pts.values()];pinch={d:Math.hypot(a[0]-b[0],a[1]-b[1]),c:[(a[0]+b[0])/2,(a[1]+b[1])/2]};return;
+  }
+  if(pts.size>2)return;
+  if(e.button===1||e.button===2||tool==='select'||spaceDown){panning={x:e.clientX,y:e.clientY,vx:view.x,vy:view.y};cv.style.cursor='grabbing';return}
+  if(e.button!==0&&e.pointerType==='mouse')return;
+  const[x,y]=s2w(e.clientX,e.clientY);
+  if(tool==='text'){startText(x,y);e.preventDefault();return}
+  commitText();
+  const base={t:tool,color,size};
+  if(['pen','hl','erase'].includes(tool))cur={...base,pts:[[x,y]]};
+  else cur={...base,a:[x,y],b:[x,y]};
+  redraw();
+});
+cv.addEventListener('pointermove',e=>{
+  if(!pts.has(e.pointerId))return;pts.set(e.pointerId,[e.clientX,e.clientY]);
+  if(pinch&&pts.size>=2){
+    const[a,b]=[...pts.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]),c=[(a[0]+b[0])/2,(a[1]+b[1])/2];
+    const nk=Math.min(8,Math.max(.1,view.k*d/pinch.d)),[wx,wy]=s2w(pinch.c[0],pinch.c[1]);
+    view.k=nk;view.x=c[0]-wx*nk;view.y=c[1]-wy*nk;pinch={d,c};applyView();return;
+  }
+  if(panning){view.x=panning.vx+e.clientX-panning.x;view.y=panning.vy+e.clientY-panning.y;applyView();return}
+  if(!cur)return;
+  const evs=e.getCoalescedEvents?e.getCoalescedEvents():[e];
+  for(const ev of (evs.length?evs:[e])){
+    let[x,y]=s2w(ev.clientX,ev.clientY);
+    if(cur.pts){
+      const l=cur.pts[cur.pts.length-1];
+      if(e.shiftKey&&cur.pts.length>=1){const f=cur.pts[0];cur.pts=[f,[x,y]];continue}
+      if(Math.hypot(x-l[0],y-l[1])*view.k<1.5)continue;cur.pts.push([x,y]);
+    }else{
+      if(e.shiftKey&&(cur.t==='line'||cur.t==='arrow')){const dx=x-cur.a[0],dy=y-cur.a[1],r=Math.hypot(dx,dy),an=Math.round(Math.atan2(dy,dx)/(Math.PI/4))*Math.PI/4;x=cur.a[0]+r*Math.cos(an);y=cur.a[1]+r*Math.sin(an)}
+      else if(e.shiftKey&&(cur.t==='rect'||cur.t==='ellipse')){const m=Math.max(Math.abs(x-cur.a[0]),Math.abs(y-cur.a[1]));x=cur.a[0]+m*Math.sign(x-cur.a[0]||1);y=cur.a[1]+m*Math.sign(y-cur.a[1]||1)}
+      cur.b=[x,y];
+    }
+  }
+  redraw();
+});
+function end(e){
+  pts.delete(e.pointerId);
+  if(pinch){if(pts.size<2)pinch=null;return}
+  if(panning){panning=null;updateCursor();if(spaceDown)cv.style.cursor='grab';return}
+  if(cur){const it=cur;cur=null;
+    const trivial=!it.pts&&Math.hypot(it.b[0]-it.a[0],it.b[1]-it.a[1])<2;
+    if(!trivial)commit(it);redraw();}
+}
+cv.addEventListener('pointerup',end);cv.addEventListener('pointercancel',end);
+cv.addEventListener('contextmenu',e=>e.preventDefault());
+cv.addEventListener('wheel',e=>{
+  e.preventDefault();
+  if(e.ctrlKey||e.metaKey||Math.abs(e.deltaY)>=50&&e.deltaMode===0&&!e.deltaX&&Number.isInteger(e.deltaY)){zoomAt(e.clientX,e.clientY,Math.exp(-e.deltaY*(e.ctrlKey?.01:.0015)))}
+  else{view.x-=e.deltaX;view.y-=e.deltaY;applyView()}
+},{passive:false});
+function zoomAt(cx,cy,f){const nk=Math.min(8,Math.max(.1,view.k*f)),[wx,wy]=s2w(cx,cy);view.k=nk;view.x=cx-wx*nk;view.y=cy-wy*nk;applyView();updateCursor()}
+$('zin').onclick=()=>zoomAt(W/2,H/2,1.25);$('zout').onclick=()=>zoomAt(W/2,H/2,.8);
+$('zoomVal').onclick=()=>{view={x:0,y:0,k:1};applyView();updateCursor()};
+
+/* ---------- keyboard ---------- */
+addEventListener('keydown',e=>{
+  if(e.target===textEd)return;
+  const m=e.ctrlKey||e.metaKey,k=e.key.toLowerCase();
+  if(m&&k==='z'){e.preventDefault();e.shiftKey?redoF():undo();return}
+  if(m&&k==='y'){e.preventDefault();redoF();return}
+  if(m&&k==='s'){e.preventDefault();saveImg();return}
+  if(m)return;
+  if(k===' '){if(!spaceDown){spaceDown=true;cv.style.cursor='grab';cursorEl.style.display='none'}e.preventDefault();return}
+  if(k==='escape'){$('help').classList.remove('show');return}
+  if(k==='?'){$('help').classList.toggle('show');return}
+  if(k==='+'||k==='=')return zoomAt(W/2,H/2,1.25);
+  if(k==='-')return zoomAt(W/2,H/2,.8);
+  if(k==='0'){view={x:0,y:0,k:1};applyView();return}
+  const t=TOOLS.find(t=>t[1]===e.key.toUpperCase());if(t)setTool(t[0]);
+});
+addEventListener('keyup',e=>{if(e.key===' '){spaceDown=false;updateCursor()}});
+
+/* ---------- init ---------- */
+load();setColor(color);setTool('pen');$('size').value=size;
+resize();updateBtns();applyView();
+// center nothing; start with origin top-left
+})();
+</script>
+</body>
+</html>

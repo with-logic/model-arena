@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tea Dunkability Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg1: #f7f0e4; --bg2: #e9d8bf; --ink: #2b1d12; --muted: #7a6553;
+    --glass: rgba(255, 255, 255, 0.5); --glass-border: rgba(255, 255, 255, 0.8);
+    --shadow: 0 14px 40px rgba(90, 55, 20, 0.16);
+    --accent: #c2692b; --accent2: #e8a54b;
+    --good: #3f8f4e; --warn: #c98517; --bad: #c0432f;
+    --blob1: #f0c08a; --blob2: #d9a77a; --track: rgba(43, 29, 18, 0.12);
+    --steam: rgba(120, 88, 58, 0.35); --chip: rgba(255, 255, 255, 0.45);
+    --table: rgba(120, 80, 40, 0.10); --solid: #fbf7f1;
+  }
+  [data-theme="dark"] {
+    --bg1: #120c08; --bg2: #24170e; --ink: #f4e9dc; --muted: #a8917c;
+    --glass: rgba(42, 29, 21, 0.5); --glass-border: rgba(255, 235, 210, 0.12);
+    --shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+    --accent: #f0884a; --accent2: #ffc46b;
+    --good: #7fd08f; --warn: #ffc46b; --bad: #ff7a63;
+    --blob1: #7a4220; --blob2: #3a2415; --track: rgba(255, 235, 210, 0.12);
+    --steam: rgba(255, 255, 255, 0.7); --chip: rgba(255, 255, 255, 0.06);
+    --table: rgba(0, 0, 0, 0.22); --solid: #2a1d15;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background: linear-gradient(160deg, var(--bg1), var(--bg2)) fixed;
+    transition: background 0.4s, color 0.4s;
+    -webkit-font-smoothing: antialiased;
+  }
+  .blob { position: fixed; border-radius: 50%; filter: blur(90px); opacity: 0.55; pointer-events: none; z-index: 0; animation: drift 22s ease-in-out infinite alternate; }
+  .blob.a { width: 540px; height: 540px; background: var(--blob1); top: -180px; left: -140px; }
+  .blob.b { width: 460px; height: 460px; background: var(--accent); opacity: 0.22; bottom: -180px; right: -120px; animation-delay: -9s; }
+  @keyframes drift { to { transform: translate(60px, 40px) scale(1.1); } }
+
+  .app { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 22px 22px 56px; }
+  .card {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border-radius: 22px;
+    box-shadow: var(--shadow);
+    padding: 20px;
+  }
+  .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; margin-bottom: 20px; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  h1 { font-family: Fraunces, Georgia, serif; font-size: 26px; margin: 0; letter-spacing: -0.01em; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); margin: 0; font-weight: 700; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; line-height: 1.45; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .top-actions { display: flex; gap: 10px; }
+  .icon-btn {
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    border: 1px solid var(--glass-border); background: var(--chip); color: var(--ink);
+    font: 600 16px Inter, system-ui, sans-serif; transition: transform 0.15s, background 0.2s;
+  }
+  .icon-btn:hover { transform: scale(1.06); }
+
+  .layout { display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px; align-items: start; }
+  .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  /* Stage */
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 400 / 320; border-radius: 18px; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 50% 35%, rgba(255, 190, 110, 0.18), transparent 65%),
+      linear-gradient(180deg, transparent 0 80%, var(--table) 80%),
+      var(--chip);
+    border: 1px solid var(--glass-border);
+  }
+  .stage-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .crumbs { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .progress { height: 6px; border-radius: 99px; background: var(--track); overflow: hidden; margin: 14px 0 0; }
+  .progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 99px; transition: width 0.1s linear; }
+  .stage-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+  .verdict-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .verdict-text strong { font-size: 18px; font-family: Fraunces, Georgia, serif; }
+  .verdict-text span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+
+  .btn {
+    font: 700 16px Inter, system-ui, sans-serif; border: 0; cursor: pointer; color: #fff;
+    padding: 14px 26px; border-radius: 16px; min-width: 150px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    box-shadow: 0 10px 28px -10px var(--accent);
+    transition: transform 0.15s, filter 0.2s;
+  }
+  .btn:hover { filter: brightness(1.07); }
+  .btn:active { transform: scale(0.97); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent2); outline-offset: 3px; }
+
+  /* Chips & tones */
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; font-size: 12.5px; font-weight: 700; background: var(--chip); border: 1px solid var(--glass-border); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .tone-good { color: var(--good); }
+  .tone-warn { color: var(--warn); }
+  .tone-bad { color: var(--bad); }
+  .chip.tone-good { background: color-mix(in srgb, var(--good) 16%, transparent); }
+  .chip.tone-warn { background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .chip.tone-bad { background: color-mix(in srgb, var(--bad) 16%, transparent); }
+
+  /* Controls */
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .field-head label, .label { font-weight: 600; font-size: 14px; }
+  .val { font-weight: 800; font-variant-numeric: tabular-nums; font-size: 15px; color: var(--accent); }
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 100%; height: 6px; border-radius: 99px; outline: none; margin: 12px 0 2px; cursor: pointer;
+    background: linear-gradient(90deg, var(--accent) var(--p), var(--track) var(--p));
+  }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35); }
+  input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #fff; border: 0; }
+  .biscuit-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 10px; }
+  .biscuit-chip {
+    position: relative; text-align: left; cursor: pointer; color: var(--ink); font: 600 13.5px Inter, system-ui, sans-serif;
+    background: var(--chip); border: 1px solid var(--glass-border); border-radius: 14px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 10px; transition: border-color 0.2s, transform 0.15s, box-shadow 0.2s;
+  }
+  .biscuit-chip:hover { transform: translateY(-1px); }
+  .biscuit-chip[aria-checked="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+  .swatch { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.18); }
+  .biscuit-chip kbd { margin-left: auto; }
+  kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 6px; border-radius: 6px; background: var(--chip); border: 1px solid var(--glass-border); color: var(--ink); }
+
+  /* Meter */
+  .gauge-wrap { position: relative; max-width: 360px; margin: 0 auto; }
+  .gauge { width: 100%; display: block; overflow: visible; }
+  .gauge-track { fill: none; stroke: var(--track); stroke-width: 14; }
+  .gauge-fill { fill: none; stroke-width: 14; transition: stroke-dasharray 0.35s ease, stroke 0.3s; }
+  .needle { transform-origin: 100px 104px; transition: transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .needle line { stroke: var(--ink); stroke-width: 3; stroke-linecap: round; }
+  .hub { fill: var(--ink); }
+  .gauge-value { text-align: center; font-size: 44px; font-weight: 800; margin-top: -10px; font-variant-numeric: tabular-nums; line-height: 1; transition: color 0.3s; }
+  .gauge-value small { font-size: 20px; margin-left: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 18px; }
+  .stat { padding: 12px 14px; border-radius: 14px; background: var(--chip); border: 1px solid var(--glass-border); }
+  .stat .k { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); font-weight: 700; }
+  .stat .v { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .stat .s { font-size: 11.5px; color: var(--muted); }
+  .graph { width: 100%; height: auto; display: block; }
+  .graph text { fill: var(--muted); font-size: 11px; font-family: Inter, system-ui, sans-serif; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+  /* History */
+  .history { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+  .history li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--chip); border: 1px solid var(--glass-border); animation: rise 0.35s ease-out; }
+  .history li > div { flex: 1; min-width: 0; }
+  .history b { font-size: 14px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+
+  /* Overlay & legend bar */
+  .overlay { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px); animation: fade 0.2s ease-out; padding: 20px; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  .modal { width: min(440px, 100%); }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 10px 18px; margin: 0; align-items: center; }
+  .keys dt { white-space: nowrap; }
+  .keys dd { margin: 0; font-size: 14px; color: var(--ink); }
+  .keys-bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 16px; margin-top: 28px; color: var(--muted); font-size: 12.5px; }
+  .keys-bar span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* Teacup animations */
+  .cup { animation: bob 4.5s ease-in-out infinite; }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  .wisp { fill: none; stroke: var(--steam); stroke-width: 4; stroke-linecap: round; transform-box: fill-box; transform-origin: 50% 100%; animation: steam 3.6s ease-in-out infinite; }
+  @keyframes steam {
+    0% { opacity: 0; transform: translateY(14px) scaleX(0.7); }
+    30% { opacity: 0.9; }
+    100% { opacity: 0; transform: translateY(-70px) scaleX(1.35); }
+  }
+  .biscuit-outer { transition: transform 0.6s cubic-bezier(0.3, 0.7, 0.3, 1), opacity 0.4s ease; }
+  .anim-float { animation: float 3.2s ease-in-out infinite; }
+  @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+  .anim-wobble { animation: wobble 0.22s ease-in-out infinite; }
+  @keyframes wobble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-1.8deg); } 75% { transform: rotate(1.8deg); } }
+  .ripple { fill: none; stroke: #fff; stroke-width: 2; transform-box: fill-box; transform-origin: center; opacity: 0; animation: ripple 1.6s ease-out infinite; }
+  .ripple.r2 { animation-delay: 0.8s; }
+  @keyframes ripple { 0% { transform: scale(0.2); opacity: 0.8; } 100% { transform: scale(2.8); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .cup, .wisp, .anim-float, .anim-wobble, .ripple { animation: none !important; }
+    .biscuit-outer, .needle, .gauge-fill { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.26.4/babel.min.js" integrity="sha384-x/ilTFv/u/eu6YSmkFDZl5V5Mm/pkxxcVv2cVJOrr1J0rvILhMvRBCy6yA75wYBj" crossorigin="anonymous"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef, memo } = React;
+
+/* ------------------------------------------------------------------ *
+ * Model
+ * ------------------------------------------------------------------ */
+const SLOPE = 14;      // how sharply crumbling kicks in around the critical soak point
+const DIP_MS = 600;    // travel time into the cup before soaking begins
+const VB_W = 400, VB_H = 320;
+const BIS_W = 130, BIS_H = 34;
+
+const BISCUITS = [
+  { id: 'digestive', name: 'Digestive',     rate: 0.90, strength: 0.62, color: '#d9a86a', dark: '#7a4a22', blurb: 'Wholemeal and drinks deep. Forgiving, if you are quick.' },
+  { id: 'richtea',   name: 'Rich Tea',      rate: 0.60, strength: 0.78, color: '#e6c48e', dark: '#8a5a2c', blurb: 'Thin, pale and dependable. The safe bet.' },
+  { id: 'hobnob',    name: 'Hobnob',        rate: 0.75, strength: 0.60, color: '#c99159', dark: '#6e4120', blurb: 'Oaty and fragile. The diver’s gamble.' },
+  { id: 'gingernut', name: 'Ginger Nut',    rate: 0.35, strength: 0.95, color: '#b8703a', dark: '#5a3218', blurb: 'Rock-hard. Barely drinks at all.' },
+  { id: 'custard',   name: 'Custard Cream', rate: 0.55, strength: 0.50, color: '#f0d08f', dark: '#9a6b2e', blurb: 'Sandwiched, but the filling will not save it.' },
+  { id: 'bourbon',   name: 'Bourbon',       rate: 0.50, strength: 0.72, color: '#6c4128', dark: '#2e1a0e', blurb: 'Chocolate-cream sandwich. Dense and dependable.' },
+];
+
+const TONES = {
+  perfect: { label: 'Perfect dunk',  tone: 'good', note: 'Structure holds. Textbook.' },
+  soft:    { label: 'Getting soggy', tone: 'warn', note: 'Still edible, but lift sooner for a cleaner bite.' },
+  over:    { label: 'Over-dunked',   tone: 'bad',  note: 'Past the tipping point. Crumbs are falling.' },
+  snapped: { label: 'Snapped',       tone: 'bad',  note: 'The biscuit gave up and joined the tea.' },
+};
+
+const SHORTCUTS = [
+  ['Space', 'Dunk, or lift early while dunking'],
+  ['← / →', 'Dunk time −/+ 0.1 s (Shift: 1 s)'],
+  ['↑ / ↓', 'Tea temperature −/+ 1 °C (Shift: 5 °C)'],
+  ['[ / ]', 'Structural integrity −/+ 5%'],
+  ['1 – 6', 'Choose a biscuit'],
+  ['D', 'Toggle dark mode'],
+  ['R', 'Reset everything'],
+  ['?', 'Show or hide this panel'],
+  ['Esc', 'Close this panel'],
+];
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const hexToRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mixHex = (a, b, t) => {
+  const A = hexToRgb(a), B = hexToRgb(b);
+  return `rgb(${A.map((v, i) => Math.round(v + (B[i] - v) * t)).join(',')})`;
+};
+const teaColor = tempC => mixHex('#eec07e', '#4a2412', 0.1 + 0.85 * clamp((tempC - 50) / 50, 0, 1));
+
+function makeModel(b, tempC, integrity) {
+  const tf = 0.35 + 0.65 * clamp((tempC - 50) / 50, 0, 1);      // hotter tea soaks faster
+  const rate = 0.22 * b.rate * tf;                              // soak fraction per second
+  const strength = clamp(b.strength * 0.6 + (integrity / 100) * 0.4, 0, 1);
+  const crit = 0.2 + 0.65 * strength;                           // soak fraction where it tips
+  const s30 = crit + Math.log(0.3 / 0.7) / SLOPE;
+  return {
+    name: b.name, color: b.color, dark: b.dark, tf, rate, strength, crit,
+    t30: -Math.log(1 - s30) / rate,
+    t50: -Math.log(1 - crit) / rate,
+  };
+}
+const soakAt = (m, t) => 1 - Math.exp(-m.rate * t);
+const crumbleAt = (m, t) => 100 / (1 + Math.exp(-SLOPE * (soakAt(m, t) - m.crit)));
+const verdictFor = c => (c >= 85 ? 'snapped' : c >= 50 ? 'over' : c >= 30 ? 'soft' : 'perfect');
+const fmtS = s => (s > 10 ? '10+ s' : `${s.toFixed(1)} s`);
+const tempLabel = t => (t <= 65 ? 'Lukewarm' : t <= 80 ? 'Drinkable' : t <= 92 ? 'Proper brew' : 'Scalding');
+const integrityLabel = i => (i < 35 ? 'Brittle' : i < 70 ? 'Sturdy' : 'Bombproof');
+
+const DOTS = [];
+for (let r = -1; r <= 1; r++) for (let c = -3; c <= 3; c++) DOTS.push([c * 16, r * 10]);
+
+/* ------------------------------------------------------------------ *
+ * Crumb particles (canvas, sprinkled on over-dunks)
+ * ------------------------------------------------------------------ */
+const Crumbs = memo(forwardRef(function Crumbs(_props, ref) {
+  const canvasRef = useRef(null);
+  const parts = useRef([]);
+  const view = useRef({ s: 1, ox: 0, oy: 0 });
+
+  useEffect(() => {
+    const cv = canvasRef.current;
+    const ctx = cv.getContext('2d');
+    let W = 0, H = 0;
+    const resize = () => {
+      const r = cv.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      W = r.width; H = r.height;
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const s = Math.min(W / VB_W, H / VB_H);
+      view.current = { s, ox: (W - VB_W * s) / 2, oy: (H - VB_H * s) / 2 };
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    let last = performance.now();
+    let raf;
+    const frame = now => {
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000));
+      last = now;
+      const { s, ox, oy } = view.current;
+      const floor = oy + 292 * s;
+      ctx.clearRect(0, 0, W, H);
+      const arr = parts.current;
+      for (let i = arr.length - 1; i >= 0; i--) {
+        const p = arr[i];
+        p.age += dt;
+        if (!p.grounded) {
+          p.vy += 1000 * s * dt;
+          p.x += p.vx * dt;
+          p.y += p.vy * dt;
+          p.rot += p.vr * dt;
+          if (p.y >= floor) {
+            p.y = floor; p.vy *= -0.35; p.vx *= 0.6; p.vr *= 0.5;
+            if (Math.abs(p.vy) < 40 * s) { p.grounded = true; p.vy = 0; p.vx = 0; }
+          }
+        } else {
+          p.fade += dt;
+        }
+        if (p.age > p.life || p.fade > 1.2) { arr.splice(i, 1); continue; }
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - p.fade / 1.2) * Math.min(1, p.life - p.age);
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rot);
+        ctx.fillStyle = p.color;
+        if (p.shape) {
+          ctx.beginPath();
+          ctx.ellipse(0, 0, p.r, p.r * 0.6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-p.r, -p.r * 0.5, p.r * 2, p.r);
+        }
+        ctx.restore();
+      }
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', resize);
+    };
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    // vx/vy are in SVG viewBox units; power scales the launch speed.
+    emit(vx, vy, n, color, power = 1) {
+      const { s, ox, oy } = view.current;
+      const x0 = ox + vx * s, y0 = oy + vy * s;
+      for (let i = 0; i < n; i++) {
+        parts.current.push({
+          x: x0 + (Math.random() - 0.5) * 10 * s,
+          y: y0 + (Math.random() - 0.5) * 4 * s,
+          vx: (Math.random() - 0.5) * 320 * power * s,
+          vy: -(Math.random() * 330 + 140) * power * s,
+          r: (1.6 + Math.random() * 2.2) * s,
+          rot: Math.random() * 6,
+          vr: (Math.random() - 0.5) * 14,
+          color,
+          shape: Math.random() < 0.5 ? 0 : 1,
+          age: 0,
+          life: 3.5 + Math.random() * 2,
+          fade: 0,
+          grounded: false,
+        });
+      }
+    },
+  }), []);
+
+  return <canvas ref={canvasRef} className="crumbs" aria-hidden="true" />;
+}));
+
+/* ------------------------------------------------------------------ *
+ * Presentational pieces
+ * ------------------------------------------------------------------ */
+function Gauge({ value, tone }) {
+  const arc = 'M 12 104 A 88 88 0 0 1 188 104';
+  return (
+    <div className="gauge-wrap">
+      <svg viewBox="0 0 200 118" className="gauge" aria-hidden="true">
+        <path className="gauge-track" d={arc} pathLength="100" />
+        <path className="gauge-fill" d={arc} pathLength="100"
+              strokeDasharray={`${value} 100`} style={{ stroke: `var(--${tone})` }} />
+        <g className="needle" style={{ transform: `rotate(${value * 1.8 - 90}deg)` }}>
+          <line x1="100" y1="104" x2="100" y2="30" />
+        </g>
+        <circle className="hub" cx="100" cy="104" r="6" />
+      </svg>
+      <div className="gauge-value" style={{ color: `var(--${tone})` }}>
+        {value.toFixed(0)}<small>%</small>
+      </div>
+    </div>
+  );
+}
+
+function Graph({ model, t }) {
+  const W = 420, H = 210, pl = 40, pr = 12, pt = 14, pb = 28;
+  const X = x => pl + (x / 10) * (W - pl - pr);
+  const Y = c => pt + (1 - c / 100) * (H - pt - pb);
+  const pts = [];
+  for (let i = 0; i <= 100; i++) {
+    const x = i / 10;
+    pts.push(`${X(x).toFixed(1)},${Y(crumbleAt(model, x)).toFixed(1)}`);
+  }
+  const tx = clamp(t, 0, 10);
+  const t30 = Math.min(model.t30, 10), t50 = Math.min(model.t50, 10);
+  const plotBottom = H - pb;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="graph" role="img" aria-label="Crumble percentage against dunk time">
+      <rect x={X(0)} y={pt} width={X(t30) - X(0)} height={plotBottom - pt} fill="var(--good)" opacity="0.13" />
+      <rect x={X(t30)} y={pt} width={Math.max(0, X(t50) - X(t30))} height={plotBottom - pt} fill="var(--warn)" opacity="0.15" />
+      <rect x={X(t50)} y={pt} width={Math.max(0, X(10) - X(t50))} height={plotBottom - pt} fill="var(--bad)" opacity="0.13" />
+      {[0, 50, 100].map(v => (
+        <g key={v}>
+          <line x1={pl} x2={W - pr} y1={Y(v)} y2={Y(v)} stroke="var(--track)" strokeWidth="1" />
+          <text x={pl - 8} y={Y(v) + 4} textAnchor="end">{v}%</text>
+        </g>
+      ))}
+      {[0, 2, 4, 6, 8, 10].map(x => (
+        <text key={x} x={X(x)} y={H - 8} textAnchor="middle">{x}s</text>
+      ))}
+      {model.t50 <= 10 && (
+        <text x={X(t50)} y={pt + 12} textAnchor="middle" style={{ fill: 'var(--bad)' }}>tipping</text>
+      )}
+      <polyline points={pts.join(' ')} fill="none" stroke="var(--accent)" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+      <line x1={X(tx)} x2={X(tx)} y1={pt} y2={plotBottom} stroke="var(--ink)" strokeDasharray="4 4" opacity="0.55" />
+      <circle cx={X(tx)} cy={Y(crumbleAt(model, tx))} r="6" fill="var(--ink)" stroke="var(--solid)" strokeWidth="2" />
+    </svg>
+  );
+}
+
+function Slider({ id, label, value, min, max, step, onChange, display, hint }) {
+  const pct = ((value - min) / (max - min)) * 100;
+  return (
+    <div className="field">
+      <div className="field-head">
+        <label htmlFor={id}>{label}</label>
+        <span className="val">{display}</span>
+      </div>
+      <input id={id} type="range" min={min} max={max} step={step} value={value}
+             style={{ '--p': `${pct}%` }}
+             onChange={e => onChange(Number(e.target.value))} />
+      <div className="hint">{hint}</div>
+    </div>
+  );
+}
+
+function Stat({ k, v, s }) {
+  return (
+    <div className="stat">
+      <div className="k">{k}</div>
+      <div className="v">{v}</div>
+      {s && <div className="s">{s}</div>}
+    </div>
+  );
+}
+
+const TeacupIcon = () => (
+  <svg width="40" height="40" viewBox="0 0 40 40" aria-hidden="true">
+    <path d="M6 18h24v6a10 10 0 0 1-10 10h-4A10 10 0 0 1 6 24z" fill="var(--accent)" />
+    <path d="M30 20h2a4 4 0 0 1 0 8h-3" fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+    <path d="M12 5c-2 3 2 4 0 8M19 5c-2 3 2 4 0 8" stroke="var(--accent2)" strokeWidth="2" fill="none" strokeLinecap="round" />
+  </svg>
+);
+
+/* ------------------------------------------------------------------ *
+ * App
+ * ------------------------------------------------------------------ */
+function App() {
+  const [tempC, setTempC] = useState(85);
+  const [dunkTime, setDunkTime] = useState(4);
+  const [biscuitIdx, setBiscuitIdx] = useState(0);
+  const [integrity, setIntegrity] = useState(50);
+  const [dark, setDark] = useState(() => {
+    const saved = localStorage.getItem('tds-theme');
+    if (saved) return saved === 'dark';
+    return window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)').matches : true;
+  });
+  const [showHelp, setShowHelp] = useState(false);
+  const [run, setRun] = useState(null);        // { id, phase, model, elapsed, duration }
+  const [history, setHistory] = useState([]);
+  const dunkRef = useRef(null);                // live dunk bookkeeping (not rendered)
+  const seq = useRef(0);
+  const crumbsRef = useRef(null);
+
+  const biscuit = BISCUITS[biscuitIdx];
+  const preview = useMemo(() => makeModel(biscuit, tempC, integrity), [biscuitIdx, tempC, integrity]);
+
+  const phase = run ? run.phase : 'idle';
+  const model = run ? run.model : preview;
+  const t = run ? run.elapsed : dunkTime;
+  const soak = soakAt(model, t);
+  const crumble = crumbleAt(model, t);
+  const verdictKey = verdictFor(crumble);
+  const tone = TONES[verdictKey];
+  const visualSoak = run ? soak : 0;
+  const dunking = phase === 'dipping' || phase === 'soaking';
+  const wobble = phase === 'soaking' && crumble >= 50;
+  const biscuitY = dunking ? 142 : 62;
+  const biscuitVisible = phase !== 'snapped';
+  const progress = run && run.duration ? clamp(t / run.duration, 0, 1) : 0;
+
+  const statusText = !run ? 'Ready'
+    : phase === 'dipping' ? 'Dipping…'
+    : phase === 'soaking' ? `Soaking · ${t.toFixed(1)} s`
+    : phase === 'lifted' ? `Lifted at ${t.toFixed(1)} s`
+    : `Snapped at ${t.toFixed(1)} s`;
+  const dunkLabel = dunking ? 'Lift now' : run ? 'Dunk again' : 'Dunk';
+
+  const finish = tSoak => {
+    const r = dunkRef.current;
+    if (!r) return;
+    dunkRef.current = null;
+    const c = crumbleAt(r.model, tSoak);
+    const key = verdictFor(c);
+    if (c >= 50) {
+      crumbsRef.current?.emit(200, 156, Math.round(14 + (Math.min(c, 100) - 50) * 1.2), r.model.color, 1);
+    }
+    if (c >= 85) {
+      crumbsRef.current?.emit(200, 150, 40, r.model.dark, 1.4);
+    }
+    setRun({ id: r.id, model: r.model, elapsed: tSoak, duration: r.duration, phase: key === 'snapped' ? 'snapped' : 'lifted' });
+    setHistory(h => [{ id: r.id, name: r.model.name, color: r.model.color, tempC: r.tempC, t: tSoak, c, key }, ...h].slice(0, 8));
+  };
+
+  const startDunk = () => {
+    if (dunkRef.current) return;
+    const id = ++seq.current;
+    const m = makeModel(biscuit, tempC, integrity);
+    dunkRef.current = { id, model: m, tempC, duration: dunkTime, start: performance.now() + DIP_MS, lastEmit: 0 };
+    setRun({ id, model: m, elapsed: 0, duration: dunkTime, phase: 'dipping' });
+  };
+
+  const liftNow = () => {
+    const r = dunkRef.current;
+    if (!r) return;
+    finish(clamp((performance.now() - r.start) / 1000, 0, r.duration));
+  };
+
+  const dunkOrLift = () => (dunkRef.current ? liftNow() : startDunk());
+
+  const reset = () => {
+    dunkRef.current = null;
+    setRun(null);
+    setHistory([]);
+    setTempC(85);
+    setDunkTime(4);
+    setBiscuitIdx(0);
+    setIntegrity(50);
+  };
+
+  // Keyboard shortcuts. Stored in a ref so the listener always sees fresh state.
+  const onKey = e => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const k = e.key;
+    if (k === ' ' || k === 'Spacebar') {
+      e.preventDefault();
+      if (!e.repeat) dunkOrLift();
+    } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+      e.preventDefault();
+      const d = (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 5 : 1);
+      setTempC(v => clamp(v + d, 50, 100));
+    } else if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      e.preventDefault();
+      const d = (k === 'ArrowRight' ? 1 : -1) * (e.shiftKey ? 1 : 0.1);
+      setDunkTime(v => clamp(Math.round((v + d) * 10) / 10, 0, 10));
+    } else if (k === '[' || k === ']') {
+      setIntegrity(v => clamp(v + (k === ']' ? 5 : -5), 0, 100));
+    } else if (/^[1-6]$/.test(k)) {
+      setBiscuitIdx(Number(k) - 1);
+    } else if (k === 'd' || k === 'D') {
+      setDark(v => !v);
+    } else if (k === 'r' || k === 'R') {
+      reset();
+    } else if (k === '?') {
+      setShowHelp(v => !v);
+    } else if (k === 'Escape') {
+      setShowHelp(false);
+    }
+  };
+  const keyRef = useRef(onKey);
+  keyRef.current = onKey;
+
+  useEffect(() => {
+    const down = e => keyRef.current(e);
+    const up = e => { if (e.key === ' ') e.preventDefault(); };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    localStorage.setItem('tds-theme', dark ? 'dark' : 'light');
+  }, [dark]);
+
+  // Animation loop for a running dunk: advances soak time and sprinkles crumbs past the tipping point.
+  useEffect(() => {
+    if (phase !== 'dipping' && phase !== 'soaking') return;
+    let raf;
+    const tick = now => {
+      const r = dunkRef.current;
+      if (!r) return;
+      const tSoak = (now - r.start) / 1000;
+      if (tSoak >= r.duration) { finish(r.duration); return; }
+      if (tSoak >= 0) {
+        if (tSoak > 0 && crumbleAt(r.model, tSoak) >= 50 && now - r.lastEmit > 110) {
+          r.lastEmit = now;
+          crumbsRef.current?.emit(200, 158, 2, r.model.color, 0.45);
+        }
+        setRun(prev => (prev && prev.id === r.id ? { ...prev, phase: 'soaking', elapsed: tSoak } : prev));
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [phase]);
+
+  const graphModel = model;
+
+  return (
+    <>
+      <div className="blob a" />
+      <div className="blob b" />
+      <div className="app">
+        <header className="topbar card">
+          <div className="brand">
+            <TeacupIcon />
+            <div>
+              <h1>Tea Dunkability</h1>
+              <div className="sub">Classic biscuit physics, simulated in your browser</div>
+            </div>
+          </div>
+          <div className="top-actions">
+            <button className="icon-btn" onClick={() => setShowHelp(true)} aria-label="Keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+            <button className="icon-btn" onClick={() => setDark(d => !d)} aria-label="Toggle dark mode" title="Toggle dark mode (D)">
+              {dark ? '☀' : '☾'}
+            </button>
+          </div>
+        </header>
+
+        <main className="layout">
+          <div className="col">
+            <section className="card">
+              <div className="card-head">
+                <h2>The dunk</h2>
+                <span className={`chip ${run ? `tone-${tone.tone}` : ''}`}>{statusText}</span>
+              </div>
+
+              <div className="stage">
+                <svg className="stage-svg" viewBox={`0 0 ${VB_W} ${VB_H}`} role="img"
+                     aria-label={`${model.name} dunked in tea at ${tempC} degrees`}>
+                  <defs>
+                    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+                      <stop offset="0" stopColor={teaColor(tempC)} stopOpacity="0.5" />
+                      <stop offset="1" stopColor={teaColor(tempC)} stopOpacity="0" />
+                    </radialGradient>
+                    <linearGradient id="porcelain" x1="0" x2="0" y1="0" y2="1">
+                      <stop offset="0" stopColor="#ffffff" />
+                      <stop offset="1" stopColor="#d6dbe2" />
+                    </linearGradient>
+                    <clipPath id="biscuit-clip">
+                      <rect x={-BIS_W / 2} y={-BIS_H / 2} width={BIS_W} height={BIS_H} rx="15" />
+                    </clipPath>
+                    <filter id="soft" x="-20%" y="-50%" width="140%" height="200%">
+                      <feGaussianBlur stdDeviation="2" />
+                    </filter>
+                    <filter id="blur-steam" x="-50%" y="-20%" width="200%" height="140%">
+                      <feGaussianBlur stdDeviation="2.4" />
+                    </filter>
+                    <filter id="blur-shadow">
+                      <feGaussianBlur stdDeviation="6" />
+                    </filter>
+                  </defs>
+
+                  <ellipse cx="200" cy="170" rx="170" ry="120" fill="url(#glow)" />
+                  <ellipse cx="200" cy="292" rx="165" ry="11" fill="#000" opacity="0.3" filter="url(#blur-shadow)" />
+
+                  <g className="steam" transform="translate(200 134)" filter="url(#blur-steam)"
+                     style={{ opacity: 0.3 + 0.7 * model.tf }}>
+                    {[-22, 0, 22].map((x, i) => (
+                      <path key={i} className="wisp" style={{ animationDelay: `${i * 1.2}s` }}
+                            d={`M ${x} 0 c -10 -14 10 -26 0 -40 s 10 -26 0 -40`} />
+                    ))}
+                  </g>
+
+                  <g className="cup">
+                    <path d="M 294 176 C 336 164 346 228 288 238" fill="none" stroke="url(#porcelain)" strokeWidth="16" strokeLinecap="round" />
+                    <ellipse cx="200" cy="262" rx="150" ry="22" fill="url(#porcelain)" />
+                    <ellipse cx="200" cy="260" rx="96" ry="13" fill="#e4e8ee" />
+                    <path d="M 108 150 L 292 150 C 292 214 258 256 200 256 C 142 256 108 214 108 150 Z" fill="url(#porcelain)" />
+                    <path d="M 128 190 C 134 222 158 238 200 238" fill="none" stroke="#fff" strokeOpacity="0.7" strokeWidth="5" strokeLinecap="round" />
+                    <ellipse cx="200" cy="150" rx="92" ry="15" fill="#f6f8fa" stroke="#c4cad3" strokeWidth="1.5" />
+                    <ellipse cx="200" cy="152" rx="84" ry="11" fill={teaColor(tempC)} />
+                    <ellipse cx="184" cy="150" rx="34" ry="3.5" fill="#fff" opacity="0.2" />
+                    {dunking && (
+                      <g>
+                        <ellipse className="ripple" cx="200" cy="152" rx="60" ry="8" />
+                        <ellipse className="ripple r2" cx="200" cy="152" rx="60" ry="8" />
+                      </g>
+                    )}
+                  </g>
+
+                  <g className="biscuit-outer" style={{ transform: `translate(200px, ${biscuitY}px)`, opacity: biscuitVisible ? 1 : 0 }}>
+                    <g className={wobble ? 'anim-wobble' : phase === 'idle' ? 'anim-float' : ''}>
+                      <g transform="rotate(-12)">
+                        <rect x={-BIS_W / 2} y={-BIS_H / 2} width={BIS_W} height={BIS_H} rx="15"
+                              fill={model.color} stroke={model.dark} strokeWidth="2" />
+                        {DOTS.map(([x, y], i) => (
+                          <circle key={i} cx={x} cy={y} r="1.7" fill={model.dark} opacity="0.35" />
+                        ))}
+                        <g clipPath="url(#biscuit-clip)">
+                          <rect x={-BIS_W / 2} y={BIS_H / 2 - visualSoak * BIS_H} width={BIS_W}
+                                height={visualSoak * BIS_H + 1} fill={model.dark} opacity="0.8" filter="url(#soft)" />
+                        </g>
+                      </g>
+                    </g>
+                  </g>
+                </svg>
+                <Crumbs ref={crumbsRef} />
+              </div>
+
+              <div className="progress" aria-hidden="true"><span style={{ width: `${progress * 100}%` }} /></div>
+
+              <div className="stage-foot">
+                <div className="verdict-text" aria-live="polite">
+                  <strong className={`tone-${tone.tone}`}>{tone.label}</strong>
+                  <span>{run ? tone.note : `Predicted for a ${dunkTime.toFixed(1)} s dunk. ${tone.note}`}</span>
+                </div>
+                <button className="btn" onClick={dunkOrLift}>{dunkLabel}</button>
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h2>Crumble curve</h2>
+                <span className="sub">{run ? 'Live reading' : 'Prediction'}</span>
+              </div>
+              <Graph model={graphModel} t={t} />
+              <div className="legend">
+                <span><i style={{ background: 'var(--good)' }} />Safe</span>
+                <span><i style={{ background: 'var(--warn)' }} />Soggy</span>
+                <span><i style={{ background: 'var(--bad)' }} />Over-dunk</span>
+              </div>
+            </section>
+          </div>
+
+          <div className="col">
+            <section className="card">
+              <h2 style={{ marginBottom: 16 }}>Controls</h2>
+              <Slider id="temp" label="Tea temperature" value={tempC} min={50} max={100} step={1}
+                      onChange={setTempC} display={`${tempC} °C`}
+                      hint={`${tempLabel(tempC)} · ↑ ↓ to nudge`} />
+              <Slider id="time" label="Dunk time" value={dunkTime} min={0} max={10} step={0.1}
+                      onChange={setDunkTime} display={`${dunkTime.toFixed(1)} s`}
+                      hint="← → to nudge · hold Shift for bigger steps" />
+              <Slider id="integrity" label="Structural integrity" value={integrity} min={0} max={100} step={1}
+                      onChange={setIntegrity} display={`${integrity}%`}
+                      hint={`${integrityLabel(integrity)} · [ ] to nudge`} />
+              <div className="field">
+                <div className="field-head"><span className="label">Biscuit</span><span className="sub">keys 1–6</span></div>
+                <div className="biscuit-grid" role="radiogroup" aria-label="Biscuit type">
+                  {BISCUITS.map((b, i) => (
+                    <button key={b.id} role="radio" aria-checked={i === biscuitIdx} className="biscuit-chip"
+                            onClick={() => setBiscuitIdx(i)}>
+                      <span className="swatch" style={{ background: b.color }} />
+                      <span>{b.name}</span>
+                      <kbd>{i + 1}</kbd>
+                    </button>
+                  ))}
+                </div>
+                <p className="hint">{biscuit.blurb}</p>
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h2>Crumble-o-meter</h2>
+                <span className={`chip tone-${tone.tone}`}>{Math.round(crumble)}% · {tone.label}</span>
+              </div>
+              <Gauge value={crumble} tone={tone.tone} />
+              <div className="stats">
+                <Stat k="Soaked" v={`${Math.round(soak * 100)}%`} s={run ? 'at this moment' : 'predicted'} />
+                <Stat k="Strength" v={`${Math.round(model.strength * 100)}%`} s="biscuit + integrity" />
+                <Stat k="Safe until" v={fmtS(model.t30)} s="crumble under 30%" />
+                <Stat k="Tipping point" v={fmtS(model.t50)} s="crumble reaches 50%" />
+              </div>
+            </section>
+
+            <section className="card">
+              <div className="card-head">
+                <h2>Recent dunks</h2>
+                {history.length > 0 && <span className="sub">last {history.length}</span>}
+              </div>
+              {history.length === 0 ? (
+                <p className="hint" style={{ margin: 0 }}>No dunks yet. Press <kbd>Space</kbd> to take one.</p>
+              ) : (
+                <ul className="history">
+                  {history.map(h => (
+                    <li key={h.id}>
+                      <span className="swatch" style={{ background: h.color }} />
+                      <div>
+                        <b>{h.name}</b>
+                        <div className="sub">{h.tempC} °C · {h.t.toFixed(1)} s</div>
+                      </div>
+                      <span className={`chip tone-${TONES[h.key].tone}`}>{TONES[h.key].label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </main>
+
+        <div className="keys-bar">
+          <span><kbd>Space</kbd> dunk / lift</span>
+          <span><kbd>← →</kbd> time</span>
+          <span><kbd>↑ ↓</kbd> temperature</span>
+          <span><kbd>[ ]</kbd> integrity</span>
+          <span><kbd>1–6</kbd> biscuit</span>
+          <span><kbd>D</kbd> dark mode</span>
+          <span><kbd>R</kbd> reset</span>
+          <span><kbd>?</kbd> all shortcuts</span>
+        </div>
+      </div>
+
+      {showHelp && (
+        <div className="overlay" onClick={() => setShowHelp(false)} role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+          <div className="card modal" onClick={e => e.stopPropagation()}>
+            <div className="card-head">
+              <h2>Keyboard shortcuts</h2>
+              <button className="icon-btn" onClick={() => setShowHelp(false)} aria-label="Close">×</button>
+            </div>
+            <dl className="keys">
+              {SHORTCUTS.map(([k, d]) => (
+                <React.Fragment key={k}>
+                  <dt><kbd>{k}</kbd></dt>
+                  <dd>{d}</dd>
+                </React.Fragment>
+              ))}
+            </dl>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

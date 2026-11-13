@@ -1,3 +1,5 @@
+import type { ModelColor } from "./model-colors.ts";
+
 export type Provider = "openai" | "anthropic" | "google" | "moonshot" | "z-ai" | "qwen" | "xai" | "meta" | "thinking-machines";
 
 export interface ProviderConfig {
@@ -45,8 +47,8 @@ export interface ModelConfig {
   /** Optional harness-specific model variant (for example, reasoning effort). */
   variant?: string;
 
-  /** Tailwind CSS class for the model's color indicator */
-  color: string;
+  /** Tailwind CSS class for the model's color indicator; must have a chart hex in model-colors.ts */
+  color: ModelColor;
 
   /** Provider that owns this model */
   provider: Provider;
@@ -69,6 +71,26 @@ export const models: ModelConfig[] = [
     color: "bg-emerald-700",
     provider: "openai",
     published: true,
+  },
+  {
+    id: "gpt-6.1-sol",
+    name: "GPT-6.1 Sol",
+    harness: "codex",
+    host: "openai",
+    model: "gpt-6.1-sol",
+    variant: "xhigh",
+    color: "bg-teal-700",
+    provider: "openai",
+  },
+  {
+    id: "gpt-6.1-terra",
+    name: "GPT-6.1 Terra",
+    harness: "codex",
+    host: "openai",
+    model: "gpt-6.1-terra",
+    variant: "xhigh",
+    color: "bg-sky-700",
+    provider: "openai",
   },
   {
     id: "gpt-5",
@@ -206,6 +228,24 @@ export const models: ModelConfig[] = [
     provider: "anthropic",
   },
   {
+    id: "opus-5.5",
+    name: "Opus 5.5",
+    harness: "claude",
+    host: "anthropic",
+    model: "claude-opus-5-5",
+    color: "bg-orange-600",
+    provider: "anthropic",
+  },
+  {
+    id: "fable-5.2",
+    name: "Fable 5.2",
+    harness: "claude",
+    host: "anthropic",
+    model: "claude-fable-5-2",
+    color: "bg-rose-600",
+    provider: "anthropic",
+  },
+  {
     id: "sonnet-4.5",
     name: "Sonnet 4.5",
     harness: "claude",
@@ -233,12 +273,30 @@ export const models: ModelConfig[] = [
     provider: "anthropic",
   },
   {
+    id: "sonnet-5.5",
+    name: "Sonnet 5.5",
+    harness: "claude",
+    host: "anthropic",
+    model: "claude-sonnet-5-5",
+    color: "bg-violet-700",
+    provider: "anthropic",
+  },
+  {
     id: "haiku-4.5",
     name: "Haiku 4.5",
     harness: "claude",
     host: "anthropic",
     model: "claude-haiku-4-5",
     color: "bg-rose-500",
+    provider: "anthropic",
+  },
+  {
+    id: "haiku-5.5",
+    name: "Haiku 5.5",
+    harness: "claude",
+    host: "anthropic",
+    model: "claude-haiku-5-5",
+    color: "bg-pink-600",
     provider: "anthropic",
   },
   {
@@ -361,7 +419,7 @@ export const models: ModelConfig[] = [
 ];
 
 /** Default models shown in the side-by-side comparison view */
-export const DEFAULT_COMPARISON_MODELS = ["gpt-6-astra", "opus-5", "qwen-3.8-27b"] as const;
+export const DEFAULT_COMPARISON_MODELS = ["fable-5.2", "gpt-6.1-sol", "qwen-3.8-27b"] as const;
 
 /** The first default model opens in the live collection. */
 export const DEFAULT_EXPLORER_MODEL = DEFAULT_COMPARISON_MODELS[0];

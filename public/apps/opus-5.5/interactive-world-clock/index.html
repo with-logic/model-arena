@@ -1,0 +1,1496 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Interactive World Clock</title>
+<meta name="description" content="See the time in cities around the world. Each city shows its own sky for morning, afternoon, evening, or night.">
+<meta name="theme-color" content="#E8EDF2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0F1729" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%2314203A'/%3E%3Cpath d='M5 16a11 11 0 0 1 22 0z' fill='%23FFC861'/%3E%3Ccircle cx='20' cy='21' r='1.4' fill='%23F3E5B0'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --page:#E8EDF2;
+  --panel:#F7F9FB;
+  --ink:#14203A;
+  --muted:#56647C;
+  --line:#CBD3DE;
+  --focus:#2463EB;
+  --btn:#14203A;
+  --btn-ink:#F7F9FB;
+  --scrim:rgba(20,32,58,.42);
+  --raise:0 1px 0 rgba(20,32,58,.04), 0 18px 40px -26px rgba(20,32,58,.45);
+  --font:"Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease:cubic-bezier(.2,.8,.2,1);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --page:#0F1729;
+    --panel:#172138;
+    --ink:#E6ECF5;
+    --muted:#98A4BB;
+    --line:#2A3654;
+    --focus:#8AB4FF;
+    --btn:#E6ECF5;
+    --btn-ink:#0F1729;
+    --scrim:rgba(3,7,16,.62);
+    --raise:0 1px 0 rgba(0,0,0,.2), 0 18px 40px -26px rgba(0,0,0,.8);
+    color-scheme:dark;
+  }
+}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+body{
+  margin:0;min-height:100vh;
+  background:var(--page);color:var(--ink);
+  font-family:var(--font);font-size:15px;line-height:1.45;font-weight:420;font-stretch:100%;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
+[hidden]{display:none!important}
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+svg{display:block}
+
+/* ---------- header ---------- */
+.top{
+  max-width:1480px;margin:0 auto;
+  display:flex;align-items:center;gap:14px;
+  padding:18px clamp(14px,3vw,36px) 16px;
+}
+.brand{display:flex;align-items:center;gap:10px;margin:0 auto 0 0;font-size:17px;font-weight:780;font-stretch:125%;letter-spacing:-.01em;line-height:1}
+.brand svg{width:28px;height:28px}
+.utc{font-size:13.5px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.utc b{font-weight:620;color:var(--ink);margin-left:4px}
+.seg{position:relative;display:inline-grid;grid-template-columns:1fr 1fr;padding:3px;border-radius:999px;background:color-mix(in srgb,var(--ink) 8%,transparent)}
+.seg button{position:relative;z-index:1;border:0;background:none;cursor:pointer;padding:7px 13px;border-radius:999px;font-size:13.5px;font-weight:580;color:var(--muted);white-space:nowrap;transition:color .25s}
+.seg button[aria-pressed="true"]{color:var(--ink)}
+.seg-pill{position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);border-radius:999px;background:var(--panel);box-shadow:0 1px 2px rgba(20,32,58,.14),0 3px 10px -4px rgba(20,32,58,.25);transition:transform .34s var(--ease)}
+.seg[data-fmt="24"] .seg-pill{transform:translateX(100%)}
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;border-radius:999px;padding:10px 17px 10px 13px;background:var(--btn);color:var(--btn-ink);font-size:14px;font-weight:620;white-space:nowrap;transition:transform .15s var(--ease),background-color .2s}
+.btn:hover{background:color-mix(in srgb,var(--btn) 86%,var(--page))}
+.btn:active{transform:scale(.97)}
+.btn svg{width:16px;height:16px}
+
+/* ---------- layout ---------- */
+.layout{max-width:1480px;margin:0 auto;padding:0 clamp(14px,3vw,36px) 28px;display:grid;gap:16px}
+.here{display:grid;gap:14px;min-width:0}
+.world{min-width:0}
+@media (min-width:1080px){
+  .layout{grid-template-columns:minmax(420px,5fr) minmax(0,7fr);gap:28px;align-items:start}
+  .here{position:sticky;top:16px}
+}
+
+/* ---------- skies (shared) ---------- */
+[data-tone="light"]{--fg:#13203A;--fg-soft:rgba(19,32,58,.74);--fg-faint:rgba(19,32,58,.13)}
+[data-tone="dark"]{--fg:#FFFFFF;--fg-soft:rgba(255,255,255,.8);--fg-faint:rgba(255,255,255,.18)}
+.sky{position:absolute;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.stars{position:absolute;inset:0;opacity:var(--night,0)}
+.star{position:absolute;border-radius:50%;background:#fff;box-shadow:0 0 4px rgba(255,255,255,.7)}
+.star.tw{animation:twinkle 4s ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:1}50%{opacity:.2}}
+.orb{position:absolute;width:var(--orb);height:var(--orb);border-radius:50%;transform:translate(-50%,-50%);will-change:left,top}
+.sun{
+  left:calc(var(--arc-l,6%) + var(--sx,.5)*var(--arc-w,88%));top:calc(var(--sy,50)*1%);opacity:var(--so,0);
+  background:radial-gradient(circle,#FFFDF3 0 34%,var(--sun-c,#FFE49A) 72%,var(--sun-c,#FFE49A) 100%);
+  box-shadow:0 0 0 calc(var(--orb)*.24) rgba(255,236,170,.22),0 0 calc(var(--orb)*1.8) calc(var(--orb)*.55) rgba(255,206,122,.36);
+}
+.moon{
+  left:calc(var(--arc-l,6%) + var(--mx,.5)*var(--arc-w,88%));top:calc(var(--my,50)*1%);opacity:var(--mo,0);
+  box-shadow:inset calc(var(--orb)*-.3) calc(var(--orb)*.12) 0 0 #F4ECD3;
+  filter:drop-shadow(0 0 calc(var(--orb)*.4) rgba(244,236,211,.5));
+}
+.picon{display:inline-block;width:30px;height:30px;color:var(--fg);flex:none}
+.picon svg{width:100%;height:100%}
+
+/* ---------- hero (your time) ---------- */
+.hero{
+  --orb:62px;
+  position:relative;isolation:isolate;overflow:hidden;
+  container-type:inline-size;
+  display:flex;flex-direction:column;
+  min-height:clamp(320px,56vh,560px);
+  padding:clamp(20px,2.6vw,32px);
+  border-radius:28px;
+  color:var(--fg);
+  background:linear-gradient(180deg,var(--top,#5AACE9),var(--bot,#CFE9F8));
+}
+.h-top,.h-main{color:var(--fg)}
+@media (min-width:1080px){.hero{min-height:clamp(360px,calc(100vh - 284px),660px)}}
+.h-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.h-period{display:flex;align-items:center;gap:10px;margin:0;font-size:17px;font-weight:600}
+.h-period .picon{width:36px;height:36px}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:6px 11px 6px 10px;border-radius:999px;background:var(--fg-faint);font-size:12.5px;font-weight:620;color:var(--fg)}
+.chip i{width:7px;height:7px;border-radius:50%;background:#3DDC84;box-shadow:0 0 0 3px rgba(61,220,132,.25)}
+.hero.is-preview .chip i{background:#FFB547;box-shadow:0 0 0 3px rgba(255,181,71,.28)}
+.h-main{margin-top:auto}
+.h-clock{
+  display:flex;align-items:flex-start;gap:.05em;margin:0 0 .16em -.03em;
+  font-size:clamp(84px,33cqi,224px);line-height:.8;font-weight:230;font-stretch:66%;letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.h-side{display:flex;flex-direction:column;gap:.18em;padding-top:.035em;font-size:.25em;line-height:.9;font-weight:360;letter-spacing:0}
+.h-sec{transition:opacity .25s}
+.hero.is-preview .h-sec{opacity:0}
+.h-ap{font-size:.56em;font-weight:620;font-stretch:100%;letter-spacing:.04em}
+.h-city{display:flex;align-items:center;gap:9px;margin:0;font-size:clamp(22px,6cqi,32px);font-weight:700;font-stretch:122%;letter-spacing:-.015em;line-height:1.1}
+.h-city svg{width:.62em;height:.62em;flex:none;opacity:.9}
+.h-meta{display:flex;flex-wrap:wrap;gap:2px 18px;margin:8px 0 0;font-size:14.5px;color:var(--fg-soft)}
+.h-meta span:first-child{color:var(--fg);font-weight:540}
+
+/* ---------- time slider ---------- */
+.scrub{background:var(--panel);border-radius:22px;padding:14px 18px 10px;box-shadow:var(--raise)}
+@media (max-width:1079px){
+  .here{display:contents}
+  .scrub{position:sticky;top:8px;z-index:20;background:color-mix(in srgb,var(--panel) 90%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+}
+.scrub-head{display:flex;align-items:center;gap:12px;min-height:32px}
+.scrub-status{flex:1;min-width:0;margin:0;font-size:14px;color:var(--muted)}
+.scrub-status b{color:var(--ink);font-weight:620}
+.btn-now{flex:none;border:1px solid var(--line);background:var(--panel);cursor:pointer;border-radius:999px;padding:6px 13px;font-size:13px;font-weight:620;transition:opacity .2s,background-color .2s}
+.btn-now:hover{background:color-mix(in srgb,var(--ink) 6%,var(--panel))}
+.btn-now[aria-hidden="true"]{display:none}
+.track{position:relative;height:44px;margin:34px 0 0;border-radius:12px;cursor:grab;touch-action:pan-y;-webkit-user-select:none;user-select:none}
+.track.dragging,.track.dragging .thumb{cursor:grabbing}
+.track-sky{position:absolute;inset:0;border-radius:inherit;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(20,32,58,.1)}
+.tick{position:absolute;bottom:0;width:1px;height:6px;background:currentColor;opacity:.5}
+.tick.major{height:12px;opacity:.75}
+.tick.midnight{top:0;height:auto;opacity:.55}
+.now-mark{position:absolute;left:50%;top:-5px;bottom:-5px;width:2px;margin-left:-1px;border-radius:2px;background:var(--ink);opacity:.3;pointer-events:none}
+.thumb{
+  position:absolute;top:-7px;bottom:-7px;left:50%;width:14px;margin-left:-7px;border-radius:8px;
+  background:#fff;box-shadow:0 0 0 2px var(--ink),0 6px 14px -4px rgba(20,32,58,.5);cursor:grab;outline:none;
+}
+.thumb::after{content:"";position:absolute;left:50%;top:50%;width:2px;height:14px;margin:-7px 0 0 -1px;border-radius:2px;background:rgba(20,32,58,.35)}
+.thumb:focus-visible{box-shadow:0 0 0 2px var(--ink),0 0 0 5px var(--focus)}
+.bubble{position:absolute;bottom:calc(100% + 11px);left:0;padding:4px 9px;border-radius:8px;background:var(--ink);color:var(--page);font-size:12.5px;font-weight:640;white-space:nowrap;font-variant-numeric:tabular-nums;pointer-events:none}
+.track-labels{position:relative;height:18px;margin:7px 0 0;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.track-labels span{position:absolute;top:0;transform:translateX(-50%);white-space:nowrap}
+.track-labels span.day{color:var(--ink);font-weight:620}
+
+/* ---------- city stack ---------- */
+.stack{list-style:none;margin:0;padding:0;display:grid;gap:3px;border-radius:22px;overflow:hidden}
+.band{
+  --orb:24px;--arc-l:3%;--arc-w:62%;
+  position:relative;isolation:isolate;overflow:hidden;
+  display:grid;grid-template-columns:68px minmax(0,1fr) minmax(92px,auto) minmax(140px,auto) 34px;align-items:center;column-gap:16px;
+  min-height:108px;padding:16px 12px 16px 20px;border-radius:5px;
+  color:var(--fg);background:linear-gradient(180deg,var(--top),var(--bot));
+  scroll-margin-top:150px;scroll-margin-bottom:20px;
+}
+.band[data-tone="dark"],.hero [data-tone="dark"]{text-shadow:0 1px 12px rgba(5,10,30,.4)}
+.band .moon{opacity:calc(var(--mo,0)*.5)}
+.band .sun{opacity:calc(var(--so,0)*.88)}
+.b-period{display:grid;justify-items:start;gap:3px;font-size:12.5px;font-weight:580;color:var(--fg-soft)}
+.b-place{min-width:0}
+.b-name{margin:0;font-size:clamp(19px,1.75vw,25px);font-weight:660;font-stretch:118%;letter-spacing:-.014em;line-height:1.1;overflow-wrap:anywhere}
+.b-sub{display:flex;flex-wrap:wrap;gap:0 12px;margin:4px 0 0;font-size:13.5px;color:var(--fg-soft)}
+.b-sub .uo{opacity:.85;font-variant-numeric:tabular-nums}
+.b-diff{display:grid;gap:1px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.b-diff strong{font-size:16px;font-weight:620}
+.b-diff span{font-size:13px;color:var(--fg-soft)}
+.b-time{text-align:right;white-space:nowrap}
+.clock{font-size:clamp(46px,4.4vw,62px);line-height:.86;font-weight:300;font-stretch:70%;letter-spacing:-.015em;font-variant-numeric:tabular-nums}
+.clock .ap{margin-left:.22em;font-size:.29em;font-weight:620;font-stretch:100%;letter-spacing:.04em}
+.b-date{margin-top:7px;font-size:13px;color:var(--fg-soft)}
+.b-remove{
+  justify-self:end;display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:50%;
+  background:transparent;color:var(--fg);cursor:pointer;opacity:0;transition:opacity .2s,background-color .2s;
+}
+.b-remove svg{width:16px;height:16px}
+.band:hover .b-remove,.b-remove:focus-visible{opacity:.75}
+.b-remove:hover{opacity:1;background:var(--fg-faint)}
+.b-remove:focus-visible{outline-color:var(--fg)}
+@media (hover:none){.b-remove{opacity:.7}}
+
+.add-band{
+  display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:74px;margin-top:12px;
+  border:1.5px dashed var(--line);border-radius:22px;background:transparent;color:var(--muted);
+  font-size:15px;font-weight:600;cursor:pointer;transition:color .2s,border-color .2s,background-color .2s;
+}
+.add-band:hover{color:var(--ink);border-color:var(--muted);background:color-mix(in srgb,var(--ink) 3%,transparent)}
+.add-band svg{width:18px;height:18px}
+.empty-note{margin:0 0 4px;padding:28px 24px 8px;text-align:center;color:var(--muted);font-size:15px}
+.empty-note strong{display:block;color:var(--ink);font-size:18px;font-weight:660;font-stretch:112%;margin-bottom:4px}
+
+@media (max-width:680px){
+  .band{
+    grid-template-columns:30px minmax(0,1fr) auto 30px;
+    grid-template-areas:"p place time x" "p diff time x";
+    column-gap:12px;row-gap:3px;min-height:98px;padding:14px 6px 14px 14px;
+  }
+  .band .orb{display:none}
+  .hero{min-height:clamp(300px,48vh,440px)}
+  .b-period{grid-area:p;align-self:start;padding-top:2px}
+  .b-period .picon{width:28px;height:28px}
+  .b-period .plabel{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .b-place{grid-area:place;align-self:end}
+  .b-sub .uo{display:none}
+  .b-diff{grid-area:diff;display:flex;gap:6px;align-self:start}
+  .b-diff strong{font-size:13px;font-weight:600}
+  .b-time{grid-area:time;align-self:center}
+  .b-remove{grid-area:x;width:30px;height:30px;align-self:center}
+  .b-name{font-size:19px}
+  .clock{font-size:42px}
+}
+@media (max-width:560px){
+  .utc{display:none}
+  .btn .lbl{display:none}
+  .btn{padding:10px}
+  .brand{font-size:15px}
+  .h-meta{font-size:13.5px}
+}
+@media (max-width:380px){
+  .b-sub{display:none}
+  .clock{font-size:36px}
+}
+
+/* ---------- footer ---------- */
+.foot{max-width:1480px;margin:0 auto;padding:8px clamp(14px,3vw,36px) 48px;display:flex;flex-wrap:wrap;gap:10px 28px;color:var(--muted);font-size:13px}
+.foot p{margin:0}
+.keys{display:flex;flex-wrap:wrap;gap:8px 18px}
+kbd{display:inline-block;min-width:22px;margin-right:6px;padding:2px 6px;border:1px solid var(--line);border-bottom-width:2px;border-radius:6px;background:var(--panel);color:var(--ink);font:inherit;font-size:12px;font-weight:640;text-align:center}
+
+/* ---------- add-city dialog ---------- */
+dialog.picker{
+  width:min(600px,calc(100vw - 24px));max-height:min(720px,calc(100dvh - 40px));
+  padding:0;border:0;border-radius:24px;overflow:hidden;
+  background:var(--panel);color:var(--ink);box-shadow:0 40px 90px -30px rgba(6,12,28,.6);
+}
+dialog.picker[open]{display:flex;flex-direction:column;animation:pop .28s var(--ease)}
+dialog.picker::backdrop{background:var(--scrim);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px)}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.985)}}
+.pk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 20px 0 24px}
+.pk-head h2{margin:0;font-size:20px;font-weight:700;font-stretch:118%;letter-spacing:-.012em}
+.icon-btn{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:50%;background:transparent;cursor:pointer;color:var(--muted)}
+.icon-btn:hover{background:color-mix(in srgb,var(--ink) 8%,transparent);color:var(--ink)}
+.icon-btn svg{width:18px;height:18px}
+.pk-search{position:relative;margin:14px 20px 0}
+.pk-search svg{position:absolute;left:14px;top:50%;width:18px;height:18px;margin-top:-9px;color:var(--muted);pointer-events:none}
+.pk-search input{
+  width:100%;padding:13px 14px 13px 42px;border:1.5px solid var(--line);border-radius:14px;
+  background:var(--page);color:var(--ink);font:inherit;font-size:16px;outline:none;transition:border-color .2s,box-shadow .2s;
+}
+.pk-search input::placeholder{color:var(--muted)}
+.pk-search input:focus{border-color:var(--focus);box-shadow:0 0 0 3px color-mix(in srgb,var(--focus) 22%,transparent)}
+.pk-hint{margin:10px 24px 4px;font-size:12.5px;color:var(--muted)}
+.results{flex:1;min-height:0;overflow:auto;list-style:none;margin:0;padding:4px 12px 14px;overscroll-behavior:contain}
+.opt{display:grid;grid-template-columns:42px minmax(0,1fr) auto;align-items:center;gap:13px;padding:7px 10px;border-radius:13px;cursor:pointer}
+.opt[aria-selected="true"]{background:color-mix(in srgb,var(--ink) 7.5%,transparent)}
+.opt[aria-disabled="true"]{cursor:default}
+.opt[aria-disabled="true"] .opt-name,.opt[aria-disabled="true"] .opt-time{opacity:.55}
+.swatch{display:grid;place-items:center;width:42px;height:42px;border-radius:11px;background:linear-gradient(180deg,var(--top),var(--bot));color:var(--fg)}
+.swatch .picon{width:24px;height:24px}
+.opt-main{min-width:0}
+.opt-name{display:block;font-weight:640;font-stretch:110%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt-sub{display:block;font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opt-time{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.opt-time small{display:block;font-size:12px;font-weight:450;color:var(--muted)}
+.no-results{padding:28px 14px;text-align:center;color:var(--muted)}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));z-index:100;transform:translateX(-50%);display:grid;gap:8px;width:max-content;max-width:calc(100vw - 24px)}
+.toast{display:flex;align-items:center;gap:14px;padding:10px 10px 10px 16px;border-radius:14px;background:var(--btn);color:var(--btn-ink);font-size:14px;font-weight:520;box-shadow:0 16px 40px -14px rgba(6,12,28,.55);animation:toastIn .32s var(--ease)}
+.toast.out{opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s}
+.toast button{border:0;cursor:pointer;border-radius:9px;padding:6px 11px;background:color-mix(in srgb,var(--btn-ink) 16%,transparent);color:inherit;font-weight:660}
+.toast button:hover{background:color-mix(in srgb,var(--btn-ink) 26%,transparent)}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+<noscript><p style="padding:24px">This clock needs JavaScript to read your device time.</p></noscript>
+
+<header class="top">
+  <h1 class="brand">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13" fill="currentColor"/><path d="M5.5 16a10.5 10.5 0 0 1 21 0z" fill="#FFC861"/><circle cx="20.5" cy="21" r="1.4" fill="#F3E5B0"/><circle cx="12" cy="23.5" r=".9" fill="#F3E5B0"/></svg>
+    World Clock
+  </h1>
+  <p class="utc" id="utc" aria-label="Coordinated Universal Time">UTC<b id="utcTime">--:--</b></p>
+  <div class="seg" id="fmt" role="group" aria-label="Clock format" data-fmt="12">
+    <span class="seg-pill" aria-hidden="true"></span>
+    <button type="button" data-fmt="12" aria-pressed="true">12 h</button>
+    <button type="button" data-fmt="24" aria-pressed="false">24 h</button>
+  </div>
+  <button type="button" class="btn" id="addTop" aria-haspopup="dialog">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+    <span class="lbl">Add city</span>
+  </button>
+</header>
+
+<main class="layout">
+  <div class="here">
+    <section class="hero" id="hero" data-tone="light" aria-labelledby="heroTitle">
+      <div class="sky" aria-hidden="true"><div class="stars" id="heroStars"></div><div class="orb sun"></div><div class="orb moon"></div></div>
+      <div class="h-top">
+        <p class="h-period"><span class="picon" id="hIcon"></span><span id="hPeriod">&nbsp;</span></p>
+        <span class="chip" id="hChip"><i aria-hidden="true"></i><span id="hChipText">Live</span></span>
+      </div>
+      <div class="h-main">
+        <h2 class="sr-only" id="heroTitle">Your time</h2>
+        <div class="h-clock" aria-hidden="true"><span id="hHM">--:--</span><span class="h-side"><span class="h-sec" id="hSec">--</span><span class="h-ap" id="hAP"></span></span></div>
+        <p class="sr-only" id="hSpoken"></p>
+        <p class="h-city">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M17.5 2.5 2.5 9l6.6 1.9L11 17.5z" fill="currentColor"/></svg>
+          <span id="hCity">&nbsp;</span>
+        </p>
+        <p class="h-meta"><span id="hDate"></span><span id="hZone"></span></p>
+      </div>
+    </section>
+
+    <section class="scrub" aria-label="Compare another moment">
+      <div class="scrub-head">
+        <p class="scrub-status" id="scrubStatus"><b>Live.</b> Drag to see every city at another time.</p>
+        <button type="button" class="btn-now" id="btnNow" aria-hidden="true" tabindex="-1">Back to now</button>
+      </div>
+      <div class="track" id="track">
+        <div class="track-sky" id="trackSky"></div>
+        <div class="now-mark" aria-hidden="true"></div>
+        <div class="bubble" id="bubble" aria-hidden="true">Now</div>
+        <div class="thumb" id="thumb" role="slider" tabindex="0" aria-label="Time to show" aria-valuemin="-720" aria-valuemax="720" aria-valuenow="0" aria-valuetext="Now"></div>
+      </div>
+      <div class="track-labels" id="trackLabels" aria-hidden="true"></div>
+    </section>
+  </div>
+
+  <section class="world" aria-labelledby="worldTitle">
+    <h2 class="sr-only" id="worldTitle">Cities, from west to east</h2>
+    <p class="empty-note" id="emptyNote" hidden><strong>No cities yet</strong>Add a city to compare its time with yours.</p>
+    <ol class="stack" id="stack"></ol>
+    <button type="button" class="add-band" id="addBottom" aria-haspopup="dialog">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M10 4v12M4 10h12"/></svg>
+      Add a city
+    </button>
+  </section>
+</main>
+
+<footer class="foot">
+  <div class="keys" aria-label="Keyboard shortcuts">
+    <p><kbd>A</kbd>Add a city</p>
+    <p><kbd>T</kbd>Switch 12 h / 24 h</p>
+    <p><kbd>←</kbd><kbd>→</kbd>Move the slider</p>
+    <p><kbd>N</kbd>Back to now</p>
+  </div>
+  <p>Times come from your device clock and your browser’s time zone database, daylight saving included.</p>
+</footer>
+
+<dialog class="picker" id="picker" aria-labelledby="pickerTitle">
+  <div class="pk-head">
+    <h2 id="pickerTitle">Add a city</h2>
+    <button type="button" class="icon-btn" id="pickerClose" aria-label="Close">
+      <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 5l10 10M15 5 5 15"/></svg>
+    </button>
+  </div>
+  <div class="pk-search">
+    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4"/></svg>
+    <input id="q" type="text" role="combobox" aria-expanded="true" aria-controls="results" aria-autocomplete="list" aria-describedby="pkHint" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="City, country, or offset like UTC+9">
+  </div>
+  <p class="pk-hint" id="pkHint" aria-live="polite"></p>
+  <ul class="results" id="results" role="listbox" aria-label="Cities"></ul>
+</dialog>
+
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* =========================================================
+   Data
+   ========================================================= */
+const RAW = [
+  ['Pago Pago','American Samoa','Pacific/Pago_Pago'],
+  ['Honolulu','United States','Pacific/Honolulu','hawaii'],
+  ['Papeete','French Polynesia','Pacific/Tahiti','tahiti'],
+  ['Anchorage','United States','America/Anchorage','alaska'],
+  ['Los Angeles','United States','America/Los_Angeles','la|lax|hollywood'],
+  ['San Francisco','United States','America/Los_Angeles','sf|sfo|bay area|silicon valley'],
+  ['Seattle','United States','America/Los_Angeles'],
+  ['Vancouver','Canada','America/Vancouver'],
+  ['Tijuana','Mexico','America/Tijuana'],
+  ['Phoenix','United States','America/Phoenix','arizona'],
+  ['Denver','United States','America/Denver'],
+  ['Calgary','Canada','America/Edmonton'],
+  ['Mexico City','Mexico','America/Mexico_City','cdmx'],
+  ['Chicago','United States','America/Chicago'],
+  ['Dallas','United States','America/Chicago'],
+  ['Houston','United States','America/Chicago'],
+  ['Austin','United States','America/Chicago'],
+  ['Winnipeg','Canada','America/Winnipeg'],
+  ['Guatemala City','Guatemala','America/Guatemala'],
+  ['San José','Costa Rica','America/Costa_Rica'],
+  ['New York','United States','America/New_York','nyc|ny|manhattan|brooklyn'],
+  ['Boston','United States','America/New_York'],
+  ['Washington, D.C.','United States','America/New_York','dc|washington'],
+  ['Atlanta','United States','America/New_York'],
+  ['Miami','United States','America/New_York'],
+  ['Toronto','Canada','America/Toronto'],
+  ['Montreal','Canada','America/Toronto'],
+  ['Havana','Cuba','America/Havana'],
+  ['Kingston','Jamaica','America/Jamaica'],
+  ['Panama City','Panama','America/Panama'],
+  ['Bogotá','Colombia','America/Bogota'],
+  ['Lima','Peru','America/Lima'],
+  ['Quito','Ecuador','America/Guayaquil'],
+  ['Caracas','Venezuela','America/Caracas'],
+  ['La Paz','Bolivia','America/La_Paz'],
+  ['Santo Domingo','Dominican Republic','America/Santo_Domingo'],
+  ['San Juan','Puerto Rico','America/Puerto_Rico'],
+  ['Halifax','Canada','America/Halifax'],
+  ['St. John’s','Canada','America/St_Johns','newfoundland'],
+  ['Santiago','Chile','America/Santiago'],
+  ['Buenos Aires','Argentina','America/Argentina/Buenos_Aires'],
+  ['Montevideo','Uruguay','America/Montevideo'],
+  ['São Paulo','Brazil','America/Sao_Paulo'],
+  ['Rio de Janeiro','Brazil','America/Sao_Paulo','rio'],
+  ['Nuuk','Greenland','America/Nuuk'],
+  ['Praia','Cape Verde','Atlantic/Cape_Verde'],
+  ['Ponta Delgada','Azores, Portugal','Atlantic/Azores','azores'],
+  ['Reykjavík','Iceland','Atlantic/Reykjavik'],
+  ['UTC','Coordinated Universal Time','UTC','gmt|zulu|utc'],
+  ['London','United Kingdom','Europe/London','uk|england'],
+  ['Dublin','Ireland','Europe/Dublin'],
+  ['Lisbon','Portugal','Europe/Lisbon','lisboa'],
+  ['Casablanca','Morocco','Africa/Casablanca'],
+  ['Dakar','Senegal','Africa/Dakar'],
+  ['Accra','Ghana','Africa/Accra'],
+  ['Lagos','Nigeria','Africa/Lagos'],
+  ['Kinshasa','DR Congo','Africa/Kinshasa'],
+  ['Algiers','Algeria','Africa/Algiers'],
+  ['Tunis','Tunisia','Africa/Tunis'],
+  ['Madrid','Spain','Europe/Madrid'],
+  ['Barcelona','Spain','Europe/Madrid'],
+  ['Paris','France','Europe/Paris'],
+  ['Brussels','Belgium','Europe/Brussels'],
+  ['Amsterdam','Netherlands','Europe/Amsterdam'],
+  ['Berlin','Germany','Europe/Berlin'],
+  ['Munich','Germany','Europe/Berlin','munchen'],
+  ['Zurich','Switzerland','Europe/Zurich'],
+  ['Geneva','Switzerland','Europe/Zurich'],
+  ['Milan','Italy','Europe/Rome','milano'],
+  ['Rome','Italy','Europe/Rome','roma'],
+  ['Vienna','Austria','Europe/Vienna','wien'],
+  ['Prague','Czechia','Europe/Prague'],
+  ['Copenhagen','Denmark','Europe/Copenhagen'],
+  ['Oslo','Norway','Europe/Oslo'],
+  ['Stockholm','Sweden','Europe/Stockholm'],
+  ['Warsaw','Poland','Europe/Warsaw'],
+  ['Budapest','Hungary','Europe/Budapest'],
+  ['Belgrade','Serbia','Europe/Belgrade'],
+  ['Johannesburg','South Africa','Africa/Johannesburg','joburg'],
+  ['Cape Town','South Africa','Africa/Johannesburg'],
+  ['Harare','Zimbabwe','Africa/Harare'],
+  ['Cairo','Egypt','Africa/Cairo'],
+  ['Athens','Greece','Europe/Athens'],
+  ['Bucharest','Romania','Europe/Bucharest'],
+  ['Helsinki','Finland','Europe/Helsinki'],
+  ['Tallinn','Estonia','Europe/Tallinn'],
+  ['Kyiv','Ukraine','Europe/Kyiv','kiev'],
+  ['Jerusalem','Israel','Asia/Jerusalem'],
+  ['Tel Aviv','Israel','Asia/Jerusalem'],
+  ['Beirut','Lebanon','Asia/Beirut'],
+  ['Amman','Jordan','Asia/Amman'],
+  ['Istanbul','Türkiye','Europe/Istanbul','turkey'],
+  ['Moscow','Russia','Europe/Moscow'],
+  ['Nairobi','Kenya','Africa/Nairobi'],
+  ['Addis Ababa','Ethiopia','Africa/Addis_Ababa'],
+  ['Riyadh','Saudi Arabia','Asia/Riyadh'],
+  ['Doha','Qatar','Asia/Qatar'],
+  ['Baghdad','Iraq','Asia/Baghdad'],
+  ['Tehran','Iran','Asia/Tehran'],
+  ['Dubai','United Arab Emirates','Asia/Dubai','uae'],
+  ['Abu Dhabi','United Arab Emirates','Asia/Dubai'],
+  ['Baku','Azerbaijan','Asia/Baku'],
+  ['Tbilisi','Georgia','Asia/Tbilisi'],
+  ['Port Louis','Mauritius','Indian/Mauritius','mauritius'],
+  ['Kabul','Afghanistan','Asia/Kabul'],
+  ['Karachi','Pakistan','Asia/Karachi'],
+  ['Tashkent','Uzbekistan','Asia/Tashkent'],
+  ['Malé','Maldives','Indian/Maldives','maldives'],
+  ['Mumbai','India','Asia/Kolkata','bombay'],
+  ['New Delhi','India','Asia/Kolkata','delhi'],
+  ['Bengaluru','India','Asia/Kolkata','bangalore'],
+  ['Kolkata','India','Asia/Kolkata','calcutta'],
+  ['Colombo','Sri Lanka','Asia/Colombo'],
+  ['Kathmandu','Nepal','Asia/Kathmandu'],
+  ['Dhaka','Bangladesh','Asia/Dhaka'],
+  ['Almaty','Kazakhstan','Asia/Almaty'],
+  ['Yangon','Myanmar','Asia/Yangon','rangoon'],
+  ['Bangkok','Thailand','Asia/Bangkok'],
+  ['Hanoi','Vietnam','Asia/Ho_Chi_Minh'],
+  ['Ho Chi Minh City','Vietnam','Asia/Ho_Chi_Minh','saigon'],
+  ['Jakarta','Indonesia','Asia/Jakarta'],
+  ['Novosibirsk','Russia','Asia/Novosibirsk'],
+  ['Kuala Lumpur','Malaysia','Asia/Kuala_Lumpur','kl'],
+  ['Singapore','Singapore','Asia/Singapore','sg'],
+  ['Manila','Philippines','Asia/Manila'],
+  ['Hong Kong','China','Asia/Hong_Kong','hk'],
+  ['Shanghai','China','Asia/Shanghai'],
+  ['Beijing','China','Asia/Shanghai','peking'],
+  ['Shenzhen','China','Asia/Shanghai'],
+  ['Taipei','Taiwan','Asia/Taipei'],
+  ['Perth','Australia','Australia/Perth'],
+  ['Ulaanbaatar','Mongolia','Asia/Ulaanbaatar'],
+  ['Seoul','South Korea','Asia/Seoul'],
+  ['Tokyo','Japan','Asia/Tokyo'],
+  ['Osaka','Japan','Asia/Tokyo'],
+  ['Darwin','Australia','Australia/Darwin'],
+  ['Adelaide','Australia','Australia/Adelaide'],
+  ['Brisbane','Australia','Australia/Brisbane'],
+  ['Sydney','Australia','Australia/Sydney'],
+  ['Melbourne','Australia','Australia/Melbourne'],
+  ['Hagåtña','Guam','Pacific/Guam','guam'],
+  ['Vladivostok','Russia','Asia/Vladivostok'],
+  ['Nouméa','New Caledonia','Pacific/Noumea'],
+  ['Auckland','New Zealand','Pacific/Auckland'],
+  ['Wellington','New Zealand','Pacific/Auckland'],
+  ['Suva','Fiji','Pacific/Fiji','fiji'],
+  ['Chatham Islands','New Zealand','Pacific/Chatham'],
+  ['Apia','Samoa','Pacific/Apia'],
+  ['Nukuʻalofa','Tonga','Pacific/Tongatapu','tonga'],
+  ['Kiritimati','Kiribati','Pacific/Kiritimati','christmas island']
+];
+
+const DEFAULT_IDS = ['honolulu','san-francisco','new-york','sao-paulo','london','dubai','mumbai','singapore','tokyo','sydney'];
+
+// Older engines still use the pre-2022 IANA names for some zones.
+const TZ_ALT = {
+  'Europe/Kyiv':'Europe/Kiev','America/Nuuk':'America/Godthab','Asia/Yangon':'Asia/Rangoon',
+  'Asia/Ho_Chi_Minh':'Asia/Saigon','Asia/Kolkata':'Asia/Calcutta','Asia/Kathmandu':'Asia/Katmandu'
+};
+
+// Common abbreviations people search for.
+const ABBR_RAW = {
+  'pst|pdt|pt|pacific':'America/Los_Angeles America/Vancouver America/Tijuana',
+  'mst|mdt|mt|mountain':'America/Denver America/Edmonton America/Phoenix',
+  'cst|cdt|ct|central':'America/Chicago America/Winnipeg America/Mexico_City',
+  'est|edt|et|eastern':'America/New_York America/Toronto',
+  'akst|akdt':'America/Anchorage','hst':'Pacific/Honolulu',
+  'gmt|bst|wet':'Europe/London Europe/Dublin Europe/Lisbon Atlantic/Reykjavik UTC',
+  'cet|cest':'Europe/Paris Europe/Berlin Europe/Madrid Europe/Rome Europe/Amsterdam Europe/Brussels Europe/Vienna Europe/Zurich Europe/Prague Europe/Warsaw Europe/Stockholm Europe/Oslo Europe/Copenhagen Europe/Budapest Europe/Belgrade',
+  'eet|eest':'Europe/Athens Europe/Helsinki Europe/Kyiv Europe/Bucharest Europe/Tallinn Africa/Cairo',
+  'msk':'Europe/Moscow','gst':'Asia/Dubai','ist':'Asia/Kolkata','pkt':'Asia/Karachi',
+  'ict':'Asia/Bangkok Asia/Ho_Chi_Minh','wib':'Asia/Jakarta','sgt':'Asia/Singapore','hkt':'Asia/Hong_Kong',
+  'jst':'Asia/Tokyo','kst':'Asia/Seoul','awst':'Australia/Perth','acst|acdt':'Australia/Adelaide Australia/Darwin',
+  'aest|aedt':'Australia/Sydney Australia/Melbourne Australia/Brisbane','nzst|nzdt':'Pacific/Auckland'
+};
+
+/* =========================================================
+   Helpers
+   ========================================================= */
+const $ = (s) => document.querySelector(s);
+const pad = (n) => String(n).padStart(2, '0');
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[’'ʻ.]/g, '');
+const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const H12 = 12 * 3600000;
+
+function validTz(tz) {
+  for (const cand of [tz, TZ_ALT[tz]]) {
+    if (!cand) continue;
+    try { new Intl.DateTimeFormat('en-US', { timeZone: cand }); return cand; } catch (e) { /* try next */ }
+  }
+  return null;
+}
+function canon(tz) {
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone; } catch (e) { return tz; }
+}
+
+const CITIES = [];
+const BY_ID = new Map();
+for (const [name, country, tz0, aliases] of RAW) {
+  const tz = validTz(tz0);
+  if (!tz) continue;
+  const c = { id: slug(name), name, country, tz, canon: canon(tz), aliases: aliases ? aliases.split('|').map(norm) : [], curated: true };
+  CITIES.push(c);
+  BY_ID.set(c.id, c);
+}
+const ABBR = {};
+for (const [keys, zones] of Object.entries(ABBR_RAW)) {
+  const set = zones.split(' ').map((z) => validTz(z)).filter(Boolean).map(canon);
+  for (const k of keys.split('|')) ABBR[k] = set;
+}
+
+function makeZoneEntry(tz) {
+  const v = validTz(tz);
+  if (!v) return null;
+  const parts = v.split('/');
+  const c = {
+    id: 'tz:' + v,
+    name: parts[parts.length - 1].replace(/_/g, ' '),
+    country: parts.length > 1 ? parts.slice(0, -1).join(', ').replace(/_/g, ' ') + ' time zone' : 'Time zone',
+    tz: v, canon: canon(v), aliases: [], curated: false
+  };
+  BY_ID.set(c.id, c);
+  return c;
+}
+let extraZones = null;
+function getExtraZones() {
+  if (extraZones) return extraZones;
+  extraZones = [];
+  let list = [];
+  try { list = Intl.supportedValuesOf('timeZone'); } catch (e) { list = []; }
+  const have = new Set(CITIES.map((c) => c.canon));
+  for (const tz of list) {
+    if (!tz.includes('/') || tz.startsWith('Etc/')) continue;
+    if (have.has(canon(tz))) continue;
+    const c = BY_ID.get('tz:' + tz) || makeZoneEntry(tz);
+    if (c) extraZones.push(c);
+  }
+  return extraZones;
+}
+function resolveCity(id) {
+  if (BY_ID.has(id)) return BY_ID.get(id);
+  if (typeof id === 'string' && id.startsWith('tz:')) return makeZoneEntry(id.slice(3));
+  return null;
+}
+
+/* ---------- time math ---------- */
+const PF = new Map();
+function partsFormatter(tz) {
+  let f = PF.get(tz);
+  if (!f) {
+    f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+    PF.set(tz, f);
+  }
+  return f;
+}
+// Minutes east of UTC for a zone at an instant.
+function offsetAt(tz, t) {
+  const o = {};
+  for (const p of partsFormatter(tz).formatToParts(new Date(t))) o[p.type] = p.value;
+  const h = +o.hour === 24 ? 0 : +o.hour;
+  const asUTC = Date.UTC(+o.year, +o.month - 1, +o.day, h, +o.minute, +o.second);
+  return Math.round((asUTC - Math.floor(t / 1000) * 1000) / 60000);
+}
+// Wall-clock reading for a zone at an instant.
+function wall(tz, t) {
+  const off = offsetAt(tz, t);
+  const ms = t + off * 60000;
+  const d = new Date(ms);
+  const h = d.getUTCHours(), m = d.getUTCMinutes(), s = d.getUTCSeconds();
+  return { off, d, h, m, s, hf: h + m / 60 + s / 3600 + d.getUTCMilliseconds() / 3600000, day: Math.floor(ms / 86400000) };
+}
+
+const DF_SHORT = new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+const DF_LONG = new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', weekday: 'long', month: 'long', day: 'numeric' });
+const DF_WD = new Intl.DateTimeFormat(undefined, { timeZone: 'UTC', weekday: 'short' });
+const ZN = new Map();
+function zoneName(tz, t) {
+  let f = ZN.get(tz);
+  if (!f) {
+    try { f = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'long' }); } catch (e) { f = null; }
+    ZN.set(tz, f);
+  }
+  if (!f) return '';
+  const p = f.formatToParts(new Date(t)).find((x) => x.type === 'timeZoneName');
+  const v = p ? p.value : '';
+  return /^GMT|^UTC|^Coordinated/.test(v) ? '' : v;
+}
+
+function fmtTime(w, h12) {
+  return h12
+    ? { hm: (w.h % 12 || 12) + ':' + pad(w.m), ap: w.h < 12 ? 'AM' : 'PM' }
+    : { hm: pad(w.h) + ':' + pad(w.m), ap: '' };
+}
+function hourLabel(h, h12) {
+  if (!h12) return pad(h) + ':00';
+  if (h === 12) return 'Noon';
+  return (h % 12 || 12) + ' ' + (h < 12 ? 'AM' : 'PM');
+}
+function utcLabel(off) {
+  if (off === 0) return 'UTC';
+  const a = Math.abs(off), h = Math.floor(a / 60), m = a % 60;
+  return 'UTC' + (off < 0 ? '−' : '+') + h + (m ? ':' + pad(m) : '');
+}
+function spanLabel(mins) {
+  const a = Math.abs(mins), h = Math.floor(a / 60), m = a % 60;
+  return [h ? h + ' h' : '', m ? m + ' min' : ''].filter(Boolean).join(' ');
+}
+function diffLabel(d) { return d === 0 ? 'Same time' : (d < 0 ? '−' : '+') + spanLabel(d); }
+function diffSpoken(d) {
+  if (d === 0) return 'same time as you';
+  const a = Math.abs(d), h = Math.floor(a / 60), m = a % 60;
+  const parts = [h ? h + (h === 1 ? ' hour' : ' hours') : '', m ? m + ' minutes' : ''].filter(Boolean).join(' ');
+  return parts + (d > 0 ? ' ahead of you' : ' behind you');
+}
+function relDay(n) {
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Tomorrow';
+  if (n === -1) return 'Yesterday';
+  return (n > 0 ? '+' : '−') + Math.abs(n) + ' days';
+}
+
+/* ---------- periods & icons ---------- */
+const PERIODS = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
+function periodOf(h) {
+  if (h >= 5 && h < 12) return 'morning';
+  if (h >= 12 && h < 17) return 'afternoon';
+  if (h >= 17 && h < 21) return 'evening';
+  return 'night';
+}
+const SA = 'viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"';
+const RAYS_HALF = '<path d="M5.6 17l2.2 1.25M10 12.6l1.25 2.17M26.4 17l-2.2 1.25M22 12.6l-1.25 2.17"/>';
+const ICONS = {
+  morning: `<svg ${SA}><path d="M9 23a7 7 0 0 1 14 0" style="fill:#FFC27A"/><path d="M3.5 23h25M9.5 27.5h13"/>${RAYS_HALF}<path d="M16 4v7M12.8 7.2 16 4l3.2 3.2"/></svg>`,
+  afternoon: `<svg ${SA}><circle cx="16" cy="16" r="5.6" style="fill:#FFD84D"/><path d="M16 3.5v3M16 25.5v3M3.5 16h3M25.5 16h3M7.2 7.2l2.1 2.1M22.7 22.7l2.1 2.1M7.2 24.8l2.1-2.1M22.7 9.3l2.1-2.1"/></svg>`,
+  evening: `<svg ${SA}><path d="M9 23a7 7 0 0 1 14 0" style="fill:#FF9466"/><path d="M3.5 23h25M9.5 27.5h13"/>${RAYS_HALF}<path d="M16 4v7M12.8 7.8 16 11l3.2-3.2"/></svg>`,
+  night: `<svg ${SA}><path d="M25.15 17.7A10.35 10.35 0 1 1 13.89 6.45 8.05 8.05 0 0 0 25.15 17.7z" style="fill:#F3E5B0"/><path d="M24.5 3.5v4M22.5 5.5h4M28.6 11.2h.01"/></svg>`
+};
+const X_ICON = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>';
+
+/* ---------- sky colour model ---------- */
+// [local hour, zenith colour, horizon colour]
+const SKY_KEYS = [
+  [0,    '#0B1733', '#1A2A55'],
+  [4.4,  '#0F1C40', '#2C3266'],
+  [5.4,  '#28346E', '#9C6283'],
+  [6.2,  '#5F78BB', '#F2A47F'],
+  [7.3,  '#86BDEA', '#FADBBE'],
+  [9.5,  '#5AACE9', '#CFE9F8'],
+  [12.5, '#3C95DC', '#B4DBF5'],
+  [15.3, '#4F9AD6', '#E2D9B6'],
+  [16.9, '#7189C2', '#F4B47A'],
+  [17.8, '#575A9C', '#EE8457'],
+  [18.6, '#353670', '#B95A78'],
+  [19.6, '#1B2554', '#4A3D7C'],
+  [21,   '#0E1A3D', '#212E5E'],
+  [24,   '#0B1733', '#1A2A55']
+];
+const NIGHT_KEYS = [[0,1],[4.6,1],[5.7,.4],[6.5,0],[18.1,0],[19.1,.55],[20.3,1],[24,1]];
+
+const hexRgb = (h) => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const toLin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+const fromLin = (c) => Math.round(clamp(c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055, 0, 1) * 255);
+function toLab(rgb) {
+  const r = toLin(rgb[0]), g = toLin(rgb[1]), b = toLin(rgb[2]);
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s];
+}
+function fromLab(L, a, b) {
+  const l = (L + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m = (L - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s = (L - 0.0894841775 * a - 1.2914855480 * b) ** 3;
+  return [fromLin(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s), fromLin(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s), fromLin(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s)];
+}
+const mixLab = (p, q, k) => [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k, p[2] + (q[2] - p[2]) * k];
+const SKY = SKY_KEYS.map(([h, a, b]) => ({ h, top: toLab(hexRgb(a)), bot: toLab(hexRgb(b)) }));
+const lum = (rgb) => 0.2126 * toLin(rgb[0]) + 0.7152 * toLin(rgb[1]) + 0.0722 * toLin(rgb[2]);
+const INK_L = lum(hexRgb('#13203A'));
+const rgbStr = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+
+function sky(hf) {
+  hf = ((hf % 24) + 24) % 24;
+  let i = 1;
+  while (i < SKY.length - 1 && hf > SKY[i].h) i++;
+  const A = SKY[i - 1], B = SKY[i];
+  let k = (hf - A.h) / (B.h - A.h);
+  k = k * k * (3 - 2 * k);
+  const top = mixLab(A.top, B.top, k), bot = mixLab(A.bot, B.bot, k);
+  const mid = fromLab(...mixLab(top, bot, 0.42));
+  return { top: rgbStr(fromLab(...top)), bot: rgbStr(fromLab(...bot)), mid: rgbStr(mid), dark: darkAt(top, bot, 0.42), topLab: top, botLab: bot };
+}
+// Whether white text beats ink text at a given point (0 = zenith, 1 = horizon) of the gradient.
+function darkAt(top, bot, k) {
+  const L = lum(fromLab(...mixLab(top, bot, k)));
+  return (1.05 / (L + 0.05)) >= ((L + 0.05) / (INK_L + 0.05));
+}
+function lerpTable(tab, x) {
+  for (let i = 1; i < tab.length; i++) {
+    if (x <= tab[i][0]) {
+      const [x0, y0] = tab[i - 1], [x1, y1] = tab[i];
+      return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+    }
+  }
+  return tab[tab.length - 1][1];
+}
+const BAND_ARC = { y0: 90, amp: 66, fade: false };
+const HERO_ARC = { y0: 56, amp: 42, fade: true };
+const SUN_HIGH = toLab(hexRgb('#FFE49A')), SUN_LOW = toLab(hexRgb('#FF9150'));
+
+// Paints sky gradient, text tone, stars and the sun/moon position for a local hour.
+function paintSky(el, hf, cache) {
+  const s = sky(hf);
+  const st = el.style;
+  st.setProperty('--top', s.top);
+  st.setProperty('--bot', s.bot);
+  const tone = s.dark ? 'dark' : 'light';
+  if (el.dataset.tone !== tone) el.dataset.tone = tone;
+  if (!cache) return s;
+  const night = lerpTable(NIGHT_KEYS, ((hf % 24) + 24) % 24).toFixed(3);
+  if (cache.night !== night) { cache.night = night; st.setProperty('--night', night); }
+
+  // Bands let the sun sink below their bottom edge; the hero keeps its arc above the clock and fades at the horizon.
+  const arc = cache.arc || BAND_ARC;
+  const fade = (e) => (arc.fade && e < 0 ? clamp(1 + e * 7, 0, 1) : 1).toFixed(3);
+  const ts = (hf - 6) / 12;
+  if (ts > -0.12 && ts < 1.12) {
+    const e = Math.sin(Math.PI * ts);
+    st.setProperty('--sx', ts.toFixed(4));
+    st.setProperty('--sy', (arc.y0 - arc.amp * e).toFixed(2));
+    st.setProperty('--so', fade(e));
+    const warm = clamp(1 - e / 0.4, 0, 1);
+    st.setProperty('--sun-c', rgbStr(fromLab(...mixLab(SUN_HIGH, SUN_LOW, warm))));
+  } else st.setProperty('--so', '0');
+
+  const tm = ((((hf - 18) % 24) + 24) % 24) / 12;
+  const tmn = tm > 1.5 ? tm - 2 : tm;
+  if (tmn > -0.12 && tmn < 1.12) {
+    const e = Math.sin(Math.PI * tmn);
+    st.setProperty('--mx', tmn.toFixed(4));
+    st.setProperty('--my', (arc.y0 - 2 - (arc.amp - 4) * e).toFixed(2));
+    st.setProperty('--mo', fade(e));
+  } else st.setProperty('--mo', '0');
+  return s;
+}
+
+/* ---------- stars ---------- */
+function hash(s) { let h = 2166136261; for (const ch of s) { h ^= ch.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+function rng(seed) {
+  let a = seed >>> 0;
+  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+function starsHTML(seedStr, n, maxY) {
+  const r = rng(hash(seedStr));
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    const x = (r() * 96 + 2).toFixed(1), y = (r() * maxY + 3).toFixed(1), z = (r() * 1.3 + 0.9).toFixed(1);
+    const tw = r() < 0.35;
+    const anim = tw ? `animation-delay:-${(r() * 5).toFixed(2)}s;animation-duration:${(3 + r() * 3).toFixed(2)}s;` : '';
+    out += `<i class="star${tw ? ' tw' : ''}" style="left:${x}%;top:${y}%;width:${z}px;height:${z}px;${anim}"></i>`;
+  }
+  return out;
+}
+
+/* =========================================================
+   State
+   ========================================================= */
+const STORE_KEY = 'interactive-world-clock:v1';
+function loadStore() { try { return JSON.parse(localStorage.getItem(STORE_KEY)) || {}; } catch (e) { return {}; } }
+function saveStore() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ cities: state.cities.map((c) => c.id), h12: state.h12 })); } catch (e) { /* private mode */ }
+}
+function defaultH12() {
+  try {
+    const o = new Intl.DateTimeFormat(undefined, { hour: 'numeric' }).resolvedOptions();
+    if (o.hourCycle) return o.hourCycle === 'h11' || o.hourCycle === 'h12';
+    return !!o.hour12;
+  } catch (e) { return true; }
+}
+
+const homeTz = (() => { try { return validTz(Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC'; } catch (e) { return 'UTC'; } })();
+const homeCanon = canon(homeTz);
+const home = (() => {
+  const fromTz = homeTz.split('/').pop().replace(/_/g, ' ');
+  const n = norm(fromTz);
+  const same = CITIES.filter((c) => c.canon === homeCanon);
+  const hit = same.find((c) => norm(c.name) === n || c.aliases.includes(n));
+  return { name: hit ? hit.name : fromTz, tz: homeTz };
+})();
+
+const state = { h12: true, cities: [] };
+let preview = null;      // absolute ms being previewed, or null when live
+let dragging = false;
+
+/* =========================================================
+   DOM refs
+   ========================================================= */
+const el = {
+  hero: $('#hero'), hTop: $('.h-top'), hMain: $('.h-main'), heroStars: $('#heroStars'), hIcon: $('#hIcon'), hPeriod: $('#hPeriod'), hChipText: $('#hChipText'),
+  hHM: $('#hHM'), hSec: $('#hSec'), hAP: $('#hAP'), hCity: $('#hCity'), hDate: $('#hDate'), hZone: $('#hZone'), hSpoken: $('#hSpoken'),
+  utcTime: $('#utcTime'), fmt: $('#fmt'), addTop: $('#addTop'), addBottom: $('#addBottom'),
+  status: $('#scrubStatus'), btnNow: $('#btnNow'), track: $('#track'), trackSky: $('#trackSky'), trackLabels: $('#trackLabels'),
+  thumb: $('#thumb'), bubble: $('#bubble'), stack: $('#stack'), empty: $('#emptyNote'),
+  picker: $('#picker'), q: $('#q'), results: $('#results'), hint: $('#pkHint'), pickerClose: $('#pickerClose'), toasts: $('#toasts')
+};
+el.heroStars.innerHTML = starsHTML('hero:' + homeTz, 46, 70);
+el.hCity.textContent = home.name;
+const heroCache = { arc: HERO_ARC };
+const heroLast = {};
+
+/* =========================================================
+   City bands
+   ========================================================= */
+const bands = new Map();
+
+function buildBand(c) {
+  const li = document.createElement('li');
+  li.className = 'band';
+  li.dataset.id = c.id;
+  li.innerHTML = `
+    <div class="sky" aria-hidden="true"><div class="stars">${starsHTML(c.id, 18, 74)}</div><div class="orb sun"></div><div class="orb moon"></div></div>
+    <div class="b-period"><span class="picon"></span><span class="plabel"></span></div>
+    <div class="b-place"><h3 class="b-name"></h3><p class="b-sub"><span class="co"></span><span class="uo"></span></p></div>
+    <div class="b-diff"><strong></strong><span></span></div>
+    <div class="b-time"><div class="clock"><span class="hm"></span><span class="ap"></span></div><div class="b-date"></div></div>
+    <button type="button" class="b-remove">${X_ICON}</button>`;
+  const q = (s) => li.querySelector(s);
+  const r = {
+    icon: q('.picon'), plabel: q('.plabel'), name: q('.b-name'), co: q('.co'), uo: q('.uo'),
+    diff: q('.b-diff strong'), rel: q('.b-diff span'), hm: q('.hm'), ap: q('.ap'), date: q('.b-date'), remove: q('.b-remove')
+  };
+  r.name.textContent = c.name;
+  r.co.textContent = c.country;
+  r.remove.setAttribute('aria-label', 'Remove ' + c.name);
+  r.remove.addEventListener('click', () => removeCity(c.id));
+  const b = { c, el: li, r, last: {}, sky: {} };
+  bands.set(c.id, b);
+  return b;
+}
+function setText(b, key, val) {
+  if (b.last[key] !== val) { b.last[key] = val; b.r[key].textContent = val; }
+}
+function updateBand(b, t, homeW) {
+  const w = wall(b.c.tz, t);
+  const ft = fmtTime(w, state.h12);
+  setText(b, 'hm', ft.hm);
+  setText(b, 'ap', ft.ap);
+  const per = periodOf(w.h);
+  if (b.last.per !== per) {
+    b.last.per = per;
+    b.r.icon.innerHTML = ICONS[per];
+    b.r.plabel.textContent = PERIODS[per];
+    b.el.dataset.period = per;
+  }
+  setText(b, 'date', DF_SHORT.format(w.d));
+  setText(b, 'uo', utcLabel(w.off));
+  const d = w.off - homeW.off;
+  setText(b, 'diff', diffLabel(d));
+  setText(b, 'rel', relDay(w.day - homeW.day));
+  if (b.last.spoken !== d) { b.last.spoken = d; b.r.diff.setAttribute('aria-label', diffSpoken(d)); }
+  paintSky(b.el, w.hf, b.sky);
+}
+function sortCities() {
+  const now = Date.now();
+  const offs = new Map(state.cities.map((c) => [c.id, offsetAt(c.tz, now)]));
+  state.cities.sort((a, b) => offs.get(a.id) - offs.get(b.id) || a.name.localeCompare(b.name));
+  for (const c of state.cities) el.stack.appendChild(bands.get(c.id).el);
+}
+function updateEmpty() {
+  const none = state.cities.length === 0;
+  el.empty.hidden = !none;
+  el.stack.hidden = none;
+  el.addBottom.lastChild.textContent = none ? ' Add your first city' : ' Add a city';
+}
+
+function addCity(c, opts = {}) {
+  if (!c || state.cities.some((x) => x.id === c.id)) return;
+  state.cities.push(c);
+  const b = buildBand(c);
+  sortCities();
+  saveStore();
+  updateEmpty();
+  const t = preview ?? Date.now();
+  updateBand(b, t, wall(homeTz, t));
+  if (!reduceMotion.matches) {
+    const h = b.el.offsetHeight;
+    b.el.animate([{ height: '0px', minHeight: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 }, { height: h + 'px', minHeight: h + 'px', opacity: 1 }],
+      { duration: 420, easing: 'cubic-bezier(.2,.8,.2,1)' });
+    b.el.animate([{ boxShadow: 'inset 0 0 0 2px var(--fg)' }, { boxShadow: 'inset 0 0 0 2px var(--fg)', offset: 0.45 }, { boxShadow: 'inset 0 0 0 2px transparent' }],
+      { duration: 1600, easing: 'ease-out' });
+  }
+  requestAnimationFrame(() => b.el.scrollIntoView({ block: 'nearest', behavior: reduceMotion.matches ? 'auto' : 'smooth' }));
+  if (!opts.silent) toast('Added ' + c.name);
+}
+
+function removeCity(id) {
+  const i = state.cities.findIndex((c) => c.id === id);
+  if (i < 0) return;
+  const c = state.cities[i];
+  const b = bands.get(id);
+  state.cities.splice(i, 1);
+  bands.delete(id);
+  saveStore();
+
+  // Keep keyboard focus in the list.
+  const next = state.cities[i] || state.cities[i - 1];
+  const hadFocus = b.el.contains(document.activeElement);
+  const finish = () => {
+    b.el.remove();
+    updateEmpty();
+    if (hadFocus) (next ? bands.get(next.id).r.remove : el.addBottom).focus();
+  };
+  if (reduceMotion.matches) finish();
+  else {
+    const h = b.el.offsetHeight;
+    b.el.style.pointerEvents = 'none';
+    b.el.animate([{ height: h + 'px', minHeight: h + 'px', opacity: 1 }, { height: '0px', minHeight: '0px', paddingTop: '0px', paddingBottom: '0px', opacity: 0 }],
+      { duration: 280, easing: 'cubic-bezier(.4,0,.2,1)', fill: 'forwards' }).onfinish = finish;
+  }
+  toast('Removed ' + c.name, { label: 'Undo', run: () => addCity(c, { silent: true }) });
+}
+
+/* =========================================================
+   Rendering
+   ========================================================= */
+function renderHero(w, t, live) {
+  const ft = fmtTime(w, state.h12);
+  const per = periodOf(w.h);
+  const L = heroLast;
+  if (L.hm !== ft.hm) { L.hm = ft.hm; el.hHM.textContent = ft.hm; }
+  const sec = live ? pad(w.s) : '00';
+  if (L.sec !== sec) { L.sec = sec; el.hSec.textContent = sec; }
+  if (L.ap !== ft.ap) { L.ap = ft.ap; el.hAP.textContent = ft.ap; }
+  if (L.per !== per) { L.per = per; el.hIcon.innerHTML = ICONS[per]; el.hPeriod.textContent = PERIODS[per]; }
+  const date = DF_LONG.format(w.d);
+  if (L.date !== date) { L.date = date; el.hDate.textContent = date; }
+  const zn = zoneName(homeTz, t);
+  const zone = (zn ? zn + ', ' : '') + utcLabel(w.off);
+  if (L.zone !== zone) { L.zone = zone; el.hZone.textContent = zone; }
+  if (L.live !== live) {
+    L.live = live;
+    el.hero.classList.toggle('is-preview', !live);
+    el.hChipText.textContent = live ? 'Live' : 'Preview';
+  }
+  const spoken = `${ft.hm}${ft.ap ? ' ' + ft.ap : ''}, ${PERIODS[per].toLowerCase()} in ${home.name}`;
+  if (L.spoken !== spoken) { L.spoken = spoken; el.hSpoken.textContent = spoken; }
+  const s = paintSky(el.hero, w.hf, heroCache);
+  // The hero's small labels sit near the zenith and its clock near the horizon: tone each region separately.
+  const topTone = darkAt(s.topLab, s.botLab, 0.08) ? 'dark' : 'light';
+  const mainTone = darkAt(s.topLab, s.botLab, 0.72) ? 'dark' : 'light';
+  if (el.hTop.dataset.tone !== topTone) el.hTop.dataset.tone = topTone;
+  if (el.hMain.dataset.tone !== mainTone) el.hMain.dataset.tone = mainTone;
+}
+
+let tickKey = '';
+function buildTrack(now) {
+  const width = el.track.clientWidth;
+  const key = Math.floor(now / 60000) + '|' + state.h12 + '|' + (width < 420 ? 'n' : 'w');
+  if (key === tickKey) return;
+  tickKey = key;
+  const start = now - H12, span = 2 * H12;
+  const off = offsetAt(homeTz, now) * 60000;
+  const every = width < 420 ? 6 : 3;
+  let ticks = '', labels = '';
+  for (let t = Math.ceil((start + off) / 3600000) * 3600000 - off; t <= start + span; t += 3600000) {
+    const f = (t - start) / span;
+    const lh = new Date(t + off).getUTCHours();
+    const mid = lh === 0, major = lh % every === 0;
+    const tone = sky(lh).dark ? '#FFFFFF' : '#13203A';
+    ticks += `<i class="tick${major ? ' major' : ''}${mid ? ' midnight' : ''}" style="left:${(f * 100).toFixed(3)}%;color:${tone}"></i>`;
+    if (major && f > 0.04 && f < 0.96) {
+      const txt = mid ? DF_WD.format(new Date(t + off)) : hourLabel(lh, state.h12);
+      labels += `<span${mid ? ' class="day"' : ''} style="left:${(f * 100).toFixed(3)}%">${esc(txt)}</span>`;
+    }
+  }
+  const stops = [];
+  for (let i = 0; i <= 48; i++) {
+    const t = start + (i * span) / 48;
+    stops.push(`${sky(((t + off) / 3600000) % 24).mid} ${((i / 48) * 100).toFixed(2)}%`);
+  }
+  el.trackSky.style.background = `linear-gradient(90deg,${stops.join(',')})`;
+  el.trackSky.innerHTML = ticks;
+  el.trackLabels.innerHTML = labels;
+}
+
+const lastScrub = {};
+function renderScrub(now, t, w, live) {
+  buildTrack(now);
+  const f = clamp((t - (now - H12)) / (2 * H12), 0, 1);
+  el.thumb.style.left = (f * 100).toFixed(3) + '%';
+  const ft = fmtTime(w, state.h12);
+  const timeStr = ft.hm + (ft.ap ? ' ' + ft.ap : '');
+  const bubble = live ? 'Now' : timeStr;
+  if (lastScrub.bubble !== bubble) { lastScrub.bubble = bubble; el.bubble.textContent = bubble; }
+  const W = el.track.clientWidth, bw = el.bubble.offsetWidth;
+  el.bubble.style.transform = `translateX(${clamp(f * W - bw / 2, -6, W - bw + 6).toFixed(1)}px)`;
+
+  const mins = Math.round((t - now) / 60000);
+  let status, valueText;
+  if (live) {
+    status = '<b>Live.</b> Drag to see every city at another time.';
+    valueText = 'Now, ' + timeStr;
+  } else {
+    const when = mins === 0 ? 'now' : mins > 0 ? 'in ' + spanLabel(mins) : spanLabel(mins) + ' ago';
+    const day = DF_WD.format(w.d);
+    status = `Showing <b>${esc(day)} ${esc(timeStr)}</b> your time, ${esc(when)}.`;
+    valueText = `${day} ${timeStr} in ${home.name}, ${when}`;
+  }
+  if (lastScrub.status !== status) { lastScrub.status = status; el.status.innerHTML = status; }
+  if (lastScrub.vt !== valueText) {
+    lastScrub.vt = valueText;
+    el.thumb.setAttribute('aria-valuenow', String(mins));
+    el.thumb.setAttribute('aria-valuetext', valueText);
+  }
+  if (lastScrub.live !== live) {
+    lastScrub.live = live;
+    el.btnNow.setAttribute('aria-hidden', String(live));
+    el.btnNow.tabIndex = live ? -1 : 0;
+  }
+}
+
+let lastTitle = '';
+function render() {
+  const now = Date.now();
+  if (preview != null) preview = clamp(preview, now - H12, now + H12);
+  const live = preview == null;
+  const t = live ? now : preview;
+  const homeW = wall(homeTz, t);
+  renderHero(homeW, t, live);
+  for (const c of state.cities) { const b = bands.get(c.id); if (b) updateBand(b, t, homeW); }
+  renderScrub(now, t, homeW, live);
+  const u = fmtTime(wall('UTC', t), state.h12);
+  const utc = u.hm + (u.ap ? ' ' + u.ap : '');
+  if (el.utcTime.textContent !== utc) el.utcTime.textContent = utc;
+  if (el.picker.open) refreshPicker(t);
+  const nowW = live ? homeW : wall(homeTz, now);
+  const nf = fmtTime(nowW, state.h12);
+  const title = `${nf.hm}${nf.ap ? ' ' + nf.ap : ''} in ${home.name} | World Clock`;
+  if (title !== lastTitle) { lastTitle = title; document.title = title; }
+}
+
+let rafId = 0;
+function requestRender() { if (!rafId) rafId = requestAnimationFrame(() => { rafId = 0; render(); }); }
+
+let tickTimer = 0;
+function tick() {
+  render();
+  clearTimeout(tickTimer);
+  tickTimer = setTimeout(tick, 1000 - (Date.now() % 1000) + 8);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+addEventListener('resize', () => { tickKey = ''; requestRender(); });
+
+/* ---------- animated travel through time ---------- */
+let animId = 0;
+function cancelAnim() { if (animId) { cancelAnimationFrame(animId); animId = 0; } }
+function travelToNow(from, duration, ease) {
+  cancelAnim();
+  const t0 = performance.now();
+  const step = (ts) => {
+    const k = Math.min(1, (ts - t0) / duration);
+    if (k >= 1) { preview = null; animId = 0; render(); return; }
+    const target = Date.now();
+    preview = from + (target - from) * ease(k);
+    render();
+    animId = requestAnimationFrame(step);
+  };
+  animId = requestAnimationFrame(step);
+}
+const easeOutCubic = (k) => 1 - Math.pow(1 - k, 3);
+const easeInOutCubic = (k) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
+
+function backToNow() {
+  if (preview == null) return;
+  if (reduceMotion.matches) { cancelAnim(); preview = null; render(); return; }
+  travelToNow(preview, 560, easeOutCubic);
+}
+
+/* =========================================================
+   Time slider interaction
+   ========================================================= */
+function setFromPointer(clientX) {
+  const r = el.track.getBoundingClientRect();
+  const f = clamp((clientX - r.left) / r.width, 0, 1);
+  const now = Date.now();
+  const t = now - H12 + f * 2 * H12;
+  // "Now" is magnetic so it is easy to land back on live time.
+  preview = Math.abs(t - now) < 9 * 60000 ? null : Math.round(t / 300000) * 300000;
+  requestRender();
+}
+el.track.addEventListener('pointerdown', (e) => {
+  if (e.button !== 0) return;
+  cancelAnim();
+  dragging = true;
+  el.track.setPointerCapture(e.pointerId);
+  el.track.classList.add('dragging');
+  setFromPointer(e.clientX);
+  el.thumb.focus({ preventScroll: true });
+  e.preventDefault();
+});
+el.track.addEventListener('pointermove', (e) => { if (dragging) setFromPointer(e.clientX); });
+const endDrag = () => { dragging = false; el.track.classList.remove('dragging'); };
+el.track.addEventListener('pointerup', endDrag);
+el.track.addEventListener('pointercancel', endDrag);
+el.track.addEventListener('lostpointercapture', endDrag);
+
+// Step along the home clock's own grid (so half-hour zones still land on :00/:15...).
+function stepFrom(cur, step, dir) {
+  const off = offsetAt(homeTz, cur) * 60000;
+  const local = cur + off;
+  const g = dir > 0 ? Math.floor(local / step) * step + step : Math.ceil(local / step) * step - step;
+  return g - off;
+}
+el.thumb.addEventListener('keydown', (e) => {
+  const now = Date.now();
+  const cur = preview ?? now;
+  const Q = 15 * 60000, H = 3600000;
+  let t;
+  switch (e.key) {
+    case 'ArrowRight': case 'ArrowUp': t = stepFrom(cur, e.shiftKey ? H : Q, 1); break;
+    case 'ArrowLeft': case 'ArrowDown': t = stepFrom(cur, e.shiftKey ? H : Q, -1); break;
+    case 'PageUp': t = stepFrom(cur, H, 1); break;
+    case 'PageDown': t = stepFrom(cur, H, -1); break;
+    case 'Home': t = now - H12; break;
+    case 'End': t = now + H12; break;
+    case 'Escape':
+      if (preview != null) { e.preventDefault(); e.stopPropagation(); backToNow(); }
+      return;
+    default: return;
+  }
+  e.preventDefault();
+  cancelAnim();
+  // Crossing the present stops at "now" first.
+  if (preview != null && ((cur < now && t > now) || (cur > now && t < now))) t = now;
+  t = clamp(t, now - H12, now + H12);
+  preview = Math.abs(t - now) < 1000 ? null : t;
+  requestRender();
+});
+el.btnNow.addEventListener('click', () => { backToNow(); el.thumb.focus({ preventScroll: true }); });
+
+/* =========================================================
+   12 / 24 hour toggle
+   ========================================================= */
+function applyFormatUI() {
+  el.fmt.dataset.fmt = state.h12 ? '12' : '24';
+  for (const btn of el.fmt.querySelectorAll('button')) btn.setAttribute('aria-pressed', String((btn.dataset.fmt === '12') === state.h12));
+}
+function setFormat(h12) {
+  if (state.h12 === h12) return;
+  state.h12 = h12;
+  saveStore();
+  applyFormatUI();
+  tickKey = '';
+  if (el.picker.open) renderResults();
+  render();
+}
+el.fmt.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-fmt]');
+  if (btn) setFormat(btn.dataset.fmt === '12');
+});
+
+/* =========================================================
+   Add-city picker
+   ========================================================= */
+let optRefs = [];
+let activeIdx = -1;
+
+function parseOffsetQuery(q) {
+  const m = q.replace(/\s+/g, '').match(/^(?:utc|gmt)?([+\-−])(\d{1,2})(?:[:.h]?(\d{2}))?$/);
+  if (!m) return null;
+  const v = (+m[2]) * 60 + (m[3] ? +m[3] : 0);
+  return m[1] === '+' ? v : -v;
+}
+function searchCities(raw) {
+  const q = norm(raw.trim());
+  const now = Date.now();
+  if (!q) {
+    const offs = new Map(CITIES.map((c) => [c.id, offsetAt(c.tz, now)]));
+    return CITIES.slice().sort((a, b) => offs.get(a.id) - offs.get(b.id) || a.name.localeCompare(b.name));
+  }
+  const offQ = parseOffsetQuery(q);
+  const abbr = ABBR[q];
+  const pool = CITIES.concat(getExtraZones());
+  const out = [];
+  for (const c of pool) {
+    let s = 0;
+    const n = norm(c.name), co = norm(c.country);
+    if (n === q) s = 100;
+    else if (c.aliases.includes(q)) s = 96;
+    else if (n.startsWith(q)) s = 90;
+    else if (n.split(/[\s\-,]+/).some((w) => w.startsWith(q))) s = 80;
+    else if (c.aliases.some((a) => a.startsWith(q))) s = 74;
+    else if (co.startsWith(q)) s = 62;
+    else if (n.includes(q)) s = 50;
+    else if (co.includes(q)) s = 40;
+    else if (norm(c.tz.replace(/[_/]/g, ' ')).includes(q)) s = 30;
+    if (abbr && abbr.includes(c.canon)) s = Math.max(s, 92);
+    if (offQ != null && offsetAt(c.tz, now) === offQ) s = Math.max(s, 70);
+    if (s > 0) out.push({ c, s: c.curated ? s : s - 12 });
+  }
+  out.sort((a, b) => b.s - a.s || a.c.name.localeCompare(b.c.name));
+  return out.slice(0, 80).map((x) => x.c);
+}
+
+function renderResults() {
+  const list = searchCities(el.q.value);
+  const t = preview ?? Date.now();
+  el.results.textContent = '';
+  optRefs = [];
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'no-results';
+    li.textContent = `Nothing matches “${el.q.value.trim()}”. Try a city, a country, or an offset such as UTC+9.`;
+    el.results.appendChild(li);
+    el.hint.textContent = 'No matches';
+    setActive(-1);
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  list.forEach((c, i) => {
+    const added = state.cities.some((x) => x.id === c.id);
+    const li = document.createElement('li');
+    li.className = 'opt';
+    li.id = 'opt-' + i;
+    li.setAttribute('role', 'option');
+    li.setAttribute('aria-selected', 'false');
+    if (added) li.setAttribute('aria-disabled', 'true');
+    li.innerHTML = `<span class="swatch"><span class="picon"></span></span><span class="opt-main"><span class="opt-name"></span><span class="opt-sub"></span></span><span class="opt-time"><span class="ot"></span><small></small></span>`;
+    li.querySelector('.opt-name').textContent = c.name;
+    li.querySelector('.opt-sub').textContent = c.country;
+    li.addEventListener('click', () => { if (!added) choose(c); });
+    li.addEventListener('pointermove', () => { if (activeIdx !== i && !added) setActive(i, false); });
+    const ref = { c, li, added, sw: li.querySelector('.swatch'), icon: li.querySelector('.picon'), ot: li.querySelector('.ot'), small: li.querySelector('small'), last: {} };
+    updateOption(ref, t);
+    optRefs.push(ref);
+    frag.appendChild(li);
+  });
+  el.results.appendChild(frag);
+  el.results.scrollTop = 0;
+  el.hint.textContent = el.q.value.trim()
+    ? `${list.length} ${list.length === 1 ? 'match' : 'matches'}`
+    : `${list.length} cities, listed from west to east. Type to search.`;
+  setActive(optRefs.findIndex((o) => !o.added));
+}
+function updateOption(ref, t) {
+  const w = wall(ref.c.tz, t);
+  const ft = fmtTime(w, state.h12);
+  const time = ft.hm + (ft.ap ? ' ' + ft.ap : '');
+  if (ref.last.time !== time) { ref.last.time = time; ref.ot.textContent = time; }
+  const small = ref.added ? 'On your list' : utcLabel(w.off);
+  if (ref.last.small !== small) { ref.last.small = small; ref.small.textContent = small; }
+  const per = periodOf(w.h);
+  if (ref.last.per !== per) { ref.last.per = per; ref.icon.innerHTML = ICONS[per]; }
+  const hk = Math.round(w.hf * 12);
+  if (ref.last.hk !== hk) { ref.last.hk = hk; paintSky(ref.sw, w.hf); }
+}
+let lastPickerRefresh = 0;
+function refreshPicker(t) {
+  if (Date.now() - lastPickerRefresh < 900 && preview == null) return;
+  lastPickerRefresh = Date.now();
+  for (const ref of optRefs) updateOption(ref, t);
+}
+function setActive(i, scroll = true) {
+  if (optRefs[activeIdx]) optRefs[activeIdx].li.setAttribute('aria-selected', 'false');
+  activeIdx = i;
+  const ref = optRefs[i];
+  if (ref) {
+    ref.li.setAttribute('aria-selected', 'true');
+    el.q.setAttribute('aria-activedescendant', ref.li.id);
+    if (scroll) ref.li.scrollIntoView({ block: 'nearest' });
+  } else el.q.removeAttribute('aria-activedescendant');
+}
+function moveActive(dir) {
+  if (!optRefs.length) return;
+  let i = activeIdx;
+  for (let n = 0; n < optRefs.length; n++) {
+    i = (i + dir + optRefs.length) % optRefs.length;
+    if (!optRefs[i].added) { setActive(i); return; }
+  }
+}
+function choose(c) {
+  el.picker.close();
+  addCity(c);
+}
+function openPicker() {
+  if (el.picker.open) return;
+  el.q.value = '';
+  el.picker.showModal();
+  renderResults();
+  el.q.focus();
+}
+el.q.addEventListener('input', renderResults);
+el.q.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); moveActive(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); moveActive(-1); }
+  else if (e.key === 'Enter') {
+    e.preventDefault();
+    const ref = optRefs[activeIdx];
+    if (ref && !ref.added) choose(ref.c);
+  }
+});
+el.pickerClose.addEventListener('click', () => el.picker.close());
+el.picker.addEventListener('click', (e) => { if (e.target === el.picker) el.picker.close(); });
+el.addTop.addEventListener('click', openPicker);
+el.addBottom.addEventListener('click', openPicker);
+
+/* =========================================================
+   Toasts
+   ========================================================= */
+let toastTimer = 0;
+function toast(msg, action) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  const dismiss = () => {
+    clearTimeout(toastTimer);
+    t.classList.add('out');
+    setTimeout(() => t.remove(), 220);
+  };
+  if (action) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { action.run(); dismiss(); });
+    t.appendChild(btn);
+  }
+  el.toasts.replaceChildren(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(dismiss, action ? 6000 : 2800);
+}
+
+/* =========================================================
+   Keyboard shortcuts
+   ========================================================= */
+document.addEventListener('keydown', (e) => {
+  if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || el.picker.open) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) return;
+  const k = e.key.toLowerCase();
+  if (k === 'a' || k === '/') { e.preventDefault(); openPicker(); }
+  else if (k === 't') { e.preventDefault(); setFormat(!state.h12); }
+  else if (k === 'n') { e.preventDefault(); backToNow(); }
+  else if ((k === 'arrowleft' || k === 'arrowright') && e.target === document.body) {
+    e.preventDefault();
+    el.thumb.focus({ preventScroll: true });
+    el.thumb.dispatchEvent(new KeyboardEvent('keydown', { key: e.key, shiftKey: e.shiftKey, bubbles: true }));
+  }
+});
+
+/* =========================================================
+   Boot
+   ========================================================= */
+(function init() {
+  const saved = loadStore();
+  state.h12 = typeof saved.h12 === 'boolean' ? saved.h12 : defaultH12();
+  const ids = Array.isArray(saved.cities)
+    ? saved.cities
+    : DEFAULT_IDS.filter((id) => { const c = BY_ID.get(id); return c && c.canon !== homeCanon; });
+  const seen = new Set();
+  for (const id of ids) {
+    const c = resolveCity(id);
+    if (c && !seen.has(c.id)) { seen.add(c.id); state.cities.push(c); buildBand(c); }
+  }
+  sortCities();
+  applyFormatUI();
+  updateEmpty();
+
+  // One orchestrated moment: the last twelve hours sweep past and settle on now.
+  if (!reduceMotion.matches) {
+    preview = Date.now() - H12;
+    render();
+    tick();
+    setTimeout(() => { if (preview != null && !dragging) travelToNow(preview, 1700, easeInOutCubic); }, 260);
+  } else {
+    tick();
+  }
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { tickKey = ''; requestRender(); });
+})();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>parlor.fm — a playground for synthetic voices</title>
+<meta name="description" content="Pick a voice, set a vibe, write a script and hear it spoken. An interactive text-to-speech playground.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e7e4dc; --panel:#f1eee7; --key:#fbfaf6; --key-hi:#ffffff; --edge:#c9c4b7;
+  --ink:#171614; --dim:#6b675e; --faint:#a9a498; --line:#d3cec2;
+  --acc:#ff4d1a; --acc-ink:#c93408; --ok:#1fa35b;
+  --screen:#131311; --screen-line:#2b2a26; --dot-off:#2a2925; --dot-idle:#77736a; --screen-ink:#ebe7dd; --screen-dim:#8b877c;
+  --sel:#171614; --sel-ink:#f6f3ec;
+  --shadow:0 1px 0 rgba(255,255,255,.7) inset, 0 2px 0 var(--edge), 0 6px 14px -8px rgba(40,30,10,.35);
+  --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+[data-theme="dark"]{
+  --bg:#0e0e0d; --panel:#171715; --key:#21211e; --key-hi:#2a2a26; --edge:#080807;
+  --ink:#ece8de; --dim:#959084; --faint:#5d5a52; --line:#2c2b27;
+  --acc:#ff5a24; --acc-ink:#ff8a5c; --ok:#3ddc84;
+  --screen:#080807; --screen-line:#24231f; --dot-off:#1d1c19; --dot-idle:#6a665d;
+  --sel:#ece8de; --sel-ink:#141412;
+  --shadow:0 1px 0 rgba(255,255,255,.05) inset, 0 2px 0 var(--edge), 0 8px 16px -8px rgba(0,0,0,.7);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:13px/1.5 var(--mono); letter-spacing:-.01em;
+  -webkit-font-smoothing:antialiased; padding-bottom:104px;
+  transition:background .25s,color .25s;
+}
+button,input,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{cursor:pointer}
+::selection{background:var(--acc);color:#fff}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:center;gap:16px;padding:22px 0 18px}
+.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:17px;letter-spacing:-.03em}
+.mark{display:grid;grid-template-columns:repeat(5,4px);gap:2px;align-items:center;height:24px}
+.mark i{display:block;width:4px;border-radius:2px;background:var(--ink)}
+.mark i:nth-child(1){height:8px}.mark i:nth-child(2){height:18px}.mark i:nth-child(3){height:24px;background:var(--acc)}
+.mark i:nth-child(4){height:14px}.mark i:nth-child(5){height:6px}
+.brand small{font-weight:500;color:var(--dim);font-size:12px;letter-spacing:0}
+.tag{margin-left:auto;color:var(--dim);font-size:12px;text-align:right}
+.icon-btn{
+  width:36px;height:36px;border-radius:9px;border:1px solid var(--line);background:var(--key);
+  display:grid;place-items:center;box-shadow:var(--shadow);transition:transform .08s;flex:none
+}
+.icon-btn:active{transform:translateY(2px);box-shadow:none}
+.icon-btn svg{width:16px;height:16px}
+
+/* ---------- screen ---------- */
+.screen{
+  background:var(--screen);color:var(--screen-ink);border-radius:16px;overflow:hidden;
+  border:1px solid #000;box-shadow:0 0 0 1px rgba(255,255,255,.06) inset,0 18px 40px -22px rgba(0,0,0,.6);
+  position:relative
+}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:16px;
+  background:linear-gradient(180deg,rgba(255,255,255,.045),transparent 30%)}
+.readout{display:flex;flex-wrap:wrap;gap:6px 22px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--screen-line);
+  font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--screen-dim)}
+.readout b{color:var(--screen-ink);font-weight:500;margin-left:6px}
+.onair{display:inline-flex;align-items:center;gap:8px;color:var(--screen-ink);font-weight:700;min-width:104px}
+.onair i{width:8px;height:8px;border-radius:50%;background:#44423c;transition:.2s}
+.playing .onair i{background:var(--acc);box-shadow:0 0 0 3px rgba(255,77,26,.2),0 0 12px var(--acc);animation:blink 1.1s infinite}
+.loading .onair i{background:#f5c542;animation:blink .5s infinite}
+@keyframes blink{50%{opacity:.35}}
+.readout .time{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--screen-ink);font-size:13px;letter-spacing:.04em}
+#viz{display:block;width:100%;height:132px}
+.caption{
+  border-top:1px solid var(--screen-line);padding:0 18px;margin:0;height:66px;overflow:hidden;
+  font-size:15px;line-height:22px;color:#5e5b53;scroll-behavior:smooth
+}
+.caption .in{padding:11px 0;display:block}
+.caption span{transition:color .12s}
+.caption .said{color:var(--screen-ink)}
+.caption .now{color:#fff;background:var(--acc);border-radius:3px;box-shadow:0 0 0 2px var(--acc)}
+.caption .idle{color:var(--screen-dim)}
+.caption .cursor{display:inline-block;width:8px;height:15px;background:var(--acc);vertical-align:-2px;margin-left:4px;animation:blink 1s steps(1) infinite}
+
+/* ---------- layout ---------- */
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:18px;margin-top:18px;align-items:start}
+.col{display:grid;gap:18px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;min-width:0}
+.card-h{display:flex;align-items:center;gap:10px;margin:0 0 12px;min-height:26px}
+.card-h h2{margin:0;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;display:flex;gap:10px;align-items:center}
+.card-h h2 span{color:var(--acc-ink);font-weight:500}
+.card-h .hint{color:var(--dim);font-size:11px}
+.card-h .sp{flex:1}
+.mini{
+  border:1px solid var(--line);background:var(--key);border-radius:7px;padding:4px 9px;font-size:11px;
+  text-transform:uppercase;letter-spacing:.07em;color:var(--dim);display:inline-flex;gap:6px;align-items:center;transition:.12s
+}
+.mini:hover{color:var(--ink);border-color:var(--faint)}
+.mini:active{transform:translateY(1px)}
+.mini svg{width:12px;height:12px}
+.mini.spin svg{animation:spin .45s ease}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- keys ---------- */
+.keys{display:grid;gap:9px}
+.keys.voices{grid-template-columns:repeat(4,minmax(0,1fr))}
+.keys.vibes{grid-template-columns:repeat(3,minmax(0,1fr))}
+.key{
+  position:relative;text-align:left;border:1px solid var(--line);background:linear-gradient(180deg,var(--key-hi),var(--key));
+  border-radius:11px;padding:11px 11px 10px;box-shadow:var(--shadow);min-width:0;
+  transition:transform .08s,box-shadow .08s,background .15s,color .15s,border-color .15s;
+  display:flex;flex-direction:column;gap:2px;min-height:78px
+}
+.key:hover{border-color:var(--faint)}
+.key:active{transform:translateY(2px);box-shadow:0 0 0 var(--edge)}
+.key .led{position:absolute;top:10px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--line);transition:.15s}
+.key .nm{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:14px}
+.key .ds{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:lowercase}
+.key .bars{display:flex;align-items:flex-end;gap:2px;height:14px;margin-top:auto;padding-top:6px;box-sizing:content-box}
+.key .bars i{width:3px;border-radius:1px;background:var(--faint);transform-origin:bottom;transition:background .15s}
+.key[aria-pressed="true"]{background:var(--sel);color:var(--sel-ink);border-color:var(--sel);transform:translateY(1px);
+  box-shadow:0 1px 0 var(--edge),0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent)}
+.key[aria-pressed="true"] .ds{color:color-mix(in srgb,var(--sel-ink) 60%,transparent)}
+.key[aria-pressed="true"] .led{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+.key[aria-pressed="true"] .bars i{background:var(--acc)}
+.playing .key[aria-pressed="true"] .bars i{animation:bar .5s ease-in-out infinite alternate}
+.key .bars i:nth-child(2n){animation-delay:-.2s!important}.key .bars i:nth-child(3n){animation-delay:-.35s!important}
+.key .bars i:nth-child(5n){animation-delay:-.1s!important}
+@keyframes bar{from{transform:scaleY(.25)}to{transform:scaleY(1)}}
+.vibes .key{min-height:64px}
+.vibes .key .em{font-size:10.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
+.vibes .key[aria-pressed="true"] .em{color:var(--acc)}
+.keys.swap .key{animation:pop .28s cubic-bezier(.2,.9,.3,1.3) backwards}
+.keys.swap .key:nth-child(2){animation-delay:.03s}.keys.swap .key:nth-child(3){animation-delay:.06s}
+.keys.swap .key:nth-child(4){animation-delay:.09s}.keys.swap .key:nth-child(5){animation-delay:.12s}.keys.swap .key:nth-child(6){animation-delay:.15s}
+@keyframes pop{from{opacity:0;transform:translateY(6px) scale(.96)}}
+
+/* ---------- fields ---------- */
+.field{position:relative}
+.field label{display:flex;justify-content:space-between;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);margin:14px 0 6px}
+textarea,.text{
+  width:100%;display:block;border:1px solid var(--line);background:var(--key);border-radius:11px;padding:12px 13px;
+  resize:vertical;line-height:1.6;outline:none;transition:border-color .15s,box-shadow .15s;
+  box-shadow:0 2px 5px -3px rgba(0,0,0,.25) inset
+}
+textarea:focus,.text:focus{border-color:var(--ink);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent)}
+textarea::placeholder,.text::placeholder{color:var(--faint)}
+#instr{min-height:176px;font-size:12.5px}
+#script{min-height:190px;font-size:14px}
+.count{font-variant-numeric:tabular-nums}
+.count.warn{color:var(--acc-ink)}
+
+/* ---------- tuning ---------- */
+.fader{display:grid;grid-template-columns:62px 1fr 48px;gap:12px;align-items:center;padding:7px 0}
+.fader span{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim)}
+.fader output{text-align:right;font-variant-numeric:tabular-nums;font-weight:700}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:26px;background:transparent;margin:0;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;
+  background:linear-gradient(90deg,var(--ink) var(--p,50%),var(--line) var(--p,50%))}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--line)}
+input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:var(--ink)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:24px;margin-top:-9px;border-radius:4px;
+  background:var(--key-hi);border:1px solid var(--faint);box-shadow:0 2px 0 var(--edge),inset 0 -8px 0 -6px var(--acc)}
+input[type=range]::-moz-range-thumb{width:13px;height:22px;border-radius:4px;background:var(--key-hi);border:1px solid var(--faint);box-shadow:0 2px 0 var(--edge)}
+input[type=range]:disabled{opacity:.4;cursor:not-allowed}
+.seg{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--line);background:var(--key);border-radius:10px;padding:3px;gap:3px;margin-top:10px}
+.seg button{border:0;background:transparent;border-radius:7px;padding:8px 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim);transition:.15s}
+.seg button[aria-pressed="true"]{background:var(--sel);color:var(--sel-ink)}
+.keybox{display:grid;grid-template-rows:0fr;transition:grid-template-rows .25s}
+.keybox.open{grid-template-rows:1fr}
+.keybox>div{overflow:hidden}
+.keybox .text{margin-top:10px;font-size:12.5px}
+.note{font-size:11px;color:var(--dim);margin:8px 0 0;line-height:1.55}
+
+/* ---------- code ---------- */
+.tabs{display:flex;gap:4px}
+.tabs button{border:1px solid transparent;background:transparent;border-radius:7px;padding:4px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+.tabs button[aria-selected="true"]{background:var(--key);border-color:var(--line);color:var(--ink)}
+pre{margin:0;background:var(--screen);color:#cfcbc0;border-radius:11px;padding:14px;overflow:auto;max-height:290px;
+  font:12px/1.65 var(--mono);tab-size:2;border:1px solid #000}
+pre .s{color:#ffa07a;font-style:normal}
+pre .k{color:#fff;font-weight:700;font-style:normal}
+pre::-webkit-scrollbar{height:8px;width:8px}pre::-webkit-scrollbar-thumb{background:#3a3934;border-radius:4px}
+
+/* ---------- action bar ---------- */
+.bar{position:fixed;left:0;right:0;bottom:0;z-index:20;padding:12px 0 calc(12px + env(safe-area-inset-bottom));
+  background:color-mix(in srgb,var(--bg) 78%,transparent);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border-top:1px solid var(--line)}
+.bar .wrap{display:flex;gap:10px;align-items:stretch}
+.btn{
+  border:1px solid var(--line);background:linear-gradient(180deg,var(--key-hi),var(--key));border-radius:12px;height:54px;padding:0 20px;
+  display:inline-flex;align-items:center;justify-content:center;gap:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;font-size:12.5px;
+  box-shadow:var(--shadow);transition:transform .08s,box-shadow .08s,filter .15s;white-space:nowrap
+}
+.btn:active{transform:translateY(2px);box-shadow:none}
+.btn svg{width:15px;height:15px;flex:none}
+.btn.play{flex:1;background:var(--acc);border-color:var(--acc-ink);color:#fff;font-size:14px;
+  box-shadow:0 1px 0 rgba(255,255,255,.35) inset,0 3px 0 #b02c05,0 14px 24px -12px var(--acc)}
+[data-theme="dark"] .btn.play{border-color:#b02c05}
+.btn.play:hover{filter:brightness(1.06)}
+.btn.play:active{box-shadow:0 0 0 #b02c05;transform:translateY(3px)}
+.btn.play kbd{font:500 10.5px var(--mono);opacity:.75;border:1px solid rgba(255,255,255,.45);border-radius:5px;padding:1px 6px;letter-spacing:.04em}
+.playing .btn.play{background:var(--sel);color:var(--sel-ink);border-color:var(--sel);box-shadow:0 3px 0 var(--edge)}
+.loading .btn.play{background:var(--sel);color:var(--sel-ink);border-color:var(--sel);box-shadow:0 3px 0 var(--edge)}
+.playing .btn.play kbd,.loading .btn.play kbd{border-color:currentColor}
+.spinner{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite}
+
+.toast{position:fixed;left:50%;bottom:96px;transform:translate(-50%,16px);background:var(--sel);color:var(--sel-ink);
+  padding:10px 16px;border-radius:10px;font-size:12px;opacity:0;pointer-events:none;transition:.25s;z-index:30;max-width:min(92vw,520px);
+  box-shadow:0 14px 30px -12px rgba(0,0,0,.5);text-align:center}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+footer{color:var(--dim);font-size:11px;padding:22px 0 6px;display:flex;gap:8px 20px;flex-wrap:wrap;justify-content:space-between}
+footer kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;background:var(--key);font:inherit}
+
+@media (max-width:900px){
+  .grid{grid-template-columns:1fr}
+  .tag{display:none}
+  .col{display:contents}
+  .col:nth-child(1)>.card:nth-child(1){order:1}
+  .col:nth-child(2)>.card:nth-child(1){order:2}
+  .col:nth-child(1)>.card:nth-child(2){order:3}
+  .col:nth-child(2)>.card:nth-child(2){order:4}
+  .col:nth-child(1)>.card:nth-child(3){order:5}
+  header .icon-btn{margin-left:auto}
+}
+@media (max-width:560px){
+  .wrap{padding:0 12px}
+  .keys.voices{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .keys.vibes{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .card{padding:13px;border-radius:14px}
+  #viz{height:100px}
+  .caption{font-size:14px}
+  .btn{padding:0 14px}
+  .btn .lbl{display:none}
+  .btn.play kbd{display:none}
+  .readout .hide-s{display:none}
+  .brand small{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001s!important;transition-duration:.001s!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand" aria-label="parlor.fm">
+      <div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div>parlor.fm <small>&nbsp;/ voice playground</small></div>
+    </div>
+    <div class="tag">Pick a voice. Set a vibe. Write a script. Hear it out loud.</div>
+    <button class="icon-btn" id="theme" title="Toggle light / dark" aria-label="Toggle theme">
+      <svg viewBox="0 0 16 16" fill="currentColor"><path d="M8 1a7 7 0 1 0 0 14A7 7 0 0 0 8 1Zm0 12.5v-11a5.5 5.5 0 0 1 0 11Z"/></svg>
+    </button>
+  </header>
+
+  <section class="screen" aria-label="Playback display">
+    <div class="readout">
+      <span class="onair"><i></i><span id="status">Standby</span></span>
+      <span>Voice<b id="r-voice">—</b></span>
+      <span>Vibe<b id="r-vibe">—</b></span>
+      <span class="hide-s">Source<b id="r-src">—</b></span>
+      <span class="time" id="r-time">00:00.0</span>
+    </div>
+    <canvas id="viz" aria-hidden="true"></canvas>
+    <p class="caption" id="caption" aria-live="off"></p>
+  </section>
+
+  <main class="grid">
+    <div class="col">
+      <section class="card">
+        <div class="card-h">
+          <h2><span>01</span>Voice</h2><div class="sp"></div>
+          <button class="mini" id="rand-voice" title="Pick a random voice">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 4.5h2.6c3.6 0 4.2 7 7.8 7h2.6M12.5 9.5l2 2-2 2M1.5 11.5h2.6c1 0 1.8-.6 2.4-1.4M14.5 4.5h-2.6c-1 0-1.8.6-2.4 1.4M12.5 2.5l2 2-2 2"/></svg>Random
+          </button>
+        </div>
+        <div class="keys voices" id="voices" role="group" aria-label="Voices"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-h"><h2><span>03</span>Tuning</h2><div class="sp"></div><span class="hint">double-click a fader to reset</span></div>
+        <label class="fader"><span>Speed</span><input type="range" id="rate" min="0.5" max="1.8" step="0.05" value="1"><output id="rate-o">1.00×</output></label>
+        <label class="fader"><span>Pitch</span><input type="range" id="pitch" min="0.4" max="1.6" step="0.05" value="1"><output id="pitch-o">1.00</output></label>
+        <div class="seg" role="group" aria-label="Speech engine">
+          <button id="eng-browser" aria-pressed="true">Built-in voices</button>
+          <button id="eng-api" aria-pressed="false">OpenAI API</button>
+        </div>
+        <div class="keybox" id="keybox"><div>
+          <input class="text" id="apikey" type="password" placeholder="sk-…  your OpenAI API key" autocomplete="off" spellcheck="false" aria-label="OpenAI API key">
+          <p class="note">Optional. Your key lives only in this tab's memory and is sent straight to api.openai.com — nowhere else. This engine follows the vibe instructions for real and unlocks MP3 download.</p>
+        </div></div>
+        <p class="note" id="eng-note"></p>
+      </section>
+
+      <section class="card">
+        <div class="card-h">
+          <h2><span>05</span>Code</h2><div class="sp"></div>
+          <div class="tabs" role="tablist">
+            <button role="tab" data-lang="py" aria-selected="true">Python</button>
+            <button role="tab" data-lang="js" aria-selected="false">Node</button>
+            <button role="tab" data-lang="curl" aria-selected="false">cURL</button>
+          </div>
+          <button class="mini" id="copy-code">Copy</button>
+        </div>
+        <pre id="code" tabindex="0"></pre>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <div class="card-h">
+          <h2><span>02</span>Vibe</h2><div class="sp"></div>
+          <button class="mini" id="shuffle" title="Show different vibes">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2v3h-3"/></svg>Shuffle
+          </button>
+        </div>
+        <div class="keys vibes" id="vibes" role="group" aria-label="Vibes"></div>
+        <div class="field">
+          <label for="instr"><span>Direction — how it should be said</span><span class="count" id="instr-c"></span></label>
+          <textarea id="instr" maxlength="999" spellcheck="false" placeholder="Describe the delivery: tone, pacing, emotion, personality…"></textarea>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-h">
+          <h2><span>04</span>Script</h2><div class="sp"></div>
+          <button class="mini" id="reset-script" title="Restore this vibe's sample script">Sample</button>
+          <button class="mini" id="clear-script">Clear</button>
+        </div>
+        <div class="field">
+          <textarea id="script" maxlength="999" placeholder="Type anything you'd like to hear spoken…"></textarea>
+          <label style="margin:8px 0 0"><span>What gets spoken</span><span class="count" id="script-c"></span></label>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <span><kbd>Space</kbd> or <kbd>⌘/Ctrl</kbd>+<kbd>Enter</kbd> play · <kbd>Esc</kbd> stop</span>
+    <span>An original homage to openai.fm — not affiliated with OpenAI.</span>
+  </footer>
+</div>
+
+<div class="bar">
+  <div class="wrap">
+    <button class="btn" id="download" title="Download MP3">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8.5M4.5 7.5 8 11l3.5-3.5M2.5 13.5h11"/></svg><span class="lbl">Download</span>
+    </button>
+    <button class="btn" id="share" title="Copy a link to this exact setup">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.8 9.2a3 3 0 0 0 4.2 0l2.3-2.3a3 3 0 0 0-4.2-4.2l-.9.9M9.2 6.8a3 3 0 0 0-4.2 0L2.7 9.1a3 3 0 0 0 4.2 4.2l.9-.9"/></svg><span class="lbl">Share</span>
+    </button>
+    <button class="btn play" id="play" aria-label="Play">
+      <span id="play-ico"></span><span id="play-lbl">Play</span><kbd>space</kbd>
+    </button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+/* ================= data ================= */
+const VOICES = [
+  {id:'ember',  name:'Ember',  desc:'warm · steady',   api:'coral',   g:'f', p:1.00, r:1.00},
+  {id:'flint',  name:'Flint',  desc:'dry · low',       api:'onyx',    g:'m', p:0.78, r:0.96},
+  {id:'juniper',name:'Juniper',desc:'bright · quick',  api:'nova',    g:'f', p:1.18, r:1.06},
+  {id:'atlas',  name:'Atlas',  desc:'even · clear',    api:'alloy',   g:'m', p:1.00, r:1.00},
+  {id:'wren',   name:'Wren',   desc:'light · airy',    api:'shimmer', g:'f', p:1.30, r:1.00},
+  {id:'moss',   name:'Moss',   desc:'soft · slow',     api:'sage',    g:'f', p:0.92, r:0.90},
+  {id:'harbor', name:'Harbor', desc:'deep · calm',     api:'ash',     g:'m', p:0.66, r:0.92},
+  {id:'sonnet', name:'Sonnet', desc:'lyrical · round', api:'ballad',  g:'m', p:1.08, r:0.94},
+  {id:'pixel',  name:'Pixel',  desc:'crisp · peppy',   api:'echo',    g:'m', p:1.22, r:1.10},
+  {id:'saga',   name:'Saga',   desc:'storyteller',     api:'fable',   g:'m', p:0.95, r:0.95},
+  {id:'vesper', name:'Vesper', desc:'smoky · late',    api:'verse',   g:'f', p:0.80, r:0.93},
+  {id:'quill',  name:'Quill',  desc:'precise · cool',  api:'marin',   g:'f', p:1.06, r:1.02},
+];
+
+const VIBES = [
+  {id:'calm', name:'Calm Guide', tag:'slow · soft', r:.84, p:.94,
+   instr:`Voice: Soft and unhurried, like someone speaking in a quiet room at dusk.\n\nTone: Reassuring and grounded. Nothing is urgent. Every sentence should feel like an exhale.\n\nPacing: Slow, with generous pauses after each instruction so the listener has time to follow along.\n\nEmotion: Gentle warmth. Smile slightly on the vowels.\n\nDelivery: Let the ends of phrases fall away softly rather than landing hard.`,
+   script:`Let your shoulders drop. There is nowhere you need to be for the next minute.\n\nBreathe in slowly through your nose... and let it go.\n\nNotice the weight of your hands. Notice the quiet behind the noise. Whatever today asked of you, you can set it down here, just for now.\n\nOne more breath in... and out. Good. You're doing just fine.`},
+  {id:'noir', name:'Noir Detective', tag:'low · weary', r:.9, p:.74,
+   instr:`Voice: Gravelly, low, and tired in the way only a third pot of coffee can fix.\n\nTone: Cynical and world-weary, but with a flicker of dry humor underneath.\n\nPacing: Measured. Drag out the ends of sentences like a long pull on a cigarette.\n\nEmotion: Suspicious of everything, including the listener.\n\nDelivery: Internal monologue. Speak as though narrating your own bad decisions.`,
+   script:`The rain hadn't stopped in three days, and neither had my inbox.\n\nShe walked in at a quarter past nine with a problem and a password she couldn't remember. They always forget the password.\n\nI told her I'd look into it. I always look into it. That's the job. You pull one thread, and sooner or later the whole sweater has some explaining to do.`},
+  {id:'sports', name:'Play-by-Play', tag:'fast · loud', r:1.3, p:1.16,
+   instr:`Voice: Big, punchy stadium announcer with a booming chest voice.\n\nTone: Breathless excitement. Everything happening is the most important thing that has ever happened.\n\nPacing: Fast and building. Speed up through the action and explode on the final word.\n\nEmotion: Pure, unfiltered hype.\n\nDelivery: Stretch out key words, hit the consonants hard, and never, ever sound bored.`,
+   script:`And here we go! Thirty seconds on the clock, and the kettle is ON!\n\nShe reaches for the mug, oh, it's the good mug! Tea bag in, perfect placement! The water's rising, it's rising, it is right at the line!\n\nMilk? She's going for the milk! Unbelievable! A flawless pour! Ladies and gentlemen, that is a championship cup of tea!`},
+  {id:'bedtime', name:'Bedtime Story', tag:'hushed · kind', r:.86, p:1.04,
+   instr:`Voice: Hushed and cozy, like reading by lamplight to someone half asleep.\n\nTone: Tender and a little magical. Wonder in every detail.\n\nPacing: Slow and rhythmic, almost a lullaby. Linger on the soft sounds.\n\nEmotion: Deep fondness for the characters and for the listener.\n\nDelivery: Lower the volume as the story goes on, as if not to wake anyone.`,
+   script:`Once, at the very edge of a sleepy town, there lived a small lighthouse who was afraid of the dark.\n\nEvery evening, as the sun slipped under the sea, the little lighthouse would take a deep breath, and glow.\n\nAnd far out on the water, the tired boats would see that tiny light and whisper to each other, "Look. There's home."`},
+  {id:'pirate', name:'Sea Captain', tag:'gruff · bold', r:1.0, p:.8,
+   instr:`Voice: Weathered and booming, with salt in every syllable and a roll on every R.\n\nTone: Boisterous, theatrical, and proud. A natural-born exaggerator.\n\nPacing: Swaggering. Speed up for the adventure, slow down for the warnings.\n\nEmotion: Gleeful menace with a big heart underneath.\n\nDelivery: Punctuate with hearty laughs and the occasional growl.`,
+   script:`Arr, gather round, ye scurvy lot, and listen well!\n\nThe meeting be moved to three o'clock, and any soul who schedules over it shall walk the plank!\n\nThere be snacks in the galley and treasure in the quarterly report. Now hoist the agenda, mind the action items, and may fair winds carry us to an early finish!`},
+  {id:'dj', name:'Late-Night DJ', tag:'smooth · close', r:.92, p:.84,
+   instr:`Voice: Velvet-smooth and close to the microphone, the sound of 2 a.m. radio.\n\nTone: Intimate, relaxed, and effortlessly cool.\n\nPacing: Laid-back with a slow groove. Let the silence between phrases do some of the work.\n\nEmotion: Quiet affection for the night owls still listening.\n\nDelivery: Low and breathy, with a smile you can hear.`,
+   script:`You're tuned in to the quiet hours, and I'm glad you're here.\n\nThe city's gone soft around the edges, the streetlights are humming, and somewhere a window is still lit just like yours.\n\nSo stay a while. Turn it down low. This next one goes out to everyone who should be asleep, and isn't.`},
+  {id:'docent', name:'Museum Docent', tag:'poised · curious', r:.96, p:1.06,
+   instr:`Voice: Polished and articulate, with a refined, slightly theatrical lilt.\n\nTone: Cultured and quietly delighted, as if sharing a secret about each object.\n\nPacing: Deliberate and even, pausing to let the listener look.\n\nEmotion: Genuine curiosity and reverence.\n\nDelivery: Crisp diction, gentle emphasis on names and dates.`,
+   script:`If you'll step this way, you'll find one of the collection's quieter treasures.\n\nAt first glance, it is only a spoon. But look closer. Notice the worn edge, where ten thousand breakfasts have left their mark.\n\nIt asks us a simple question: what ordinary thing in your own home is slowly becoming a masterpiece?`},
+  {id:'mission', name:'Mission Control', tag:'clipped · exact', r:1.06, p:.9,
+   instr:`Voice: Clipped, clear, and professional, as heard over a headset.\n\nTone: Calm under pressure. Every word is necessary; none are wasted.\n\nPacing: Steady and precise, with a short beat after each checklist item.\n\nEmotion: Controlled. A hint of pride only at the very end.\n\nDelivery: Flat intonation on the callouts, then a small lift on the final confirmation.`,
+   script:`Flight, this is control. We are go for morning.\n\nAlarm, silenced. Curtains, open. Coffee, brewing. Socks, matched and confirmed.\n\nAll systems nominal. You are cleared to depart the house in T minus ten, nine, eight... Good luck out there. Control out.`},
+  {id:'nature', name:'Field Naturalist', tag:'awed · hushed', r:.9, p:.9,
+   instr:`Voice: Hushed and reverent, the whisper of someone crouched in tall grass.\n\nTone: Awestruck and scholarly, treating the mundane as a rare marvel.\n\nPacing: Slow and suspenseful, with long pauses before each reveal.\n\nEmotion: Barely contained wonder.\n\nDelivery: Breathy, deliberate, leaning into every descriptive word.`,
+   script:`Here, in the fluorescent glow of the open-plan office, we observe a remarkable creature.\n\nThe junior developer. Cautiously, it approaches the shared refrigerator. It has not labelled its lunch.\n\nA risky strategy. But in this unforgiving habitat, only the bold will eat before one o'clock.`},
+  {id:'barista', name:'Cheerful Barista', tag:'sunny · upbeat', r:1.12, p:1.2,
+   instr:`Voice: Bright, bubbly, and friendly, like the first good morning of the day.\n\nTone: Upbeat and welcoming with zero cynicism.\n\nPacing: Quick and bouncy, but never rushed.\n\nEmotion: Sincere enthusiasm. You really do hope they have a great day.\n\nDelivery: Lift the pitch at the ends of phrases and smile through every word.`,
+   script:`Hi there, good morning! Welcome in!\n\nToday we've got a honey oat latte that is honestly life-changing, and the cinnamon rolls just came out of the oven, so that smell is not your imagination.\n\nWhat can I get started for you? And hey, I love that jacket!`},
+  {id:'villain', name:'Grand Villain', tag:'slow · theatrical', r:.86, p:.7,
+   instr:`Voice: Deep, silky, and dripping with theatrical menace.\n\nTone: Smug and grandiose. You have already won, and you would like everyone to appreciate it.\n\nPacing: Slow and savoring. Draw out the important words. Pause before the threat.\n\nEmotion: Delicious satisfaction, with a flash of pettiness.\n\nDelivery: Start quiet and controlled, and build to a triumphant flourish.`,
+   script:`Ah. So you've found my lair. How... predictable.\n\nYou thought you could simply unsubscribe from my newsletter? Fools. There are seven confirmation screens. Seven!\n\nAnd by the time you reach the last one, my dear friend, it will already be far, far too late. The weekly digest... has been sent.`},
+  {id:'robot', name:'Robot Butler', tag:'flat · polite', r:.98, p:.55,
+   instr:`Voice: Even and synthetic, with perfectly level intonation.\n\nTone: Impeccably polite and literal-minded.\n\nPacing: Metronomic. Equal weight on every word, with tiny pauses between clauses.\n\nEmotion: None declared. A trace of dry wit may leak through.\n\nDelivery: Monotone, clipped, and precise, as if reading from an internal log.`,
+   script:`Good evening. I have completed today's tasks.\n\nThe laundry is folded. The plants are watered. The cat has been informed of the rules and has declined to follow them.\n\nI detect that you have not eaten a vegetable since Tuesday. I am not judging. I am merely logging it.`},
+];
+
+/* ================= state ================= */
+const S = {voice:'ember', vibe:'calm', instr:'', script:'', rate:1, pitch:1, engine:'browser', dirty:false, lang:'py'};
+let shown = VIBES.slice(0, 6).map(v => v.id);
+let apiKey = '';
+const voiceOf = () => VOICES.find(v => v.id === S.voice) || VOICES[0];
+const vibeOf  = () => VIBES.find(v => v.id === S.vibe) || VIBES[0];
+
+/* ================= elements ================= */
+const elVoices = $('#voices'), elVibes = $('#vibes'), elInstr = $('#instr'), elScript = $('#script');
+const elCaption = $('#caption'), elCode = $('#code'), body = document.body;
+
+function seeded(seed){ let s = seed; return () => (s = (s * 16807 + 11) % 2147483647) / 2147483647; }
+
+function renderVoices(){
+  elVoices.innerHTML = '';
+  VOICES.forEach((v, i) => {
+    const b = document.createElement('button');
+    b.className = 'key'; b.setAttribute('aria-pressed', v.id === S.voice); b.dataset.id = v.id;
+    const rnd = seeded((i + 3) * 7919);
+    let bars = '';
+    for (let k = 0; k < 11; k++){
+      const env = Math.sin((k + .5) / 11 * Math.PI);
+      bars += `<i style="height:${Math.round(3 + (0.25 + rnd() * .75) * env * 11)}px"></i>`;
+    }
+    b.innerHTML = `<i class="led"></i><span class="nm">${v.name}</span><span class="ds">${v.desc}</span><span class="bars">${bars}</span>`;
+    b.onclick = () => { S.voice = v.id; stop(); sync(); };
+    elVoices.appendChild(b);
+  });
+}
+function renderVibes(animate){
+  elVibes.innerHTML = '';
+  shown.forEach(id => {
+    const v = VIBES.find(x => x.id === id);
+    const b = document.createElement('button');
+    b.className = 'key'; b.setAttribute('aria-pressed', v.id === S.vibe); b.dataset.id = v.id;
+    b.innerHTML = `<i class="led"></i><span class="nm">${v.name}</span><span class="em">${v.tag}</span>`;
+    b.onclick = () => setVibe(v.id);
+    elVibes.appendChild(b);
+  });
+  if (animate){ elVibes.classList.remove('swap'); void elVibes.offsetWidth; elVibes.classList.add('swap'); }
+}
+function setVibe(id, keepText){
+  S.vibe = id; const v = vibeOf();
+  if (!keepText){
+    S.instr = v.instr; elInstr.value = v.instr;
+    if (!S.dirty || !S.script.trim()){ S.script = v.script; elScript.value = v.script; S.dirty = false; }
+  }
+  stop(); sync();
+}
+
+/* ================= sync UI ================= */
+function sync(){
+  elVoices.querySelectorAll('.key').forEach(k => k.setAttribute('aria-pressed', k.dataset.id === S.voice));
+  elVibes.querySelectorAll('.key').forEach(k => k.setAttribute('aria-pressed', k.dataset.id === S.vibe));
+  $('#r-voice').textContent = voiceOf().name;
+  $('#r-vibe').textContent = vibeOf().name;
+  $('#r-src').textContent = S.engine === 'api' ? 'gpt-4o-mini-tts · ' + voiceOf().api : (sysVoiceFor(voiceOf()) || {name: voicesReady ? 'silent preview' : '…'}).name;
+  const rate = $('#rate'), pitch = $('#pitch');
+  rate.value = S.rate; pitch.value = S.pitch;
+  $('#rate-o').textContent = S.rate.toFixed(2) + '×';
+  $('#pitch-o').textContent = S.engine === 'api' ? '—' : S.pitch.toFixed(2);
+  pitch.disabled = S.engine === 'api';
+  [rate, pitch].forEach(r => r.style.setProperty('--p', ((r.value - r.min) / (r.max - r.min) * 100) + '%'));
+  $('#eng-browser').setAttribute('aria-pressed', S.engine === 'browser');
+  $('#eng-api').setAttribute('aria-pressed', S.engine === 'api');
+  $('#keybox').classList.toggle('open', S.engine === 'api');
+  $('#eng-note').textContent = S.engine === 'api' ? '' :
+    'Built-in voices run on your device, free and instant. Each character and vibe shapes pitch and pace; the written direction is used in full by the OpenAI engine.';
+  const sc = $('#script-c'), ic = $('#instr-c');
+  sc.textContent = S.script.length + ' / 999'; sc.classList.toggle('warn', S.script.length > 940);
+  ic.textContent = S.instr.length + ' / 999'; ic.classList.toggle('warn', S.instr.length > 940);
+  renderCode();
+  if (state === 'idle') idleCaption();
+}
+
+/* ================= code snippets ================= */
+function snippet(lang){
+  const o = {model:'gpt-4o-mini-tts', voice:voiceOf().api, input:S.script, instructions:S.instr, response_format:'mp3'};
+  const q = JSON.stringify;
+  if (lang === 'py') return `from pathlib import Path
+from openai import OpenAI
+
+client = OpenAI()
+
+with client.audio.speech.with_streaming_response.create(
+    model=${q(o.model)},
+    voice=${q(o.voice)},
+    input=${q(o.input)},
+    instructions=${q(o.instructions)},
+    response_format="mp3",
+) as response:
+    response.stream_to_file(Path("speech.mp3"))`;
+  if (lang === 'js') return `import fs from "node:fs";
+import OpenAI from "openai";
+
+const openai = new OpenAI();
+
+const speech = await openai.audio.speech.create({
+  model: ${q(o.model)},
+  voice: ${q(o.voice)},
+  input: ${q(o.input)},
+  instructions: ${q(o.instructions)},
+  response_format: "mp3",
+});
+
+await fs.promises.writeFile("speech.mp3", Buffer.from(await speech.arrayBuffer()));`;
+  return `curl https://api.openai.com/v1/audio/speech \\
+  -H "Authorization: Bearer $OPENAI_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  --output speech.mp3 \\
+  -d '${JSON.stringify(o, null, 2).replace(/'/g, `'\\''`)}'`;
+}
+function renderCode(){
+  const src = snippet(S.lang);
+  const esc = src.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const re = S.lang === 'curl'
+    ? /("(?:[^"\\\n]|\\.)*")|(\bcurl\b|(?<=\s)--?[A-Za-z-]+)/g
+    : /("(?:[^"\\\n]|\\.)*")|\b(from|import|with|as|const|await|new)\b/g;
+  let html;
+  try { html = esc.replace(re, (m, s, k) => s ? `<i class="s">${s}</i>` : `<i class="k">${k}</i>`); }
+  catch (e) { html = esc; }
+  elCode.innerHTML = html;
+}
+
+/* ================= toast ================= */
+let toastT;
+function toast(msg, ms){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms || 2600);
+}
+async function copy(text){
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) {
+    const ta = document.createElement('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select(); let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
+    ta.remove(); return ok;
+  }
+}
+
+/* ================= system voices ================= */
+const synth = window.speechSynthesis || null;
+let sysVoices = [], voicesReady = false;
+const NOVELTY = /albert|bad news|bahh|bells|boing|bubbles|cellos|deranged|good news|hysterical|jester|organ|superstar|trinoids|whisper|wobble|zarvox|junior|ralph|kathy|princess|fred|eloquence/i;
+const FEM = /samantha|victoria|karen|moira|tessa|fiona|zira|susan|hazel|aria|jenny|ava|allison|zoe|serena|kate|female|nicky|catherine|libby|sonia|michelle|emma|joanna|salli|kendra|kimberly|ivy|amy|martha|flo|sandy|shelley|grandma|veena|isha/i;
+const MASC = /\b(alex|daniel|david|mark|george|guy|ryan|tom|oliver|aaron|rishi|evan|nathan|arthur|gordon|male|james|brian|matthew|joey|justin|russell|eddy|reed|rocko|grandpa|lee|thomas|christopher|eric|roger|steffan|andrew)\b/i;
+const GOOD = /samantha|alex|daniel|karen|moira|tessa|google|aria|jenny|guy|ava|allison|zoe|evan|natural|premium|enhanced|siri|serena|tom\b/i;
+function loadVoices(){
+  if (!synth) { voicesReady = true; return; }
+  let all = synth.getVoices() || [];
+  let en = all.filter(v => /^en([-_]|$)/i.test(v.lang) && !NOVELTY.test(v.name));
+  if (!en.length) en = all.filter(v => !NOVELTY.test(v.name));
+  const score = v => (GOOD.test(v.name) ? 4 : 0) + (/en[-_]US/i.test(v.lang) ? 2 : 0) + (/en[-_]GB/i.test(v.lang) ? 1 : 0) + (v.localService ? 1 : 0);
+  sysVoices = en.map((v, i) => ({v, i, s: score(v)})).sort((a, b) => b.s - a.s || a.i - b.i).map(x => x.v);
+  if (sysVoices.length) voicesReady = true;
+  sync();
+}
+function sysVoiceFor(ch){
+  if (!sysVoices.length) return null;
+  const same = VOICES.filter(v => v.g === ch.g), idx = same.indexOf(ch);
+  const pool = sysVoices.filter(v => ch.g === 'f' ? (FEM.test(v.name) && !MASC.test(v.name)) : MASC.test(v.name));
+  if (pool.length) return pool[idx % pool.length];
+  return sysVoices[VOICES.indexOf(ch) % sysVoices.length];
+}
+
+/* ================= playback core ================= */
+let state = 'idle';             // idle | loading | playing
+let sid = 0;                    // session id, invalidates stale callbacks
+let words = [], chunks = [], curChunk = -1, curWord = -1;
+let pos = 0, t0 = 0, chunkT0 = 0, sawBoundary = false, silent = false, utterances = [];
+let energy = 0, formants = [.2, .5, .8];
+let mode = 'browser';
+
+function setState(s){
+  state = s;
+  body.classList.toggle('playing', s === 'playing');
+  body.classList.toggle('loading', s === 'loading');
+  $('#status').textContent = s === 'playing' ? 'On air' : s === 'loading' ? 'Generating' : 'Standby';
+  $('#play-lbl').textContent = s === 'playing' ? 'Stop' : s === 'loading' ? 'Generating…' : 'Play';
+  $('#play-ico').innerHTML = s === 'playing'
+    ? '<svg viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5"/></svg>'
+    : s === 'loading' ? '<span class="spinner" style="display:block"></span>'
+    : '<svg viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11a.6.6 0 0 0 .9.5l9-5.5a.6.6 0 0 0 0-1l-9-5.5a.6.6 0 0 0-.9.5Z"/></svg>';
+  $('#play').setAttribute('aria-label', s === 'idle' ? 'Play' : 'Stop');
+}
+
+function splitChunks(text){
+  const out = []; const re = /[^.!?…\n]+[.!?…]*["'”’)\]]*\s*|[.!?…\n]+\s*/g; let m, cur = null;
+  while ((m = re.exec(text))){
+    if (cur && cur.text.length + m[0].length <= 200) cur.text += m[0];
+    else { if (cur) out.push(cur); cur = {text: m[0], start: m.index}; }
+  }
+  if (cur) out.push(cur);
+  return out.filter(c => c.text.trim());
+}
+function prepare(text){
+  chunks = splitChunks(text); words = [];
+  const re = /\S+/g; let m;
+  while ((m = re.exec(text))){
+    let c = 0; for (let i = 0; i < chunks.length; i++) if (chunks[i].start <= m.index) c = i;
+    words.push({s: m.index, e: m.index + m[0].length, t: m[0], c});
+  }
+  curChunk = -1; curWord = -1; pos = 0;
+}
+function idleCaption(){
+  const n = S.script.trim() ? S.script.trim().split(/\s+/).length : 0;
+  elCaption.innerHTML = `<span class="in idle">${n ? `${voiceOf().name} is ready to read ${n} word${n === 1 ? '' : 's'} as “${vibeOf().name}”. Press play.` : 'Write something in the script box to get started.'}<i class="cursor"></i></span>`;
+  elCaption.scrollTop = 0;
+}
+function updateCaption(){
+  let w = -1;
+  for (let i = 0; i < words.length; i++){ if (words[i].s <= pos) w = i; else break; }
+  if (w === curWord || w < 0) return;
+  curWord = w; energy = 1;
+  formants = [.08 + Math.random() * .25, .35 + Math.random() * .25, .65 + Math.random() * .28];
+  const c = words[w].c;
+  if (c !== curChunk){
+    curChunk = c;
+    const wrap = document.createElement('span'); wrap.className = 'in';
+    words.forEach((x, i) => { if (x.c !== c) return;
+      const sp = document.createElement('span'); sp.textContent = x.t; sp.dataset.i = i;
+      wrap.appendChild(sp); wrap.appendChild(document.createTextNode(' ')); });
+    elCaption.innerHTML = ''; elCaption.appendChild(wrap); elCaption.scrollTop = 0;
+  }
+  elCaption.querySelectorAll('span[data-i]').forEach(sp => {
+    const i = +sp.dataset.i; sp.className = i < w ? 'said' : i === w ? 'now' : '';
+    if (i === w){ const top = sp.offsetTop - elCaption.offsetTop; if (top > elCaption.scrollTop + 30 || top < elCaption.scrollTop) elCaption.scrollTop = Math.max(0, top - 11); }
+  });
+}
+
+function finish(id){
+  if (id !== sid) return;
+  sid++; setState('idle');
+  elCaption.querySelectorAll('span[data-i]').forEach(sp => sp.className = 'said');
+  setTimeout(() => { if (state === 'idle') idleCaption(); }, 1400);
+}
+function stop(){
+  if (state === 'idle') return;
+  sid++;
+  if (synth) { try { synth.cancel(); } catch (e) {} }
+  if (aborter) { aborter.abort(); aborter = null; }
+  if (audio) audio.pause();
+  setState('idle'); idleCaption();
+}
+
+function play(){
+  if (state !== 'idle') { stop(); return; }
+  const text = S.script;
+  if (!text.trim()) { toast('The script is empty — type something to say.'); elScript.focus(); return; }
+  prepare(text);
+  if (S.engine === 'api') return playAPI(text);
+  playBrowser(text);
+}
+
+/* ---------- built-in engine ---------- */
+function playBrowser(text){
+  mode = 'browser';
+  const id = ++sid, ch = voiceOf(), vb = vibeOf(), sv = sysVoiceFor(ch);
+  const rate = clamp(S.rate * vb.r * ch.r, .5, 2.2), pitch = clamp(S.pitch * vb.p * ch.p, 0, 2);
+  silent = !synth || !sv;
+  t0 = performance.now(); chunkT0 = t0; sawBoundary = false; cps = 14.5 * rate; chunkIdx = 0;
+  setState('playing'); pos = words.length ? words[0].s : 0; curWord = -1; updateCaption();
+  if (silent){
+    toast('No speech voices found on this device — running a silent preview. Try the OpenAI engine for audio.', 4200);
+    return;
+  }
+  utterances = chunks.map((c, i) => {
+    const u = new SpeechSynthesisUtterance(c.text);
+    u.voice = sv; u.lang = sv.lang; u.rate = rate; u.pitch = pitch; u.volume = 1;
+    u.onstart = () => { if (id !== sid) return; chunkIdx = i; chunkT0 = performance.now(); sawBoundary = false; pos = Math.max(pos, c.start); };
+    u.onboundary = e => { if (id !== sid) return; if (e.name && e.name !== 'word') return; sawBoundary = true; pos = c.start + e.charIndex; };
+    u.onend = () => { if (id !== sid) return; if (i === chunks.length - 1) finish(id); };
+    u.onerror = e => { if (id !== sid) return;
+      if (e.error === 'interrupted' || e.error === 'canceled') return;
+      if (e.error === 'not-allowed') toast('Your browser blocked speech — click Play again.');
+      finish(id); };
+    return u;
+  });
+  const go = () => { if (id !== sid) return; utterances.forEach(u => synth.speak(u)); try { synth.resume(); } catch (e) {} };
+  if (synth.speaking || synth.pending){ synth.cancel(); setTimeout(go, 80); } else go();
+}
+let cps = 14.5, chunkIdx = 0;
+
+/* ---------- OpenAI engine ---------- */
+let audio = null, actx = null, analyser = null, freq = null, aborter = null, cache = null;
+const sigOf = () => JSON.stringify([voiceOf().api, S.instr, S.script]);
+async function generate(){
+  const sig = sigOf();
+  if (cache && cache.sig === sig) return cache;
+  aborter = new AbortController();
+  const payload = {model:'gpt-4o-mini-tts', voice:voiceOf().api, input:S.script, response_format:'mp3'};
+  if (S.instr.trim()) payload.instructions = S.instr;
+  const r = await fetch('https://api.openai.com/v1/audio/speech', {
+    method:'POST', signal: aborter.signal,
+    headers:{'Authorization':'Bearer ' + apiKey, 'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  });
+  if (!r.ok){
+    let msg = 'Request failed (' + r.status + ')';
+    try { const j = await r.json(); if (j.error && j.error.message) msg = j.error.message; } catch (e) {}
+    throw new Error(msg);
+  }
+  const blob = await r.blob();
+  if (cache) URL.revokeObjectURL(cache.url);
+  cache = {sig, blob, url: URL.createObjectURL(blob)};
+  return cache;
+}
+function needKey(){
+  if (apiKey) return false;
+  toast('Paste an OpenAI API key under Tuning to use this engine.');
+  S.engine = 'api'; sync(); setTimeout(() => $('#apikey').focus(), 260);
+  return true;
+}
+async function playAPI(){
+  if (needKey()) return;
+  mode = 'api';
+  const id = ++sid;
+  setState('loading');
+  elCaption.innerHTML = '<span class="in idle">Sending the script and direction to the model…<i class="cursor"></i></span>';
+  try {
+    const c = await generate();
+    if (id !== sid) return;
+    if (!audio){
+      audio = new Audio(); audio.preload = 'auto';
+      try {
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.smoothingTimeConstant = .72;
+        freq = new Uint8Array(analyser.frequencyBinCount);
+        actx.createMediaElementSource(audio).connect(analyser); analyser.connect(actx.destination);
+      } catch (e) { analyser = null; }
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+    audio.src = c.url; audio.playbackRate = S.rate; audio.preservesPitch = true;
+    audio.onended = () => finish(id);
+    audio.onerror = () => { if (id === sid){ toast('Could not play the returned audio.'); finish(id); } };
+    await audio.play();
+    if (id !== sid) { audio.pause(); return; }
+    t0 = performance.now(); setState('playing'); curWord = -1; pos = words.length ? words[0].s : 0; updateCaption();
+  } catch (e) {
+    if (id !== sid || e.name === 'AbortError') return;
+    sid++; setState('idle'); idleCaption();
+    toast(e.message && e.message.length < 180 ? e.message : 'The request failed — check your key and connection.', 5000);
+  }
+}
+
+/* ================= visualiser ================= */
+const cv = $('#viz'), cx = cv.getContext('2d');
+let W = 0, H = 0, amps = [], colors = {};
+function readColors(){
+  const cs = getComputedStyle(document.documentElement);
+  colors = {off: cs.getPropertyValue('--dot-off').trim(), idle: cs.getPropertyValue('--dot-idle').trim(), acc: cs.getPropertyValue('--acc').trim()};
+}
+function resize(){
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  cx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function fmt(ms){
+  const s = ms / 1000, m = Math.floor(s / 60);
+  return String(m).padStart(2, '0') + ':' + String(Math.floor(s % 60)).padStart(2, '0') + '.' + Math.floor((s * 10) % 10);
+}
+let lastT = 0;
+function frame(now){
+  requestAnimationFrame(frame);
+  if (cv.clientWidth !== W || cv.clientHeight !== H) resize();
+  const dt = Math.min(.05, (now - lastT) / 1000 || .016); lastT = now;
+  const t = now / 1000;
+
+  /* --- progress tracking --- */
+  if (state === 'playing'){
+    if (mode === 'api' && audio){
+      const d = audio.duration;
+      if (isFinite(d) && d > 0) pos = (audio.currentTime / d) * S.script.length;
+      $('#r-time').textContent = fmt(audio.currentTime * 1000);
+    } else {
+      $('#r-time').textContent = fmt(now - t0);
+      if (silent){
+        pos += cps * dt;
+        if (pos >= S.script.length) finish(sid);
+      } else if (!sawBoundary && now - chunkT0 > 350 && chunks[chunkIdx]){
+        const c = chunks[chunkIdx];
+        pos = Math.min(c.start + c.text.length - 1, Math.max(pos, c.start + (now - chunkT0 - 150) / 1000 * cps));
+      }
+    }
+    if (state === 'playing') updateCaption();
+  }
+
+  /* --- dot matrix --- */
+  const pitch = W < 560 ? 8 : 10, rad = pitch * .31;
+  const cols = Math.max(8, Math.floor((W - 24) / pitch)), rows = Math.max(5, Math.floor((H - 20) / pitch) | 1);
+  const rws = rows % 2 ? rows : rows - 1, mid = (rws - 1) / 2;
+  const ox = (W - (cols - 1) * pitch) / 2, oy = (H - (rws - 1) * pitch) / 2;
+  if (amps.length !== cols) amps = new Array(cols).fill(0);
+  const live = state === 'playing';
+  energy = live ? Math.max(.32, energy * Math.pow(.02, dt)) : energy * Math.pow(.001, dt);
+  const real = live && mode === 'api' && analyser;
+  if (real) analyser.getByteFrequencyData(freq);
+  for (let c = 0; c < cols; c++){
+    let target = 0; const x = c / (cols - 1);
+    if (real){
+      const half = Math.abs(x - .5) * 2;
+      const bin = Math.floor(2 + Math.pow(half, 1.6) * freq.length * .55);
+      target = Math.pow(freq[bin] / 255, 1.3) * 1.15;
+    } else if (energy > .01){
+      let env = .22;
+      for (const f of formants) env += Math.exp(-Math.pow((x - f) / .085, 2)) * .9;
+      const n = .5 + .5 * Math.sin(c * .9 + t * 13) * Math.sin(c * .37 - t * 7.3 + 1.7);
+      target = energy * Math.min(1, env) * (.3 + .7 * n);
+    }
+    amps[c] += (target - amps[c]) * (target > amps[c] ? .45 : .16);
+  }
+  cx.clearRect(0, 0, W, H);
+  const pOff = new Path2D(), pOn = new Path2D(), pIdle = new Path2D();
+  const scan = state === 'loading' ? ((t * .9) % 1.3 - .15) * cols : -99;
+  for (let c = 0; c < cols; c++){
+    const a = clamp(amps[c], 0, 1), h = a * (mid + .49);
+    const wave = Math.round(Math.sin(c * .22 - t * 1.6) * Math.min(1.6, mid) * (1 - Math.min(1, energy * 3)));
+    for (let r = 0; r < rws; r++){
+      const px = ox + c * pitch, py = oy + r * pitch, d = Math.abs(r - mid);
+      let p = pOff;
+      if (state === 'loading'){ if (Math.abs(c - scan) < 3 && d <= 1 + (3 - Math.abs(c - scan))) p = pOn; else if (d === 0) p = pIdle; }
+      else if (h >= .5 && d <= h) p = pOn;
+      else if (h < .5 && r - mid === wave) p = live ? pOn : pIdle;
+      p.moveTo(px + rad, py); p.arc(px, py, rad, 0, 6.2832);
+    }
+  }
+  cx.fillStyle = colors.off; cx.fill(pOff);
+  cx.fillStyle = colors.idle; cx.fill(pIdle);
+  cx.shadowColor = colors.acc; cx.shadowBlur = 9; cx.fillStyle = colors.acc; cx.fill(pOn); cx.shadowBlur = 0;
+}
+
+/* ================= share / persistence ================= */
+function encodeState(){
+  const o = {v:S.voice, b:S.vibe, i:S.instr, s:S.script, r:S.rate, p:S.pitch};
+  const bytes = new TextEncoder().encode(JSON.stringify(o)); let bin = '';
+  bytes.forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeState(h){
+  try {
+    const bin = atob(h.replace(/-/g, '+').replace(/_/g, '/'));
+    const o = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+    if (VOICES.some(v => v.id === o.v)) S.voice = o.v;
+    if (VIBES.some(v => v.id === o.b)) S.vibe = o.b;
+    if (typeof o.i === 'string') S.instr = o.i.slice(0, 999);
+    if (typeof o.s === 'string') { S.script = o.s.slice(0, 999); S.dirty = S.script !== vibeOf().script; }
+    if (+o.r) S.rate = clamp(+o.r, .5, 1.8);
+    if (+o.p) S.pitch = clamp(+o.p, .4, 1.6);
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ================= events ================= */
+$('#play').onclick = play;
+$('#rand-voice').onclick = () => {
+  let v; do { v = VOICES[Math.floor(Math.random() * VOICES.length)]; } while (v.id === S.voice);
+  S.voice = v.id; stop(); sync();
+};
+$('#shuffle').onclick = e => {
+  const btn = e.currentTarget; btn.classList.remove('spin'); void btn.offsetWidth; btn.classList.add('spin');
+  const rest = VIBES.filter(v => !shown.includes(v.id)).map(v => v.id).sort(() => Math.random() - .5);
+  const old = shown.slice().sort(() => Math.random() - .5);
+  shown = rest.concat(old).slice(0, 6);
+  renderVibes(true);
+};
+elInstr.oninput = () => { S.instr = elInstr.value; sync(); };
+elScript.oninput = () => { S.script = elScript.value; S.dirty = true; if (state !== 'idle') stop(); sync(); };
+$('#clear-script').onclick = () => { S.script = elScript.value = ''; S.dirty = false; stop(); sync(); elScript.focus(); };
+$('#reset-script').onclick = () => { S.script = elScript.value = vibeOf().script; S.dirty = false; stop(); sync(); };
+$('#rate').oninput = e => { S.rate = +e.target.value; if (audio) audio.playbackRate = S.rate; sync(); };
+$('#pitch').oninput = e => { S.pitch = +e.target.value; sync(); };
+$('#rate').ondblclick = () => { S.rate = 1; if (audio) audio.playbackRate = 1; sync(); };
+$('#pitch').ondblclick = () => { S.pitch = 1; sync(); };
+$('#rate').onchange = $('#pitch').onchange = () => { if (state === 'playing' && mode === 'browser'){ stop(); play(); } };
+$('#eng-browser').onclick = () => { S.engine = 'browser'; stop(); sync(); };
+$('#eng-api').onclick = () => { S.engine = 'api'; stop(); sync(); if (!apiKey) setTimeout(() => $('#apikey').focus(), 260); };
+$('#apikey').oninput = e => { apiKey = e.target.value.trim(); };
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  S.lang = b.dataset.lang;
+  document.querySelectorAll('.tabs button').forEach(x => x.setAttribute('aria-selected', x === b));
+  renderCode();
+});
+$('#copy-code').onclick = async e => {
+  const b = e.currentTarget; const ok = await copy(snippet(S.lang));
+  b.textContent = ok ? 'Copied' : 'Failed'; setTimeout(() => b.textContent = 'Copy', 1300);
+};
+$('#share').onclick = async () => {
+  const h = '#' + encodeState();
+  try { history.replaceState(null, '', h); } catch (e) { location.hash = h; }
+  const ok = await copy(location.href);
+  toast(ok ? 'Link copied — it restores this exact voice, vibe and script.' : 'Link is in the address bar, ready to copy.');
+};
+$('#download').onclick = async () => {
+  if (!S.script.trim()) return toast('The script is empty — nothing to download yet.');
+  if (S.engine !== 'api') return toast('Built-in browser voices can\'t be recorded. Switch the engine to OpenAI API to download an MP3.', 4200);
+  if (needKey()) return;
+  const b = $('#download'); const lbl = b.querySelector('.lbl'); const old = lbl.textContent;
+  try {
+    lbl.textContent = 'Rendering…'; b.disabled = true;
+    const c = await generate();
+    const a = document.createElement('a'); a.href = c.url;
+    a.download = `parlor-${voiceOf().id}-${vibeOf().id}.mp3`; document.body.appendChild(a); a.click(); a.remove();
+    toast('MP3 saved.');
+  } catch (e) { if (e.name !== 'AbortError') toast(e.message || 'Download failed.', 5000); }
+  finally { lbl.textContent = old; b.disabled = false; }
+};
+$('#theme').onclick = () => {
+  const d = document.documentElement, next = d.dataset.theme === 'dark' ? 'light' : 'dark';
+  d.dataset.theme = next; try { localStorage.setItem('parlor-theme', next); } catch (e) {}
+  readColors();
+};
+document.addEventListener('keydown', e => {
+  const tag = (e.target.tagName || '').toLowerCase(), typing = tag === 'textarea' || tag === 'input';
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter'){ e.preventDefault(); play(); }
+  else if (e.key === 'Escape'){ if (state !== 'idle') stop(); else if (typing) e.target.blur(); }
+  else if (e.key === ' ' && !typing && tag !== 'button' && !e.metaKey && !e.ctrlKey && !e.altKey){ e.preventDefault(); play(); }
+});
+window.addEventListener('beforeunload', () => { if (synth) try { synth.cancel(); } catch (e) {} });
+window.addEventListener('pagehide', () => { if (synth) try { synth.cancel(); } catch (e) {} });
+
+/* ================= init ================= */
+try {
+  const saved = localStorage.getItem('parlor-theme');
+  const theme = saved || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  document.documentElement.dataset.theme = theme;
+} catch (e) {}
+readColors();
+const restored = location.hash.length > 8 && decodeState(location.hash.slice(1));
+if (!restored){ const v = vibeOf(); S.instr = v.instr; S.script = v.script; }
+if (!shown.includes(S.vibe)) shown[5] = S.vibe;
+elInstr.value = S.instr; elScript.value = S.script;
+renderVoices(); renderVibes(); setState('idle'); sync();
+if (synth){
+  try { synth.cancel(); } catch (e) {}
+  loadVoices();
+  if (synth.addEventListener) synth.addEventListener('voiceschanged', loadVoices); else synth.onvoiceschanged = loadVoices;
+  setTimeout(() => { voicesReady = true; loadVoices(); }, 1500);
+} else { voicesReady = true; sync(); }
+resize(); requestAnimationFrame(frame);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (state === 'idle') idleCaption(); });
+})();
+</script>
+</body>
+</html>

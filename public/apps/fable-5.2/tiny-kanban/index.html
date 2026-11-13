@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tiny Kanban</title>
+<style>
+:root{
+  --bg:#f2f0ea; --panel:#e8e5dd; --card:#ffffff; --ink:#1a1920; --muted:#5b5866; --line:#d6d2c8;
+  --accent:#4338ca; --accent-ink:#ffffff; --shadow:0 1px 2px rgba(20,18,30,.08),0 4px 14px rgba(20,18,30,.06);
+  --high:#d42a1c; --med:#b85e00; --low:#0a7388; --ok:#15803d; --todo:#64748b;
+  --radius:14px;
+}
+html[data-theme=dark]{
+  --bg:#121117; --panel:#1b1a22; --card:#282732; --ink:#f4f2f8; --muted:#aca8bb; --line:#383645;
+  --accent:#9089ff; --accent-ink:#14131a; --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.3);
+  --high:#ff6f61; --med:#ffb14a; --low:#5fcde0; --ok:#4ade80; --todo:#94a3b8;
+}
+*{box-sizing:border-box}
+html{font-size:17px}
+@media (min-width:1500px){html{font-size:19px}}
+@media (min-width:2000px){html{font-size:22px}}
+body{margin:0;height:100dvh;display:flex;flex-direction:column;background:var(--bg);color:var(--ink);
+  font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  line-height:1.35;-webkit-font-smoothing:antialiased;overflow:hidden}
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none;padding:0}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+
+/* ---------- header ---------- */
+.top{display:flex;align-items:center;gap:14px;padding:14px 20px 10px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px;margin-right:auto}
+.logo{width:38px;height:38px;border-radius:11px;background:var(--accent);display:grid;grid-template-columns:repeat(3,6px);gap:3px;align-content:center;justify-content:center;align-items:start}
+.logo i{background:var(--accent-ink);border-radius:2px;width:6px}
+.logo i:nth-child(1){height:20px}.logo i:nth-child(2){height:13px}.logo i:nth-child(3){height:8px}
+.brand h1{font-size:1.4rem;margin:0;letter-spacing:-.02em;line-height:1.1}
+.brand small{display:block;color:var(--muted);font-size:.82rem;font-weight:500}
+.search{position:relative;flex:1 1 260px;max-width:440px}
+.search input{width:100%;height:46px;border-radius:12px;border:2px solid var(--line);background:var(--card);padding:0 76px 0 42px;font-size:1rem}
+.search input:focus{outline:none;border-color:var(--accent)}
+.search svg{position:absolute;left:13px;top:13px;width:20px;height:20px;color:var(--muted)}
+.search kbd,.search .clr{position:absolute;right:10px;top:10px;height:26px;min-width:26px;border-radius:7px;font-size:.78rem;display:grid;place-items:center;color:var(--muted)}
+.search kbd{border:1.5px solid var(--line);font-family:inherit;padding:0 7px}
+.search .clr{background:var(--panel);font-size:1rem;display:none}
+.search.has kbd{display:none}.search.has .clr{display:grid}
+.btn{height:46px;padding:0 16px;border-radius:12px;border:2px solid var(--line);background:var(--card);font-weight:600;display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.1)}
+.btn.sq{width:46px;padding:0;justify-content:center}
+.btn.danger{color:var(--high)}
+.btn svg{width:20px;height:20px}
+
+.filters{display:flex;align-items:center;gap:8px;padding:0 20px 12px;flex-wrap:wrap}
+.filters .lbl{font-size:.78rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-right:2px}
+.chip{height:38px;padding:0 13px 0 5px;border-radius:999px;border:2px solid var(--line);background:var(--card);display:inline-flex;align-items:center;gap:7px;font-weight:600;font-size:.92rem}
+.chip.plain{padding:0 14px}
+.chip:hover{border-color:var(--muted)}
+.chip[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.chip .n{font-size:.78rem;opacity:.7;font-variant-numeric:tabular-nums}
+.chip.pri{padding:0 13px;color:var(--p)}
+.chip.pri[aria-pressed=true]{background:var(--p);border-color:var(--p);color:var(--card)}
+.sep{width:2px;height:24px;background:var(--line);margin:0 6px;border-radius:2px}
+.fstat{margin-left:auto;color:var(--muted);font-size:.9rem;font-weight:500;display:flex;align-items:center;gap:10px}
+.fstat button{color:var(--accent);font-weight:700;text-decoration:underline;text-underline-offset:3px}
+.av{width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;font-size:.66rem;font-weight:800;color:#fff;background:var(--h,#777);flex:none;letter-spacing:.02em}
+.av.none{background:transparent;border:2px dashed var(--muted);color:var(--muted)}
+.av.lg{width:52px;height:52px;font-size:1.15rem}
+
+/* ---------- standup banner ---------- */
+.standup{margin:0 20px 12px;padding:12px 16px;border-radius:var(--radius);background:var(--ink);color:var(--bg);display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.standup[hidden]{display:none}
+.standup .who-name{font-size:1.5rem;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.standup .sub{font-size:.9rem;opacity:.75;font-weight:500}
+.standup .timer{margin-left:auto;font-size:1.7rem;font-weight:800;font-variant-numeric:tabular-nums}
+.standup .timer.long{color:#ffb14a}
+.standup .btn{background:transparent;color:inherit;border-color:color-mix(in srgb,var(--bg) 35%,transparent);height:42px}
+.standup .btn.primary{background:var(--bg);color:var(--ink);border-color:var(--bg)}
+.dots{display:flex;gap:5px}
+.dots i{width:9px;height:9px;border-radius:50%;background:color-mix(in srgb,var(--bg) 30%,transparent)}
+.dots i.on{background:var(--bg)}
+
+/* ---------- board ---------- */
+.board{flex:1;min-height:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:0 20px 20px}
+.col{--c:var(--todo);display:flex;flex-direction:column;min-height:0;background:var(--panel);border-radius:18px;border:2px solid transparent;transition:border-color .15s,background .15s}
+.col[data-col=doing]{--c:var(--accent)} .col[data-col=done]{--c:var(--ok)}
+.col[data-state=over]{border-color:var(--high)}
+.col.drop-target{border-color:var(--c);background:color-mix(in srgb,var(--c) 9%,var(--panel))}
+.col.blocked{border-color:var(--high);background:color-mix(in srgb,var(--high) 10%,var(--panel))}
+.col-head{padding:14px 14px 8px}
+.col-title{display:flex;align-items:center;gap:10px}
+.col-title .dot{width:13px;height:13px;border-radius:4px;background:var(--c)}
+.col-title h2{margin:0;font-size:1.3rem;letter-spacing:-.01em;margin-right:auto}
+.wip{height:34px;padding:0 12px;border-radius:999px;background:var(--card);border:2px solid var(--line);font-weight:800;font-size:1rem;font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;gap:5px}
+.wip span{font-weight:600;color:var(--muted);font-size:.86rem}
+.wip:hover{border-color:var(--muted)}
+.col[data-state=full] .wip{background:var(--med);border-color:var(--med);color:var(--card)}
+.col[data-state=over] .wip{background:var(--high);border-color:var(--high);color:var(--card)}
+.col[data-state=full] .wip span,.col[data-state=over] .wip span{color:inherit;opacity:.85}
+.ibtn{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:var(--muted);font-size:1.3rem;font-weight:600}
+.ibtn:hover{background:var(--card);color:var(--ink)}
+.txtbtn{font-size:.82rem;font-weight:700;color:var(--muted);padding:6px 8px;border-radius:8px}
+.txtbtn:hover{background:var(--card);color:var(--ink)}
+.meter{height:5px;border-radius:5px;background:color-mix(in srgb,var(--ink) 10%,transparent);margin-top:11px;overflow:hidden}
+.meter i{display:block;height:100%;border-radius:5px;background:var(--c);transition:width .25s}
+.col[data-state=full] .meter i{background:var(--med)} .col[data-state=over] .meter i{background:var(--high)}
+.warn{margin-top:8px;font-size:.86rem;font-weight:700;display:flex;gap:6px;align-items:center}
+.col[data-state=over] .warn{color:var(--high)} .col[data-state=full] .warn{color:var(--med)}
+.shown{margin-top:8px;font-size:.82rem;color:var(--muted);font-weight:600}
+.limit-ed{margin-top:10px;display:flex;align-items:center;gap:6px;background:var(--card);border-radius:12px;padding:6px 8px;font-size:.88rem;font-weight:700;flex-wrap:wrap}
+.limit-ed span{margin-right:auto;padding-left:4px}
+.limit-ed b{min-width:34px;text-align:center;font-size:1.1rem}
+.limit-ed button{height:34px;min-width:34px;padding:0 9px;border-radius:9px;background:var(--panel);font-weight:800}
+.limit-ed button:hover{background:var(--line)}
+.list{flex:1;min-height:60px;overflow-y:auto;padding:6px 12px 6px;display:flex;flex-direction:column;gap:10px;position:relative;scrollbar-width:thin}
+.empty{flex:1;display:grid;place-items:center;text-align:center;color:var(--muted);font-size:.95rem;font-weight:500;border:2px dashed var(--line);border-radius:var(--radius);padding:22px 12px;min-height:90px}
+.list:has(.card) .empty{display:none}
+.add-row{margin:6px 12px 12px;height:44px;border-radius:12px;color:var(--muted);font-weight:700;text-align:left;padding:0 12px;border:2px dashed transparent}
+.add-row:hover{background:var(--card);color:var(--ink);border-color:var(--line)}
+
+/* ---------- cards ---------- */
+.card{--p:var(--low);position:relative;flex:none;background:var(--card);border-radius:var(--radius);padding:13px 14px 12px 20px;box-shadow:var(--shadow);cursor:grab;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;border:2px solid transparent}
+.card.p-high{--p:var(--high)} .card.p-med{--p:var(--med)}
+.card::before{content:"";position:absolute;left:6px;top:10px;bottom:10px;width:6px;border-radius:6px;background:var(--p)}
+.card:hover{border-color:var(--line)}
+.card:focus-visible{outline-offset:1px;border-radius:var(--radius)}
+.card h3{margin:0 30px 0 0;font-size:1.12rem;font-weight:650;line-height:1.28;letter-spacing:-.005em;overflow-wrap:anywhere}
+.card .note{margin:5px 0 0;color:var(--muted);font-size:.9rem;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.col[data-col=done] .card h3{color:var(--muted)}
+.col[data-col=done] .card::before{opacity:.5}
+mark{background:#ffe066;color:#1a1920;border-radius:3px;padding:0 1px}
+.card footer{display:flex;align-items:center;gap:8px;margin-top:11px;flex-wrap:wrap}
+.pill{height:28px;padding:0 10px;border-radius:8px;font-size:.8rem;font-weight:800;color:var(--p);background:color-mix(in srgb,var(--p) 14%,transparent);display:inline-flex;align-items:center;gap:5px;letter-spacing:.01em}
+.pill:hover{background:color-mix(in srgb,var(--p) 24%,transparent)}
+.pill i{font-style:normal;font-size:.68rem}
+.age{font-size:.8rem;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.age.stale{color:var(--med);font-weight:800}
+.who{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-size:.9rem;font-weight:650;border-radius:999px;padding:2px 9px 2px 2px;max-width:60%}
+.who span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who:hover{background:var(--panel)}
+.who.un{color:var(--muted);font-weight:500}
+.del{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:var(--muted);opacity:0;transition:opacity .12s}
+.del svg{width:18px;height:18px}
+.card:hover .del,.card:focus-within .del,.card:focus .del{opacity:1}
+.del:hover{background:color-mix(in srgb,var(--high) 14%,transparent);color:var(--high)}
+@media (hover:none){.del{opacity:.55}}
+.card.placeholder{box-shadow:none;background:transparent;border:2px dashed var(--c,var(--accent))}
+.card.placeholder>*{visibility:hidden}.card.placeholder::before{display:none}
+.ghost{position:fixed;left:0;top:0;z-index:1000;pointer-events:none;margin:0;cursor:grabbing;box-shadow:0 18px 44px rgba(10,8,30,.3);border-color:var(--accent)!important;will-change:transform}
+body.dragging,body.dragging *{cursor:grabbing!important}
+body.dragging .board{scroll-snap-type:none}
+
+/* ---------- menu, toast, dialogs ---------- */
+.menu{position:fixed;z-index:1200;min-width:210px;background:var(--card);border:2px solid var(--line);border-radius:14px;padding:6px;box-shadow:0 14px 40px rgba(10,8,30,.22)}
+.menu button{display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;border-radius:9px;font-weight:600;font-size:.95rem;text-align:left}
+.menu button:hover,.menu button:focus-visible{background:var(--panel);outline:none}
+.menu button .ck{margin-left:auto;color:var(--accent);font-weight:900}
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1300;background:var(--ink);color:var(--bg);border-radius:14px;padding:12px 16px;display:flex;align-items:center;gap:14px;font-weight:600;box-shadow:0 12px 34px rgba(0,0,0,.3);max-width:calc(100vw - 24px);animation:pop .2s ease}
+.toast button{font-weight:800;text-decoration:underline;text-underline-offset:3px;color:inherit;white-space:nowrap}
+@keyframes pop{from{opacity:0;transform:translate(-50%,10px)}}
+dialog{border:0;border-radius:20px;background:var(--card);color:var(--ink);padding:0;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 24px);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(15,13,25,.5);backdrop-filter:blur(3px)}
+dialog form,dialog .inner{padding:22px;display:flex;flex-direction:column;gap:15px}
+dialog h2{margin:0;font-size:1.35rem;letter-spacing:-.015em}
+dialog label.f,dialog legend{font-size:.78rem;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+dialog label.f{display:flex;flex-direction:column;gap:6px}
+dialog input[type=text],dialog textarea{border:2px solid var(--line);border-radius:11px;background:var(--bg);padding:10px 12px;font-size:1.02rem;text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink);width:100%;resize:vertical}
+dialog input[type=text]:focus,dialog textarea:focus{outline:none;border-color:var(--accent)}
+fieldset{border:0;padding:0;margin:0;min-width:0}
+legend{padding:0;margin-bottom:6px}
+.seg{display:flex;gap:7px;flex-wrap:wrap}
+.opt{position:relative}
+.opt input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.opt span{height:40px;padding:0 13px;border-radius:11px;border:2px solid var(--line);display:inline-flex;align-items:center;gap:7px;font-weight:650;font-size:.94rem;color:var(--p,var(--ink))}
+.opt.hasav span{padding-left:6px;border-radius:999px}
+.opt input:checked+span{background:var(--p,var(--ink));border-color:var(--p,var(--ink));color:var(--card)}
+.opt input:focus-visible+span{outline:3px solid var(--accent);outline-offset:2px}
+.actions{display:flex;gap:9px;align-items:center;margin-top:4px}
+.actions .grow{flex:1}
+.hint{font-size:.8rem;color:var(--muted)}
+.team-row{display:flex;align-items:center;gap:9px}
+.team-row input{flex:1}
+.team-row .cnt{font-size:.82rem;color:var(--muted);white-space:nowrap;font-weight:600}
+.switch{display:flex;align-items:center;gap:12px;font-weight:600;cursor:pointer}
+.switch input{width:22px;height:22px;accent-color:var(--accent)}
+.switch small{display:block;color:var(--muted);font-weight:500}
+hr{border:0;border-top:2px solid var(--line);margin:2px 0;width:100%}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:.88rem;color:var(--muted)}
+.keys kbd{font-family:inherit;font-weight:700;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:6px;padding:0 6px;font-size:.8rem}
+
+@media (max-width:860px){
+  html{font-size:16px}
+  .top{padding:12px 12px 8px;gap:8px}.filters{padding:0 12px 10px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .filters>*{flex:none}
+  .standup{margin:0 12px 10px}
+  .board{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;padding:0 12px 12px;gap:12px}
+  .col{flex:0 0 86vw;scroll-snap-align:center}
+  .btn .t{display:none}.btn.hasicon{width:46px;padding:0;justify-content:center}
+  .search{order:5;flex-basis:100%;max-width:none}
+  .search kbd{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <div class="logo" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div><h1>Tiny Kanban</h1><small id="today"></small></div>
+  </div>
+  <div class="search" id="searchBox">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
+    <label class="sr" for="q">Search cards</label>
+    <input id="q" type="search" placeholder="Search cards, people, priority…" autocomplete="off">
+    <kbd>/</kbd><button class="clr" id="qClear" aria-label="Clear search">×</button>
+  </div>
+  <button class="btn hasicon" id="standupBtn" title="Walk the board person by person">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9 2h6"/></svg><span class="t">Standup</span></button>
+  <button class="btn hasicon" id="teamBtn" title="Team &amp; settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.2-5.5 6.5-5.500s5.900 1.900 6.500 5.500M16 4.800a3.500 3.500 0 0 1 0 6.400M18.500 14.800c1.700.8 2.700 2.500 3 5.200"/></svg><span class="t">Team</span></button>
+  <button class="btn sq" id="themeBtn" title="Toggle light / dark" aria-label="Toggle theme">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 14.500A8 8 0 0 1 9.500 4a8 8 0 1 0 10.500 10.500z"/></svg></button>
+  <button class="btn primary" id="newBtn" title="New card (N)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span class="t">New card</span></button>
+</header>
+<nav class="filters" id="filters" aria-label="Filters"></nav>
+<div class="standup" id="standup" hidden aria-live="polite"></div>
+<main class="board" id="board"></main>
+
+<dialog id="cardDlg" aria-labelledby="dlgTitle">
+  <form id="cardForm" novalidate>
+    <h2 id="dlgTitle">New card</h2>
+    <label class="f">Title<input type="text" name="title" maxlength="140" placeholder="What needs doing?" autocomplete="off"></label>
+    <label class="f">Notes<textarea name="note" rows="3" placeholder="Optional details, links, blockers…"></textarea></label>
+    <fieldset><legend>Priority</legend><div class="seg" id="fPri"></div></fieldset>
+    <fieldset><legend>Assigned to</legend><div class="seg" id="fWho"></div></fieldset>
+    <fieldset><legend>Column</legend><div class="seg" id="fCol"></div></fieldset>
+    <div class="actions">
+      <button type="button" class="btn danger" id="dlgDel">Delete</button>
+      <span class="grow"></span>
+      <button type="button" class="btn" id="dlgCancel">Cancel</button>
+      <button type="submit" class="btn primary">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="teamDlg" aria-labelledby="teamTitle">
+  <div class="inner">
+    <h2 id="teamTitle">Team &amp; settings</h2>
+    <div id="teamList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <form class="team-row" id="addPerson">
+      <input type="text" name="name" placeholder="Add a teammate…" maxlength="40" autocomplete="off" aria-label="New teammate name">
+      <button class="btn primary" type="submit">Add</button>
+    </form>
+    <hr>
+    <label class="switch"><input type="checkbox" id="strict"><span>Strict WIP limits<small>Block moves into a column that is already full.</small></span></label>
+    <hr>
+    <div class="keys">
+      <kbd>N</kbd><span>New card</span>
+      <kbd>/</kbd><span>Search</span>
+      <kbd>Shift + ← → ↑ ↓</kbd><span>Move the focused card</span>
+      <kbd>Enter</kbd><span>Open the focused card · <kbd>Del</kbd> delete it</span>
+      <kbd>Ctrl/⌘ + Z</kbd><span>Undo</span>
+    </div>
+    <div class="actions">
+      <button type="button" class="btn danger" id="resetBtn">Reset demo board</button>
+      <span class="grow"></span>
+      <button type="button" class="btn primary" id="teamClose">Done</button>
+    </div>
+  </div>
+</dialog>
+
+<script>
+(() => {
+'use strict';
+const KEY = 'tiny-kanban-v1';
+const DAY = 864e5;
+const PRI = { high:{label:'High',icon:'▲'}, med:{label:'Medium',icon:'◆'}, low:{label:'Low',icon:'▼'} };
+const HUES = ['#4f46e5','#c2410c','#0f766e','#be185d','#6d28d9','#1d4ed8','#a16207','#15803d','#b91c1c','#0e7490'];
+const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+const board = $('#board'), filtersEl = $('#filters'), qEl = $('#q'), standupEl = $('#standup');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+/* ---------- state ---------- */
+function seed() {
+  const now = Date.now();
+  const people = ['Maya Chen','Diego Ruiz','Priya Nair','Tom Becker'].map((name,i) => ({id:'p'+i, name, color:HUES[i]}));
+  const cards = {}, cols = {todo:[], doing:[], done:[]};
+  const add = (col,title,priority,who,days,note='') => { const id = uid(); cards[id] = {id,title,note,priority,assignee:who,created:now-(days+2)*DAY,movedAt:now-days*DAY}; cols[col].push(id); };
+  add('todo','Rate-limit the public API','high','p1',1,'Burst of 429s reported by two customers last week.');
+  add('todo','Write onboarding email copy','med','p2',2);
+  add('todo','Upgrade CI runners to Node 22','low','p3',4);
+  add('todo','Customer interview: Acme Corp','med',null,0,'Needs an owner — who can take this?');
+  add('doing','Fix checkout crash on Safari','high','p0',1,'Repro: apply a promo code, then go back.');
+  add('doing','Dashboard loading skeletons','med','p2',4,'Waiting on final spacing from design.');
+  add('doing','Migrate billing webhooks','high','p1',2);
+  add('doing','Dark mode polish pass','low','p3',0);
+  add('done','Set up error monitoring','med','p0',1);
+  add('done','Sprint retro notes','low','p2',2);
+  add('done','Patch login redirect loop','high','p1',3);
+  return { cards, people,
+    columns:[{id:'todo',name:'Todo',limit:0,cardIds:cols.todo},{id:'doing',name:'Doing',limit:3,cardIds:cols.doing},{id:'done',name:'Done',limit:0,cardIds:cols.done}],
+    settings:{ theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light', strict:false } };
+}
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.columns && s.columns.length === 3 && s.cards && s.people) { s.settings = s.settings || {theme:'light',strict:false}; return s; } } catch (e) {}
+  return null;
+}
+let state = load() || seed();
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} };
+const ui = { q:'', person:null, pri:new Set(), editLimit:null, standup:null };
+const undoStack = [];
+const snap = () => JSON.stringify({cards:state.cards, columns:state.columns, people:state.people});
+function commit(fn) { undoStack.push(snap()); if (undoStack.length > 60) undoStack.shift(); fn(); save(); render(); }
+function undo() {
+  if (!undoStack.length) return toast('Nothing to undo');
+  Object.assign(state, JSON.parse(undoStack.pop())); save(); render(); toast('Undone');
+}
+const col = id => state.columns.find(c => c.id === id);
+const colOf = cardId => state.columns.find(c => c.cardIds.includes(cardId));
+const person = id => state.people.find(p => p.id === id);
+const initials = n => n.trim().split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase() || '?';
+const first = n => n.trim().split(/\s+/)[0];
+const avatar = (p, cls='') => p ? `<span class="av ${cls}" style="--h:${p.color}">${esc(initials(p.name))}</span>` : `<span class="av none ${cls}">?</span>`;
+const isFull = (c, movingId) => c.limit > 0 && c.cardIds.filter(i => i !== movingId).length >= c.limit;
+
+/* ---------- filtering ---------- */
+const tokens = () => ui.q.toLowerCase().split(/\s+/).filter(Boolean);
+function matches(card) {
+  if (ui.person === 'none' ? card.assignee : (ui.person && card.assignee !== ui.person)) return false;
+  if (ui.pri.size && !ui.pri.has(card.priority)) return false;
+  const t = tokens(); if (!t.length) return true;
+  const p = person(card.assignee);
+  const hay = [card.title, card.note, p ? p.name : 'unassigned', PRI[card.priority].label, card.priority].join(' ').toLowerCase();
+  return t.every(x => hay.includes(x));
+}
+const filtering = () => !!(ui.q.trim() || ui.person || ui.pri.size);
+function hl(text) {
+  const t = tokens(); if (!t.length) return esc(text);
+  const low = text.toLowerCase(); const marks = new Array(text.length).fill(false);
+  t.forEach(x => { let i = -1; while ((i = low.indexOf(x, i + 1)) !== -1) for (let k = i; k < i + x.length; k++) marks[k] = true; });
+  let out = '', buf = '', on = false;
+  const flush = () => { if (buf) out += on ? `<mark>${esc(buf)}</mark>` : esc(buf); buf = ''; };
+  for (let i = 0; i < text.length; i++) { if (marks[i] !== on) { flush(); on = marks[i]; } buf += text[i]; }
+  flush(); return out;
+}
+
+/* ---------- render ---------- */
+const TRASH = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+function cardHTML(card, c) {
+  const p = person(card.assignee), pr = PRI[card.priority];
+  const days = Math.floor((Date.now() - card.movedAt) / DAY);
+  const stale = c.id === 'doing' && days >= 3;
+  const age = stale ? `⚠ ${days}d in ${esc(c.name)}` : days < 1 ? 'today' : days + 'd';
+  return `<article class="card p-${card.priority}" data-id="${card.id}" data-fk="card-${card.id}" tabindex="0" aria-label="${esc(card.title)}, ${pr.label} priority, ${p ? esc(p.name) : 'unassigned'}, in ${esc(c.name)}">
+    <button class="del" data-act="del" aria-label="Delete card" title="Delete">${TRASH}</button>
+    <h3>${hl(card.title)}</h3>${card.note ? `<p class="note">${hl(card.note)}</p>` : ''}
+    <footer>
+      <button class="pill" data-act="pri" title="Change priority"><i>${pr.icon}</i>${pr.label}</button>
+      <span class="age${stale ? ' stale' : ''}" title="In ${esc(c.name)} for ${days} day${days === 1 ? '' : 's'}">${age}</span>
+      <button class="who${p ? '' : ' un'}" data-act="who" title="Assign">${avatar(p)}<span>${p ? esc(first(p.name)) : 'Assign'}</span></button>
+    </footer></article>`;
+}
+function colHTML(c) {
+  const n = c.cardIds.length, vis = c.cardIds.filter(id => matches(state.cards[id]));
+  const st = c.limit ? (n > c.limit ? 'over' : n === c.limit ? 'full' : 'ok') : 'ok';
+  const f = filtering();
+  const empty = f && n ? 'No matching cards' : c.id === 'done' ? 'Nothing finished yet' : c.id === 'doing' ? 'Nothing in progress — drag a card here' : 'All clear. Add a card to get started';
+  return `<section class="col" data-col="${c.id}" data-state="${st}" aria-label="${esc(c.name)}">
+    <header class="col-head">
+      <div class="col-title"><span class="dot"></span><h2>${esc(c.name)}</h2>
+        ${c.id === 'done' && n ? `<button class="txtbtn" data-act="clear" title="Remove all done cards">Clear</button>` : ''}
+        <button class="wip" data-act="limit" data-fk="wip-${c.id}" title="${c.limit ? 'WIP limit ' + c.limit + ' — click to change' : 'Set a WIP limit'}" aria-label="${n} cards${c.limit ? ', limit ' + c.limit : ', no limit'}. Change limit">${n}${c.limit ? `<span>/ ${c.limit}</span>` : ''}</button>
+        <button class="ibtn" data-act="add" aria-label="Add card to ${esc(c.name)}" title="Add card">+</button></div>
+      ${c.limit ? `<div class="meter"><i style="width:${Math.min(100, n / c.limit * 100)}%"></i></div>` : ''}
+      ${ui.editLimit === c.id ? `<div class="limit-ed"><span>WIP limit</span><button data-act="lim-dec" data-fk="ld-${c.id}" aria-label="Decrease limit">−</button><b>${c.limit || '∞'}</b><button data-act="lim-inc" data-fk="li-${c.id}" aria-label="Increase limit">+</button><button data-act="lim-none" data-fk="ln-${c.id}">None</button><button data-act="limit" data-fk="lx-${c.id}">Done</button></div>` : ''}
+      ${st === 'over' ? `<div class="warn">⚠ Over WIP limit by ${n - c.limit} — finish before starting more</div>` : st === 'full' ? `<div class="warn">● At WIP limit</div>` : ''}
+      ${f && n ? `<div class="shown">Showing ${vis.length} of ${n}</div>` : ''}
+    </header>
+    <div class="list" data-list="${c.id}">${vis.map(id => cardHTML(state.cards[id], c)).join('')}<div class="empty">${empty}</div></div>
+    <button class="add-row" data-act="add">+ Add card</button>
+  </section>`;
+}
+let firstRender = true;
+function render() {
+  const prev = new Map(); board.querySelectorAll('.card').forEach(c => prev.set(c.dataset.id, c.getBoundingClientRect()));
+  const scroll = {}; board.querySelectorAll('.list').forEach(l => scroll[l.dataset.list] = l.scrollTop);
+  const sl = board.scrollLeft, fk = document.activeElement && board.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
+  board.innerHTML = state.columns.map(colHTML).join('');
+  board.querySelectorAll('.list').forEach(l => l.scrollTop = scroll[l.dataset.list] || 0);
+  board.scrollLeft = sl;
+  if (fk) { const el = board.querySelector(`[data-fk="${fk}"]`); if (el) el.focus({preventScroll:true}); }
+  if (!RM) board.querySelectorAll('.card').forEach(c => {
+    const p = prev.get(c.dataset.id), r = c.getBoundingClientRect();
+    if (p) { const dx = p.left - r.left, dy = p.top - r.top; if (dx || dy) c.animate([{transform:`translate(${dx}px,${dy}px)`},{transform:'none'}], {duration:240, easing:'cubic-bezier(.2,.8,.2,1)'}); }
+    else if (!firstRender) c.animate([{opacity:0, transform:'scale(.94)'},{opacity:1, transform:'none'}], {duration:200, easing:'ease-out'});
+  });
+  firstRender = false;
+  renderFilters(); renderStandup();
+}
+function renderFilters() {
+  const all = Object.values(state.cards), doneIds = new Set(col('done').cardIds);
+  const open = pid => all.filter(c => (c.assignee || null) === pid && !doneIds.has(c.id)).length;
+  const shown = all.filter(matches).length, un = all.filter(c => !c.assignee).length;
+  let h = `<span class="lbl">Who</span><button class="chip plain" data-person="" aria-pressed="${!ui.person}">Everyone</button>`;
+  h += state.people.map(p => `<button class="chip" data-person="${p.id}" aria-pressed="${ui.person === p.id}" title="${esc(p.name)} — ${open(p.id)} open">${avatar(p)}${esc(first(p.name))}<span class="n">${open(p.id)}</span></button>`).join('');
+  if (un || ui.person === 'none') h += `<button class="chip" data-person="none" aria-pressed="${ui.person === 'none'}">${avatar(null)}Unassigned<span class="n">${open(null)}</span></button>`;
+  h += `<span class="sep"></span><span class="lbl">Priority</span>` + Object.keys(PRI).map(k => `<button class="chip pri" style="--p:var(--${k})" data-pri="${k}" aria-pressed="${ui.pri.has(k)}">${PRI[k].icon} ${PRI[k].label}</button>`).join('');
+  h += `<span class="fstat">${filtering() ? `Showing ${shown} of ${all.length} <button data-clear>Clear filters</button>` : `${all.length} cards · ${col('doing').cardIds.length} in progress · ${doneIds.size} done`}</span>`;
+  filtersEl.innerHTML = h;
+  $('#searchBox').classList.toggle('has', !!ui.q);
+}
+
+/* ---------- mutations ---------- */
+function moveCard(id, toId, index) {
+  const from = colOf(id), to = col(toId);
+  if (state.settings.strict && from !== to && isFull(to, id)) { toast(`${to.name} is full (limit ${to.limit}). Finish something first.`); return false; }
+  const cur = from.cardIds.indexOf(id);
+  if (from === to && (index === cur || index === undefined)) return false;
+  commit(() => {
+    from.cardIds.splice(cur, 1);
+    if (index === undefined || index > to.cardIds.length) index = to.cardIds.length;
+    to.cardIds.splice(index, 0, id);
+    if (from !== to) state.cards[id].movedAt = Date.now();
+  });
+  if (from !== to && to.limit && to.cardIds.length > to.limit) toast(`${to.name} is over its WIP limit (${to.cardIds.length}/${to.limit})`, true);
+  return true;
+}
+function deleteCard(id) {
+  const t = state.cards[id].title;
+  commit(() => { const c = colOf(id); c.cardIds.splice(c.cardIds.indexOf(id), 1); delete state.cards[id]; });
+  toast(`Deleted “${t.length > 36 ? t.slice(0, 35) + '…' : t}”`, true);
+}
+
+/* ---------- board clicks ---------- */
+let justDragged = false;
+board.addEventListener('click', e => {
+  if (justDragged) return;
+  const actEl = e.target.closest('[data-act]'), colEl = e.target.closest('.col'), cardEl = e.target.closest('.card');
+  if (!colEl) return;
+  const c = col(colEl.dataset.col), id = cardEl && cardEl.dataset.id;
+  if (!actEl) { if (id) openCard(id); return; }
+  const act = actEl.dataset.act;
+  if (act === 'add') openCard(null, c.id);
+  else if (act === 'del') deleteCard(id);
+  else if (act === 'clear') { const n = c.cardIds.length; commit(() => { c.cardIds.forEach(i => delete state.cards[i]); c.cardIds = []; }); toast(`Cleared ${n} done card${n === 1 ? '' : 's'}`, true); }
+  else if (act === 'limit') { ui.editLimit = ui.editLimit === c.id ? null : c.id; render(); const b = board.querySelector(`[data-fk="${ui.editLimit ? 'li-' : 'wip-'}${c.id}"]`); if (b) b.focus(); }
+  else if (act === 'lim-inc') commit(() => c.limit = Math.min(99, c.limit + 1));
+  else if (act === 'lim-dec') commit(() => c.limit = Math.max(0, c.limit - 1));
+  else if (act === 'lim-none') commit(() => c.limit = 0);
+  else if (act === 'pri') openMenu(actEl, Object.keys(PRI).map(k => ({value:k, html:`<span style="color:var(--${k});font-weight:800">${PRI[k].icon} ${PRI[k].label}</span>`, active:state.cards[id].priority === k})), v => commit(() => state.cards[id].priority = v));
+  else if (act === 'who') openMenu(actEl, [...state.people.map(p => ({value:p.id, html:avatar(p) + esc(p.name), active:state.cards[id].assignee === p.id})), {value:null, html:avatar(null) + 'Unassigned', active:!state.cards[id].assignee}], v => commit(() => state.cards[id].assignee = v));
+});
+board.addEventListener('keydown', e => {
+  const cardEl = e.target.closest('.card'); if (!cardEl || e.target !== cardEl) return;
+  const id = cardEl.dataset.id, c = colOf(id), ci = state.columns.indexOf(c), i = c.cardIds.indexOf(id);
+  if (e.key === 'Enter') { e.preventDefault(); openCard(id); }
+  else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); const next = cardEl.nextElementSibling; deleteCard(id); const n = next && next.dataset.id && board.querySelector(`[data-id="${next.dataset.id}"]`); if (n) n.focus(); }
+  else if (e.shiftKey && e.key.startsWith('Arrow')) {
+    e.preventDefault();
+    if (e.key === 'ArrowLeft' && ci > 0) moveCard(id, state.columns[ci - 1].id, 0);
+    else if (e.key === 'ArrowRight' && ci < 2) moveCard(id, state.columns[ci + 1].id, 0);
+    else if (e.key === 'ArrowUp' && i > 0) moveCard(id, c.id, i - 1);
+    else if (e.key === 'ArrowDown' && i < c.cardIds.length - 1) moveCard(id, c.id, i + 1);
+    const el = board.querySelector(`[data-id="${id}"]`); if (el) { el.focus(); el.scrollIntoView({block:'nearest', inline:'nearest'}); }
+  } else if (!e.shiftKey && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    const sib = e.key === 'ArrowDown' ? cardEl.nextElementSibling : cardEl.previousElementSibling;
+    if (sib && sib.classList.contains('card')) { e.preventDefault(); sib.focus(); }
+  }
+});
+
+/* ---------- drag & drop (pointer events: mouse, pen, touch) ---------- */
+let pending = null, drag = null;
+board.addEventListener('pointerdown', e => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const card = e.target.closest('.card'); if (!card || e.target.closest('button') || drag) return;
+  const p = pending = {x:e.clientX, y:e.clientY, card, touch:e.pointerType === 'touch', armed:e.pointerType !== 'touch'};
+  if (p.touch) p.timer = setTimeout(() => { if (pending === p) { p.armed = true; beginDrag(p, p.x, p.y); if (navigator.vibrate) navigator.vibrate(12); } }, 240);
+});
+addEventListener('pointermove', e => {
+  if (drag) { drag.x = e.clientX; drag.y = e.clientY; moveDrag(); return; }
+  if (!pending) return;
+  const d = Math.hypot(e.clientX - pending.x, e.clientY - pending.y);
+  if (!pending.armed) { if (d > 9) cancelPending(); }
+  else if (d > 5) beginDrag(pending, e.clientX, e.clientY);
+});
+addEventListener('pointerup', () => { if (drag) endDrag(false); cancelPending(); });
+addEventListener('pointercancel', () => { if (drag) endDrag(true); cancelPending(); });
+document.addEventListener('touchmove', e => { if (drag) e.preventDefault(); }, {passive:false});
+addEventListener('contextmenu', e => { if (drag || (pending && pending.touch)) e.preventDefault(); });
+function cancelPending() { if (pending) clearTimeout(pending.timer); pending = null; }
+function beginDrag(p, x, y) {
+  if (!p.card.isConnected) return cancelPending();
+  closeMenu();
+  const r = p.card.getBoundingClientRect(), ghost = p.card.cloneNode(true);
+  ghost.classList.add('ghost'); ghost.removeAttribute('tabindex'); ghost.style.width = r.width + 'px'; ghost.style.height = r.height + 'px';
+  document.body.append(ghost);
+  p.card.classList.add('placeholder'); document.body.classList.add('dragging');
+  drag = {id:p.card.dataset.id, card:p.card, ghost, ox:p.x - r.left, oy:p.y - r.top, x, y, from:colOf(p.card.dataset.id).id};
+  pending = null; moveDrag(); drag.raf = requestAnimationFrame(autoScroll);
+}
+function ghostT(rot) { return `translate(${drag.x - drag.ox}px,${drag.y - drag.oy}px) rotate(${rot}deg)`; }
+function moveDrag() {
+  drag.ghost.style.transform = ghostT(2.5);
+  const cols = [...board.querySelectorAll('.col')];
+  let target = null, best = Infinity;
+  cols.forEach(c => { const r = c.getBoundingClientRect(); const d = drag.x < r.left ? r.left - drag.x : drag.x > r.right ? drag.x - r.right : 0; if (d < best) { best = d; target = c; } });
+  cols.forEach(c => c.classList.remove('drop-target', 'blocked'));
+  if (!target) return;
+  const tc = col(target.dataset.col);
+  if (state.settings.strict && tc.id !== drag.from && isFull(tc, drag.id)) { target.classList.add('blocked'); return; }
+  target.classList.add('drop-target');
+  const list = target.querySelector('.list'), base = list.getBoundingClientRect().top - list.scrollTop;
+  let before = null;
+  for (const c of list.querySelectorAll('.card:not(.placeholder)')) { if (drag.y < base + c.offsetTop + c.offsetHeight / 2) { before = c; break; } }
+  const ph = drag.card;
+  let nextCard = ph.nextElementSibling; if (nextCard && !nextCard.classList.contains('card')) nextCard = null;
+  if (ph.parentNode === list && nextCard === before) return;
+  const affected = [...new Set([ph.parentNode, list])].flatMap(l => [...l.querySelectorAll('.card:not(.placeholder)')]);
+  const rects = affected.map(c => c.getBoundingClientRect());
+  list.insertBefore(ph, before || list.querySelector('.empty'));
+  if (!RM) affected.forEach((c, i) => { const r = c.getBoundingClientRect(), dy = rects[i].top - r.top; if (dy) c.animate([{transform:`translateY(${dy}px)`},{transform:'none'}], {duration:180, easing:'cubic-bezier(.2,.8,.2,1)'}); });
+}
+function autoScroll() {
+  if (!drag) return;
+  let moved = false;
+  const t = board.querySelector('.col.drop-target .list');
+  if (t) { const r = t.getBoundingClientRect(), z = 56, before = t.scrollTop;
+    if (drag.y < r.top + z) t.scrollTop -= Math.ceil((r.top + z - drag.y) / 5); else if (drag.y > r.bottom - z) t.scrollTop += Math.ceil((drag.y - r.bottom + z) / 5);
+    moved = t.scrollTop !== before; }
+  const bl = board.scrollLeft, zx = 44;
+  if (drag.x < zx) board.scrollLeft -= 9; else if (drag.x > innerWidth - zx) board.scrollLeft += 9;
+  if (moved || board.scrollLeft !== bl) moveDrag();
+  drag.raf = requestAnimationFrame(autoScroll);
+}
+function endDrag(cancelled) {
+  const d = drag; drag = null; cancelAnimationFrame(d.raf);
+  document.body.classList.remove('dragging');
+  justDragged = true; setTimeout(() => justDragged = false, 60);
+  const list = d.card.parentNode, toId = list.dataset.list;
+  if (!cancelled) {
+    const to = col(toId), ids = to.cardIds.filter(i => i !== d.id);
+    let n = d.card.nextElementSibling, p = d.card.previousElementSibling, index;
+    if (n && n.classList.contains('card')) index = ids.indexOf(n.dataset.id);
+    else if (p && p.classList.contains('card')) index = ids.indexOf(p.dataset.id) + 1;
+    else index = ids.length;
+    const from = colOf(d.id);
+    if (from.id !== toId || from.cardIds.indexOf(d.id) !== index) moveCard(d.id, toId, index); else render();
+  } else render();
+  const el = board.querySelector(`.card[data-id="${d.id}"]`);
+  if (!el || RM) return d.ghost.remove();
+  const r = el.getBoundingClientRect(); el.style.visibility = 'hidden';
+  const a = d.ghost.animate([{transform:d.ghost.style.transform},{transform:`translate(${r.left}px,${r.top}px) rotate(0deg)`}], {duration:170, easing:'cubic-bezier(.2,.8,.2,1)', fill:'forwards'});
+  a.onfinish = a.oncancel = () => { d.ghost.remove(); el.style.visibility = ''; };
+}
+
+/* ---------- popup menu ---------- */
+let menu = null;
+function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+function openMenu(anchor, items, onPick) {
+  closeMenu();
+  const fk = anchor.closest('.card') && anchor.closest('.card').dataset.fk;
+  menu = document.createElement('div'); menu.className = 'menu'; menu.setAttribute('role', 'menu');
+  menu.innerHTML = items.map((it, i) => `<button role="menuitem" data-i="${i}">${it.html}${it.active ? '<span class="ck">✓</span>' : ''}</button>`).join('');
+  document.body.append(menu);
+  const r = anchor.getBoundingClientRect(), m = menu.getBoundingClientRect();
+  menu.style.left = Math.max(8, Math.min(innerWidth - m.width - 8, r.left)) + 'px';
+  menu.style.top = (r.bottom + m.height + 12 > innerHeight ? Math.max(8, r.top - m.height - 6) : r.bottom + 6) + 'px';
+  const btns = [...menu.querySelectorAll('button')]; (btns[items.findIndex(i => i.active)] || btns[0]).focus();
+  const refocus = () => { const el = fk && board.querySelector(`[data-fk="${fk}"]`); if (el) el.focus({preventScroll:true}); };
+  menu.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; closeMenu(); onPick(items[+b.dataset.i].value); refocus(); });
+  menu.addEventListener('keydown', e => {
+    const i = btns.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); btns[(i + 1) % btns.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); btns[(i - 1 + btns.length) % btns.length].focus(); }
+    else if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeMenu(); refocus(); }
+  });
+}
+addEventListener('pointerdown', e => { if (menu && !menu.contains(e.target)) closeMenu(); }, true);
+addEventListener('resize', closeMenu);
+
+/* ---------- toast ---------- */
+let toastEl = null, toastTimer;
+function toast(msg, canUndo) {
+  if (toastEl) toastEl.remove(); clearTimeout(toastTimer);
+  toastEl = document.createElement('div'); toastEl.className = 'toast'; toastEl.setAttribute('role', 'status');
+  toastEl.innerHTML = `<span>${esc(msg)}</span>${canUndo ? '<button>Undo</button>' : ''}`;
+  const b = toastEl.querySelector('button'); if (b) b.onclick = () => undo();
+  document.body.append(toastEl);
+  const me = toastEl; toastTimer = setTimeout(() => { me.remove(); if (toastEl === me) toastEl = null; }, canUndo ? 6000 : 3200);
+}
+
+/* ---------- card dialog ---------- */
+const cardDlg = $('#cardDlg'), cardForm = $('#cardForm');
+let editing = null;
+function openCard(id, colId) {
+  editing = id; const card = id ? state.cards[id] : null;
+  const cur = card ? colOf(id).id : (colId || 'todo');
+  $('#dlgTitle').textContent = card ? 'Edit card' : 'New card';
+  cardForm.elements.title.value = card ? card.title : ''; cardForm.elements.note.value = card ? card.note : '';
+  const pri = card ? card.priority : 'med';
+  const who = card ? card.assignee : (ui.person && ui.person !== 'none' ? ui.person : null);
+  $('#fPri').innerHTML = Object.keys(PRI).map(k => `<label class="opt" style="--p:var(--${k})"><input type="radio" name="pri" value="${k}" ${k === pri ? 'checked' : ''}><span>${PRI[k].icon} ${PRI[k].label}</span></label>`).join('');
+  $('#fWho').innerHTML = state.people.map(p => `<label class="opt hasav"><input type="radio" name="who" value="${p.id}" ${p.id === who ? 'checked' : ''}><span>${avatar(p)}${esc(first(p.name))}</span></label>`).join('') +
+    `<label class="opt hasav"><input type="radio" name="who" value="" ${who ? '' : 'checked'}><span>${avatar(null)}Nobody</span></label>`;
+  $('#fCol').innerHTML = state.columns.map(c => `<label class="opt"><input type="radio" name="col" value="${c.id}" ${c.id === cur ? 'checked' : ''}><span>${esc(c.name)}</span></label>`).join('');
+  $('#dlgDel').style.display = card ? '' : 'none';
+  cardDlg.showModal(); cardForm.elements.title.focus(); cardForm.elements.title.select();
+}
+cardForm.addEventListener('submit', e => {
+  e.preventDefault();
+  const title = cardForm.elements.title.value.trim();
+  if (!title) { cardForm.elements.title.focus(); cardForm.elements.title.style.borderColor = 'var(--high)'; setTimeout(() => cardForm.elements.title.style.borderColor = '', 900); return; }
+  const data = {title, note:cardForm.elements.note.value.trim(), priority:cardForm.elements.pri.value, assignee:cardForm.elements.who.value || null}, toId = cardForm.elements.col.value, to = col(toId);
+  const from = editing ? colOf(editing) : null;
+  if (state.settings.strict && from !== to && isFull(to, editing)) return toast(`${to.name} is full (limit ${to.limit}). Pick another column.`);
+  let id = editing;
+  commit(() => {
+    if (id) { Object.assign(state.cards[id], data); if (from !== to) { from.cardIds.splice(from.cardIds.indexOf(id), 1); to.cardIds.unshift(id); state.cards[id].movedAt = Date.now(); } }
+    else { id = uid(); state.cards[id] = {id, ...data, created:Date.now(), movedAt:Date.now()}; to.cardIds.unshift(id); }
+  });
+  cardDlg.close();
+  if (!matches(state.cards[id])) toast('Saved — hidden by the current filters');
+  else { const el = board.querySelector(`[data-id="${id}"]`); if (el) { el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest', inline:'nearest', behavior:RM ? 'auto' : 'smooth'}); } }
+  if (from !== to && to.limit && to.cardIds.length > to.limit) toast(`${to.name} is over its WIP limit (${to.cardIds.length}/${to.limit})`, true);
+});
+cardForm.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); cardForm.requestSubmit(); } });
+$('#dlgCancel').onclick = () => cardDlg.close();
+$('#dlgDel').onclick = () => { cardDlg.close(); if (editing) deleteCard(editing); };
+[cardDlg, $('#teamDlg')].forEach(d => { let down = null; d.addEventListener('pointerdown', e => down = e.target); d.addEventListener('click', e => { if (e.target === d && down === d) d.close(); }); });
+
+/* ---------- team & settings ---------- */
+const teamDlg = $('#teamDlg');
+function renderTeam() {
+  const all = Object.values(state.cards);
+  $('#teamList').innerHTML = state.people.length ? state.people.map(p => { const n = all.filter(c => c.assignee === p.id).length; return `<div class="team-row" data-p="${p.id}">${avatar(p)}<input type="text" value="${esc(p.name)}" maxlength="40" aria-label="Name"><span class="cnt">${n} card${n === 1 ? '' : 's'}</span><button class="ibtn" data-rm aria-label="Remove ${esc(p.name)}" title="Remove">×</button></div>`; }).join('') : '<p class="hint">No teammates yet. Add someone below.</p>';
+  $('#strict').checked = !!state.settings.strict;
+}
+$('#teamBtn').onclick = () => { renderTeam(); teamDlg.showModal(); };
+$('#teamClose').onclick = () => teamDlg.close();
+$('#teamList').addEventListener('change', e => { const row = e.target.closest('[data-p]'); if (!row) return; const v = e.target.value.trim(); if (v) commit(() => person(row.dataset.p).name = v); renderTeam(); });
+$('#teamList').addEventListener('click', e => {
+  if (!e.target.closest('[data-rm]')) return; const id = e.target.closest('[data-p]').dataset.p, p = person(id);
+  commit(() => { state.people = state.people.filter(x => x.id !== id); Object.values(state.cards).forEach(c => { if (c.assignee === id) c.assignee = null; }); });
+  if (ui.person === id) { ui.person = null; render(); }
+  renderTeam(); toast(`Removed ${p.name} — their cards are now unassigned`, true);
+});
+$('#addPerson').addEventListener('submit', e => {
+  e.preventDefault(); const inp = e.target.elements.name, name = inp.value.trim(); if (!name) return inp.focus();
+  const used = new Set(state.people.map(p => p.color));
+  commit(() => state.people.push({id:'p' + uid(), name, color:HUES.find(h => !used.has(h)) || HUES[state.people.length % HUES.length]}));
+  inp.value = ''; renderTeam(); inp.focus();
+});
+$('#strict').onchange = e => { state.settings.strict = e.target.checked; save(); };
+$('#resetBtn').onclick = () => { const s = state.settings; commit(() => { const f = seed(); state.cards = f.cards; state.columns = f.columns; state.people = f.people; }); state.settings = s; ui.person = null; save(); render(); renderTeam(); toast('Board reset to demo data', true); };
+
+/* ---------- filters & header ---------- */
+filtersEl.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if ('person' in b.dataset) { const v = b.dataset.person || null; ui.person = ui.person === v ? null : v; if (ui.standup) endStandup(true); }
+  else if (b.dataset.pri) { ui.pri.has(b.dataset.pri) ? ui.pri.delete(b.dataset.pri) : ui.pri.add(b.dataset.pri); }
+  else if ('clear' in b.dataset) { clearFilters(); return; }
+  render();
+});
+function clearFilters() { ui.q = qEl.value = ''; ui.person = null; ui.pri.clear(); if (ui.standup) endStandup(true); render(); }
+qEl.addEventListener('input', () => { ui.q = qEl.value; render(); });
+$('#qClear').onclick = () => { ui.q = qEl.value = ''; render(); qEl.focus(); };
+$('#newBtn').onclick = () => openCard(null, 'todo');
+function applyTheme() { document.documentElement.dataset.theme = state.settings.theme; }
+$('#themeBtn').onclick = () => { state.settings.theme = state.settings.theme === 'dark' ? 'light' : 'dark'; applyTheme(); save(); };
+$('#today').textContent = new Date().toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'}) + ' · Daily standup';
+
+/* ---------- standup mode ---------- */
+let tick = null;
+function startStandup() {
+  const order = state.people.map(p => p.id); if (Object.values(state.cards).some(c => !c.assignee)) order.push('none');
+  if (!order.length) return toast('Add teammates first (Team button)');
+  ui.standup = {order, i:0, t0:Date.now(), begun:Date.now()}; ui.person = order[0];
+  clearInterval(tick); tick = setInterval(renderTimer, 1000); render();
+}
+function endStandup(silent) {
+  if (!ui.standup) return; const total = Math.round((Date.now() - ui.standup.begun) / 1000);
+  ui.standup = null; clearInterval(tick); ui.person = null;
+  if (!silent) { render(); toast(`Standup finished in ${fmt(total)} 🎉`); } else standupEl.hidden = true;
+}
+function stepStandup(d) {
+  const s = ui.standup; if (!s) return; const i = s.i + d;
+  if (i < 0) return; if (i >= s.order.length) return endStandup();
+  s.i = i; s.t0 = Date.now(); ui.person = s.order[i]; render();
+}
+const fmt = s => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+function renderTimer() { const el = standupEl.querySelector('.timer'); if (!el || !ui.standup) return; const s = Math.floor((Date.now() - ui.standup.t0) / 1000); el.textContent = fmt(s); el.classList.toggle('long', s >= 120); }
+function renderStandup() {
+  const s = ui.standup; standupEl.hidden = !s; $('#standupBtn').classList.toggle('primary', !!s); if (!s) return;
+  const pid = s.order[s.i], p = pid === 'none' ? null : person(pid);
+  if (pid !== 'none' && !p) return endStandup(true);
+  const cnt = c => col(c).cardIds.filter(id => (state.cards[id].assignee || 'none') === pid).length;
+  const last = s.i === s.order.length - 1;
+  standupEl.innerHTML = `${avatar(p, 'lg')}<div><div class="who-name">${p ? esc(p.name) : 'Unassigned cards'}</div><div class="sub">${cnt('doing')} doing · ${cnt('todo')} todo · ${cnt('done')} done</div></div>
+    <div class="dots" aria-label="Person ${s.i + 1} of ${s.order.length}">${s.order.map((_, i) => `<i class="${i <= s.i ? 'on' : ''}"></i>`).join('')}</div>
+    <div class="timer">0:00</div>
+    <button class="btn" data-s="-1" ${s.i ? '' : 'disabled style="opacity:.4"'}>← Prev</button>
+    <button class="btn primary" data-s="1">${last ? 'Finish ✓' : 'Next →'}</button>
+    <button class="btn" data-s="0">End</button>`;
+  renderTimer();
+}
+standupEl.addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (!b) return; +b.dataset.s ? stepStandup(+b.dataset.s) : endStandup(); });
+$('#standupBtn').onclick = () => ui.standup ? endStandup() : startStandup();
+
+/* ---------- global keys ---------- */
+addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (drag) { e.preventDefault(); return endDrag(true); }
+    if (menu) return closeMenu();
+    if (document.querySelector('dialog[open]')) return;
+    if (ui.editLimit) { ui.editLimit = null; return render(); }
+    if (document.activeElement === qEl && ui.q) { ui.q = qEl.value = ''; return render(); }
+    if (ui.standup) return endStandup();
+    if (filtering()) return clearFilters();
+    return;
+  }
+  const t = e.target, typing = t.matches && t.matches('input,textarea,select,[contenteditable]');
+  if (typing || document.querySelector('dialog[open]') || menu) return;
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); return undo(); }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === '/') { e.preventDefault(); qEl.focus(); qEl.select(); }
+  else if (e.key.toLowerCase() === 'n') { e.preventDefault(); openCard(null, 'todo'); }
+  else if (ui.standup && !e.shiftKey && !t.closest('.card') && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); stepStandup(e.key === 'ArrowRight' ? 1 : -1); }
+});
+addEventListener('storage', e => { if (e.key === KEY && !drag) { const s = load(); if (s) { state = s; applyTheme(); render(); } } });
+
+applyTheme(); render();
+})();
+</script>
+</body>
+</html>

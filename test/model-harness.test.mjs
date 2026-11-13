@@ -8,6 +8,7 @@ import {
   MAX_OUTPUT_TOKENS,
   OPENCODE_UNRESTRICTED_CONFIG,
 } from "../lib/harness-command.ts";
+import { getModelHex } from "../lib/model-colors.ts";
 
 test("configures Qwen3.8 27B for OpenCode through OpenRouter", () => {
   const model = getModel("qwen-3.8-27b");
@@ -312,4 +313,12 @@ test("installed OpenCode accepts the flags used by generation", (t) => {
   assert.match(runOutput, /--pure\b/);
   assert.match(runOutput, /--variant\b/);
   assert.match(runOutput, /--model\b/);
+});
+
+test("every model color resolves to a chart hex", () => {
+  const unmapped = models
+    .filter((model) => !/^#[0-9a-f]{6}$/.test(String(getModelHex(model.color))))
+    .map((model) => `${model.id} (${model.color})`);
+
+  assert.deepEqual(unmapped, []);
 });

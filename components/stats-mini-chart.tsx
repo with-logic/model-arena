@@ -4,45 +4,8 @@ import { useMemo } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { getAppStats } from "@/lib/stats";
 import { MODELS } from "@/lib/models";
+import { getModelHex } from "@/lib/model-colors";
 
-/** Map Tailwind bg classes to hex for recharts */
-const TW_HEX: Record<string, string> = {
-  "bg-emerald-500": "#10b981",
-  "bg-teal-500": "#14b8a6",
-  "bg-cyan-500": "#06b6d4",
-  "bg-indigo-500": "#6366f1",
-  "bg-sky-500": "#0ea5e9",
-  "bg-amber-500": "#f59e0b",
-  "bg-orange-500": "#f97316",
-  "bg-red-500": "#ef4444",
-  "bg-pink-500": "#ec4899",
-  "bg-purple-500": "#a855f7",
-  "bg-violet-500": "#8b5cf6",
-  "bg-rose-500": "#f43f5e",
-  "bg-blue-500": "#3b82f6",
-  "bg-yellow-500": "#eab308",
-  "bg-fuchsia-500": "#d946ef",
-  "bg-lime-500": "#84cc16",
-  "bg-green-600": "#16a34a",
-  "bg-purple-600": "#9333ea",
-  "bg-sky-600": "#0284c7",
-  "bg-blue-600": "#2563eb",
-  "bg-yellow-600": "#ca8a04",
-  "bg-indigo-600": "#4f46e5",
-  "bg-zinc-700": "#3f3f46",
-  "bg-teal-600": "#0d9488",
-  "bg-cyan-600": "#0891b2",
-  "bg-emerald-600": "#059669",
-  "bg-emerald-700": "#047857",
-  "bg-slate-500": "#64748b",
-  "bg-fuchsia-600": "#c026d3",
-  "bg-violet-600": "#7c3aed",
-  "bg-amber-600": "#d97706",
-};
-
-export function getModelHex(color: string): string {
-  return TW_HEX[color] || "#6b7280";
-}
 
 interface StatsMiniChartProps {
   appId: string;

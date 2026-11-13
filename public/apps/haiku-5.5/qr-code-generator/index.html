@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Generate custom-colored QR codes from text or URLs and download them as PNG.">
+<title>Custom QR Code Generator</title>
+<style>
+  :root {
+    --bg: #f4f4f2;
+    --surface: #ffffff;
+    --surface-2: #f7f7f5;
+    --ink: #17171a;
+    --muted: #6b6b73;
+    --line: #e3e3df;
+    --accent: #17171a;
+    --accent-ink: #ffffff;
+    --focus: #2563eb;
+    --warn: #b45309;
+    --warn-bg: #fef3c7;
+    --ok: #15803d;
+    --radius: 16px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px -12px rgba(0,0,0,.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0d0f;
+      --surface: #161619;
+      --surface-2: #1c1c20;
+      --ink: #f2f2f4;
+      --muted: #8e8e98;
+      --line: #28282e;
+      --accent: #f2f2f4;
+      --accent-ink: #0d0d0f;
+      --focus: #60a5fa;
+      --warn: #fbbf24;
+      --warn-bg: rgba(251,191,36,.12);
+      --ok: #4ade80;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px -12px rgba(0,0,0,.6);
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  /* ---------- Layout ---------- */
+  .app {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: minmax(300px, 380px) 1fr;
+  }
+  .sidebar {
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    padding: 32px 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: var(--accent); color: var(--accent-ink);
+    display: grid; place-items: center;
+  }
+  .brand h1 { font-size: 16px; font-weight: 650; margin: 0; letter-spacing: -.01em; }
+
+  .stage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px clamp(24px, 4vw, 64px);
+    min-width: 0;
+  }
+
+  /* ---------- Controls ---------- */
+  .section { display: flex; flex-direction: column; gap: 10px; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .label {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .hint { font-size: 12px; color: var(--muted); }
+
+  textarea {
+    width: 100%;
+    min-height: 116px;
+    resize: vertical;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-2);
+    line-height: 1.45;
+  }
+  textarea::placeholder { color: var(--muted); }
+
+  .colors { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+  .color-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .color-field span { font-size: 12px; color: var(--muted); }
+  .color-input {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 10px 6px 6px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-2);
+  }
+  .color-input input[type="color"] {
+    -webkit-appearance: none; appearance: none;
+    width: 30px; height: 30px; padding: 0;
+    border: none; border-radius: 8px; background: none; cursor: pointer; flex: none;
+  }
+  .color-input input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  .color-input input[type="color"]::-webkit-color-swatch { border: 1px solid rgba(127,127,127,.35); border-radius: 8px; }
+  .color-input input[type="color"]::-moz-color-swatch { border: 1px solid rgba(127,127,127,.35); border-radius: 8px; }
+  .color-input input.hex {
+    width: 100%; min-width: 0; border: none; background: none; outline: none;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; text-transform: uppercase;
+  }
+  .icon-btn {
+    height: 42px; width: 42px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface-2);
+    display: grid; place-items: center; cursor: pointer; color: var(--ink);
+  }
+  .icon-btn:hover { border-color: var(--muted); }
+  .color-input.invalid { border-color: #dc2626; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 8px; }
+  .preset {
+    width: 34px; height: 34px; border-radius: 10px; cursor: pointer; padding: 0;
+    border: 1px solid var(--line);
+    background: linear-gradient(135deg, var(--p-fg) 0 50%, var(--p-bg) 50% 100%);
+    transition: transform .12s ease;
+  }
+  .preset:hover { transform: translateY(-1px); }
+  .preset[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--ink); }
+
+  .segmented {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented label {
+    text-align: center; padding: 7px 0; border-radius: 9px; cursor: pointer;
+    font-size: 14px; font-weight: 550; color: var(--muted); user-select: none;
+  }
+  .segmented input:checked + label { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+  .segmented input:focus-visible + label { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+  select {
+    width: 100%; padding: 10px 12px; border-radius: 12px;
+    border: 1px solid var(--line); background: var(--surface-2); cursor: pointer;
+  }
+
+  .btn-primary {
+    width: 100%; padding: 14px 18px; border: none; border-radius: 12px;
+    background: var(--accent); color: var(--accent-ink);
+    font-weight: 600; font-size: 15px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .btn-primary:hover:not(:disabled) { opacity: .9; }
+  .btn-primary:active:not(:disabled) { transform: translateY(1px); }
+  .btn-primary:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-ghost {
+    width: 100%; padding: 11px 18px; border-radius: 12px; cursor: pointer;
+    background: transparent; border: 1px solid var(--line); font-weight: 550;
+  }
+  .btn-ghost:hover:not(:disabled) { border-color: var(--muted); }
+  .btn-ghost:disabled { opacity: .35; cursor: not-allowed; }
+  .actions { display: flex; flex-direction: column; gap: 8px; }
+
+  .notice {
+    font-size: 13px; line-height: 1.45; padding: 10px 12px; border-radius: 10px;
+    background: var(--warn-bg); color: var(--warn); display: none;
+  }
+  .notice.show { display: block; }
+  .notice.error { background: rgba(220,38,38,.1); color: #dc2626; }
+
+  /* ---------- Preview ---------- */
+  .preview-wrap {
+    position: relative;
+    width: min(100%, 600px, calc(100vh - 220px));
+    aspect-ratio: 1 / 1;
+    min-width: 260px;
+    display: grid; place-items: center;
+  }
+  .preview-card {
+    position: relative;
+    width: 100%; height: 100%;
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    padding: clamp(16px, 3vw, 28px);
+    display: grid; place-items: center;
+    border: 1px solid var(--line);
+  }
+  #preview {
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    border-radius: 6px;
+    transition: opacity .2s ease;
+  }
+  #preview.dim { opacity: .25; }
+  .empty {
+    position: absolute; inset: 0; display: none;
+    place-items: center; text-align: center; padding: 24px;
+    color: var(--muted); font-size: 14px;
+  }
+  .empty.show { display: grid; }
+  .empty-inner { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .empty-icon { width: 44px; height: 44px; color: var(--muted); opacity: .6; }
+
+  .meta {
+    margin-top: 22px; display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
+    font-size: 13px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta b { color: var(--ink); font-weight: 600; }
+  .toast {
+    position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 16px);
+    background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 10px;
+    font-size: 14px; font-weight: 550; opacity: 0; pointer-events: none;
+    transition: opacity .2s ease, transform .2s ease; box-shadow: var(--shadow);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .sidebar { border-right: none; border-bottom: 1px solid var(--line); order: 2; padding: 24px 20px; }
+    .stage { order: 1; padding: 32px 20px 24px; }
+    .preview-wrap { width: min(100%, 520px, 80vw); min-width: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="sidebar" aria-label="QR code settings">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <rect x="1" y="1" width="6" height="6" rx="1.2"/>
+          <rect x="9" y="1" width="6" height="6" rx="1.2"/>
+          <rect x="1" y="9" width="6" height="6" rx="1.2"/>
+          <rect x="10" y="10" width="2" height="2"/>
+          <rect x="13" y="10" width="2" height="4"/>
+          <rect x="10" y="13" width="2" height="2"/>
+        </svg>
+      </div>
+      <h1>Custom QR Code Generator</h1>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <label class="label" for="text">Content</label>
+        <span class="hint" id="charCount">0 chars</span>
+      </div>
+      <textarea id="text" spellcheck="false" placeholder="Paste a URL or type any text…">https://example.com</textarea>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><span class="label" id="colorsLabel">Colors</span></div>
+      <div class="colors" role="group" aria-labelledby="colorsLabel">
+        <div class="color-field">
+          <span id="fgLabel">Foreground</span>
+          <div class="color-input" id="fgBox">
+            <input type="color" id="fg" value="#17171a" aria-labelledby="fgLabel">
+            <input class="hex" id="fgHex" type="text" value="#17171A" maxlength="7" aria-labelledby="fgLabel" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <div class="color-field">
+          <span id="bgLabel">Background</span>
+          <div class="color-input" id="bgBox">
+            <input type="color" id="bg" value="#ffffff" aria-labelledby="bgLabel">
+            <input class="hex" id="bgHex" type="text" value="#FFFFFF" maxlength="7" aria-labelledby="bgLabel" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+        <button class="icon-btn" id="swap" type="button" title="Swap colors" aria-label="Swap foreground and background colors">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M7 4 3 8l4 4"/><path d="M3 8h13"/><path d="m17 20 4-4-4-4"/><path d="M21 16H8"/>
+          </svg>
+        </button>
+      </div>
+      <div class="presets" id="presets" role="group" aria-label="Color presets"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <span class="label" id="shapeLabel">Module style</span>
+      </div>
+      <div class="segmented" role="radiogroup" aria-labelledby="shapeLabel" id="shape">
+        <input type="radio" name="shape" id="shape-square" value="square"><label for="shape-square">Square</label>
+        <input type="radio" name="shape" id="shape-rounded" value="rounded"><label for="shape-rounded">Rounded</label>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head">
+        <span class="label" id="eclLabel">Error correction</span>
+        <span class="hint">Higher = more resilient, denser</span>
+      </div>
+      <div class="segmented" role="radiogroup" aria-labelledby="eclLabel" id="ecl">
+        <input type="radio" name="ecl" id="ecl-L" value="L"><label for="ecl-L">L</label>
+        <input type="radio" name="ecl" id="ecl-M" value="M"><label for="ecl-M">M</label>
+        <input type="radio" name="ecl" id="ecl-Q" value="Q"><label for="ecl-Q">Q</label>
+        <input type="radio" name="ecl" id="ecl-H" value="H"><label for="ecl-H">H</label>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-head"><label class="label" for="size">Export size</label></div>
+      <select id="size">
+        <option value="512">512 × 512 px</option>
+        <option value="1024" selected>1024 × 1024 px</option>
+        <option value="2048">2048 × 2048 px</option>
+      </select>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="download" type="button">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4v11"/><path d="m7 10 5 5 5-5"/><path d="M5 20h14"/>
+        </svg>
+        Download PNG
+      </button>
+      <button class="btn-ghost" id="copy" type="button">Copy image</button>
+    </div>
+
+    <div class="notice" id="notice" role="status" aria-live="polite"></div>
+  </aside>
+
+  <main class="stage">
+    <div class="preview-wrap">
+      <div class="preview-card">
+        <canvas id="preview" width="1024" height="1024" aria-label="QR code preview" role="img"></canvas>
+        <div class="empty" id="empty">
+          <div class="empty-inner">
+            <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h2v2h-2zM18 14h3M14 18v3M18 18h3v3h-3z"/>
+            </svg>
+            <div>Type text or a URL to generate<br>your QR code.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="meta" aria-live="polite">
+      <span>Version <b id="mVersion">–</b></span>
+      <span>Modules <b id="mModules">–</b></span>
+      <span>Contrast <b id="mContrast">–</b></span>
+      <span>Bytes <b id="mBytes">0</b></span>
+    </div>
+  </main>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js" integrity="sha384-lQXOAyZwHXE55JFyrOMB7nY2Wv+m5ZWNtJcHrd1rceRQXAYNLak8ukN5TjBTcIwz" crossorigin="anonymous"></script>
+<script>
+(() => {
+  'use strict';
+
+  const QUIET_ZONE = 4;          // modules of margin, per the QR spec
+  const PREVIEW_PX = 1024;       // internal resolution of the preview canvas
+  const STORAGE_KEY = 'qr-generator-settings-v1';
+  const PRESETS = [
+    { fg: '#17171a', bg: '#ffffff' },
+    { fg: '#ffffff', bg: '#17171a' },
+    { fg: '#1d4ed8', bg: '#ffffff' },
+    { fg: '#7c3aed', bg: '#faf5ff' },
+    { fg: '#047857', bg: '#ecfdf5' },
+    { fg: '#be123c', bg: '#fff1f2' },
+    { fg: '#ea580c', bg: '#fff7ed' },
+    { fg: '#111827', bg: '#fef08a' },
+  ];
+
+  const $ = (id) => document.getElementById(id);
+  const el = {
+    text: $('text'), charCount: $('charCount'),
+    fg: $('fg'), bg: $('bg'), fgHex: $('fgHex'), bgHex: $('bgHex'),
+    fgBox: $('fgBox'), bgBox: $('bgBox'), swap: $('swap'),
+    presets: $('presets'), size: $('size'),
+    download: $('download'), copy: $('copy'),
+    notice: $('notice'), preview: $('preview'), empty: $('empty'),
+    mVersion: $('mVersion'), mModules: $('mModules'),
+    mContrast: $('mContrast'), mBytes: $('mBytes'), toast: $('toast'),
+  };
+  const ctx = el.preview.getContext('2d');
+
+  let state = {
+    text: el.text.value,
+    fg: '#17171a',
+    bg: '#ffffff',
+    shape: 'square',
+    ecl: 'M',
+    size: 1024,
+  };
+  let lastQR = null;       // { qr, modules } for the current valid input
+  let renderTimer = null;
+  let toastTimer = null;
+
+  /* ---------- Persistence ---------- */
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      if (saved && typeof saved === 'object') {
+        if (isHex(saved.fg)) state.fg = saved.fg;
+        if (isHex(saved.bg)) state.bg = saved.bg;
+        if (['square', 'rounded'].includes(saved.shape)) state.shape = saved.shape;
+        if (['L', 'M', 'Q', 'H'].includes(saved.ecl)) state.ecl = saved.ecl;
+        if ([512, 1024, 2048].includes(Number(saved.size))) state.size = Number(saved.size);
+      }
+    } catch (_) { /* ignore corrupt or unavailable storage */ }
+  }
+  function saveSettings() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        fg: state.fg, bg: state.bg, shape: state.shape, ecl: state.ecl, size: state.size,
+      }));
+    } catch (_) { /* storage may be disabled; settings still work for this session */ }
+  }
+
+  /* ---------- Color helpers ---------- */
+  function isHex(v) { return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v); }
+  function normalizeHex(v) {
+    if (typeof v !== 'string') return null;
+    let s = v.trim();
+    if (!s.startsWith('#')) s = '#' + s;
+    if (/^#[0-9a-f]{3}$/i.test(s)) s = '#' + [...s.slice(1)].map((c) => c + c).join('');
+    return /^#[0-9a-f]{6}$/i.test(s) ? s.toLowerCase() : null;
+  }
+  function luminance(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    const lin = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => {
+      const v = c / 255;
+      return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
+  function contrastRatio(a, b) {
+    const la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+  }
+
+  /* ---------- Rendering ---------- */
+  function buildQR(text, ecl) {
+    const qr = qrcode(0, ecl);   // type 0 = smallest version that fits
+    qr.addData(text);
+    qr.make();
+    return qr;
+  }
+
+  // Draws the QR code at exactly `px` x `px`. Module edges are snapped to whole
+  // pixels, so square modules tile seamlessly at any export size.
+  function drawQR(canvas, qr, { fg, bg, shape, px }) {
+    const n = qr.getModuleCount();
+    const total = n + QUIET_ZONE * 2;
+    const scale = px / total;
+    canvas.width = px;
+    canvas.height = px;
+    const g = canvas.getContext('2d');
+
+    g.fillStyle = bg;
+    g.fillRect(0, 0, px, px);
+    g.fillStyle = fg;
+
+    const edge = (k) => Math.round(k * scale);
+    const inFinder = (r, c) =>
+      (r < 7 && c < 7) || (r < 7 && c >= n - 7) || (r >= n - 7 && c < 7);
+
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (!qr.isDark(r, c)) continue;
+        const x0 = edge(c + QUIET_ZONE), x1 = edge(c + QUIET_ZONE + 1);
+        const y0 = edge(r + QUIET_ZONE), y1 = edge(r + QUIET_ZONE + 1);
+        const w = x1 - x0, h = y1 - y0;
+
+        // Finder patterns stay square so every scanner locks on reliably.
+        if (shape === 'rounded' && !inFinder(r, c)) {
+          const rad = Math.min(w, h) * 0.42;
+          roundRect(g, x0, y0, w, h, rad);
+          g.fill();
+        } else {
+          g.fillRect(x0, y0, w, h);
+        }
+      }
+    }
+  }
+
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+
+  function setEmpty(isEmpty) {
+    el.empty.classList.toggle('show', isEmpty);
+    el.preview.classList.toggle('dim', isEmpty);
+  }
+
+  function setNotice(msg, kind = 'warn') {
+    el.notice.textContent = msg || '';
+    el.notice.className = 'notice' + (msg ? ' show' : '') + (kind === 'error' && msg ? ' error' : '');
+  }
+
+  function render() {
+    const text = el.text.value;
+    const bytes = new TextEncoder().encode(text).length;
+    el.charCount.textContent = `${text.length.toLocaleString()} char${text.length === 1 ? '' : 's'}`;
+    el.mBytes.textContent = bytes.toLocaleString();
+
+    const contrast = contrastRatio(state.fg, state.bg);
+    el.mContrast.textContent = `${contrast.toFixed(1)}:1`;
+
+    if (!text.trim()) {
+      lastQR = null;
+      setEmpty(true);
+      setNotice('');
+      el.mVersion.textContent = '–';
+      el.mModules.textContent = '–';
+      el.download.disabled = true;
+      el.copy.disabled = true;
+      ctx.clearRect(0, 0, el.preview.width, el.preview.height);
+      return;
+    }
+
+    let qr;
+    try {
+      qr = buildQR(text, state.ecl);
+    } catch (err) {
+      lastQR = null;
+      setEmpty(true);
+      el.download.disabled = true;
+      el.copy.disabled = true;
+      el.mVersion.textContent = '–';
+      el.mModules.textContent = '–';
+      setNotice('This content is too long for a QR code. Shorten it or lower the error-correction level.', 'error');
+      return;
+    }
+
+    lastQR = qr;
+    setEmpty(false);
+    el.download.disabled = false;
+    el.copy.disabled = false;
+
+    const n = qr.getModuleCount();
+    el.mVersion.textContent = String((n - 17) / 4);
+    el.mModules.textContent = `${n} × ${n}`;
+
+    drawQR(el.preview, qr, { fg: state.fg, bg: state.bg, shape: state.shape, px: PREVIEW_PX });
+
+    if (state.fg.toLowerCase() === state.bg.toLowerCase()) {
+      setNotice('Foreground and background are identical, so the code cannot be scanned.', 'error');
+    } else if (luminance(state.fg) > luminance(state.bg)) {
+      setNotice('Light code on a dark background. Some older scanners cannot read inverted codes.');
+    } else if (contrast < 3) {
+      setNotice('Low contrast. Scanners may struggle to read this code. Try darker foreground colors.');
+    } else {
+      setNotice('');
+    }
+  }
+
+  function scheduleRender() {
+    cancelAnimationFrame(renderTimer);
+    renderTimer = requestAnimationFrame(render);
+  }
+
+  /* ---------- Export ---------- */
+  function exportCanvas() {
+    const out = document.createElement('canvas');
+    drawQR(out, lastQR, { fg: state.fg, bg: state.bg, shape: state.shape, px: state.size });
+    return out;
+  }
+
+  function slugify(text) {
+    const s = text.trim().replace(/^[a-z]+:\/\//i, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase();
+    return (s.slice(0, 40) || 'qrcode').replace(/-+$/, '');
+  }
+
+  function toast(msg) {
+    el.toast.textContent = msg;
+    el.toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.toast.classList.remove('show'), 2000);
+  }
+
+  function downloadPNG() {
+    if (!lastQR) return;
+    exportCanvas().toBlob((blob) => {
+      if (!blob) { toast('Could not create PNG'); return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `qr-${slugify(el.text.value)}-${state.size}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast('PNG downloaded');
+    }, 'image/png');
+  }
+
+  async function copyImage() {
+    if (!lastQR) return;
+    if (!navigator.clipboard || !window.ClipboardItem) {
+      toast('Copying images is not supported in this browser');
+      return;
+    }
+    exportCanvas().toBlob(async (blob) => {
+      try {
+        await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+        toast('Image copied to clipboard');
+      } catch (_) {
+        toast('Clipboard access was blocked');
+      }
+    }, 'image/png');
+  }
+
+  /* ---------- Controls wiring ---------- */
+  function setColor(which, value) {
+    state[which] = value;
+    el[which].value = value;
+    el[which + 'Hex'].value = value.toUpperCase();
+    el[which + 'Hex'].closest('.color-input').classList.remove('invalid');
+    syncPresets();
+    saveSettings();
+    scheduleRender();
+  }
+
+  function buildPresets() {
+    el.presets.innerHTML = '';
+    PRESETS.forEach((p, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'preset';
+      b.style.setProperty('--p-fg', p.fg);
+      b.style.setProperty('--p-bg', p.bg);
+      b.title = `${p.fg.toUpperCase()} on ${p.bg.toUpperCase()}`;
+      b.setAttribute('aria-label', `Preset ${i + 1}: ${b.title}`);
+      b.dataset.index = i;
+      b.addEventListener('click', () => {
+        setColor('fg', p.fg);
+        setColor('bg', p.bg);
+      });
+      el.presets.appendChild(b);
+    });
+  }
+
+  function syncPresets() {
+    [...el.presets.children].forEach((b) => {
+      const p = PRESETS[Number(b.dataset.index)];
+      const on = p.fg.toLowerCase() === state.fg.toLowerCase() && p.bg.toLowerCase() === state.bg.toLowerCase();
+      b.setAttribute('aria-pressed', String(on));
+    });
+  }
+
+  function wireHexInput(which) {
+    const input = el[which + 'Hex'];
+    const box = el[which + 'Box'];
+    input.addEventListener('input', () => {
+      const v = normalizeHex(input.value);
+      if (v) {
+        state[which] = v;
+        el[which].value = v;
+        box.classList.remove('invalid');
+        syncPresets();
+        saveSettings();
+        scheduleRender();
+      } else {
+        box.classList.toggle('invalid', input.value.trim().length >= 3);
+      }
+    });
+    input.addEventListener('blur', () => {
+      input.value = state[which].toUpperCase();
+      box.classList.remove('invalid');
+    });
+  }
+
+  function setRadio(name, value) {
+    const r = document.querySelector(`input[name="${name}"][value="${value}"]`);
+    if (r) r.checked = true;
+  }
+
+  function init() {
+    loadSettings();
+
+    el.fg.value = state.fg;
+    el.bg.value = state.bg;
+    el.fgHex.value = state.fg.toUpperCase();
+    el.bgHex.value = state.bg.toUpperCase();
+    el.size.value = String(state.size);
+    setRadio('shape', state.shape);
+    setRadio('ecl', state.ecl);
+
+    buildPresets();
+    syncPresets();
+
+    el.text.addEventListener('input', scheduleRender);
+    el.fg.addEventListener('input', () => setColor('fg', el.fg.value));
+    el.bg.addEventListener('input', () => setColor('bg', el.bg.value));
+    wireHexInput('fg');
+    wireHexInput('bg');
+
+    el.swap.addEventListener('click', () => {
+      const { fg, bg } = state;
+      setColor('fg', bg);
+      setColor('bg', fg);
+    });
+
+    document.querySelectorAll('input[name="shape"]').forEach((r) =>
+      r.addEventListener('change', () => { state.shape = r.value; saveSettings(); scheduleRender(); }));
+    document.querySelectorAll('input[name="ecl"]').forEach((r) =>
+      r.addEventListener('change', () => { state.ecl = r.value; saveSettings(); scheduleRender(); }));
+
+    el.size.addEventListener('change', () => {
+      state.size = Number(el.size.value);
+      saveSettings();
+    });
+
+    el.download.addEventListener('click', downloadPNG);
+    el.copy.addEventListener('click', copyImage);
+
+    document.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        downloadPNG();
+      }
+    });
+
+    if (typeof qrcode !== 'function') {
+      setEmpty(true);
+      el.download.disabled = true;
+      el.copy.disabled = true;
+      setNotice('The QR engine failed to load. Check your connection and reload the page.', 'error');
+      return;
+    }
+
+    render();
+    el.text.focus();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

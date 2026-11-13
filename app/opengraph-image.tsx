@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import path from "path";
 import { Brandmark } from "@/components/brandmark";
 import { loadApps } from "@/lib/code-examples";
-import { publishedModels } from "@/lib/models.config";
+import { DEFAULT_EXPLORER_MODEL, publishedModels } from "@/lib/models.config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-static";
@@ -24,7 +24,7 @@ const colors = {
 
 // These are actual model renders, also used in the collection's filmstrip.
 const featuredApps = ["asteroid-game", "audio-step-sequencer", "csv-to-charts"];
-const previewModel = "gpt-6-astra";
+const previewModel = DEFAULT_EXPLORER_MODEL;
 
 export default async function OpengraphImage() {
   const [font, apps, previews] = await Promise.all([

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#233f4a">
+  <meta name="description" content="A little room to breathe. Shape a living ocean with wind, waves, and light.">
+  <title>Ocean Wave Simulation — Stillwater</title>
+  <style>
+    :root { color-scheme: dark; --ink:#f5f5ee; --muted:#becbce; --line:rgba(231,241,239,.14); --sage:#d3dfd4; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; }
+    body { background:#284651; color:var(--ink); font-family:"Avenir Next",Avenir,"Segoe UI",sans-serif; -webkit-font-smoothing:antialiased; }
+    button,input { font:inherit; }
+    button { color:inherit; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+    button:focus-visible,input:focus-visible { outline:2px solid #e6ebd5; outline-offset:5px; }
+    button { border:0; }
+    svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; flex-shrink:0; }
+    #ocean { position:fixed; inset:0; width:100%; height:100%; display:block; touch-action:none; cursor:grab; }
+    #ocean:active { cursor:grabbing; }
+    .shade { position:fixed; inset:0; pointer-events:none; background:linear-gradient(180deg,rgba(15,33,42,.23),transparent 31%,transparent 66%,rgba(5,21,29,.42)); }
+    .topbar { position:absolute; left:52px; right:52px; top:36px; display:flex; align-items:center; justify-content:space-between; z-index:2; }
+    .brand { display:flex; align-items:center; gap:13px; }
+    .brand-mark { width:39px; height:39px; border:1px solid rgba(246,246,238,.55); border-radius:50%; display:grid; place-items:center; }
+    .brand-mark svg { width:25px; height:25px; stroke-width:1.25; }
+    .brand-name { font-size:21px; font-weight:500; letter-spacing:-.8px; line-height:1.2; }
+    .brand-sub { font-size:10px; color:#e0e7e6; margin-top:5px; letter-spacing:.45px; }
+    .top-actions { display:flex; align-items:center; gap:11px; }
+    .live { display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:.3px; margin-right:14px; color:#ecf0e9; }
+    .live-dot { width:5px; height:5px; background:#d2e4be; border-radius:50%; box-shadow:0 0 9px #c6dbb844; }
+    .live.paused .live-dot { background:#b4bfc4; box-shadow:none; }
+    .icon-button { display:grid; place-items:center; width:37px; height:37px; border:1px solid rgba(237,244,240,.24); background:rgba(36,57,66,.1); border-radius:50%; transition:background .2s,border-color .2s; position:relative; }
+    .icon-button:hover { background:rgba(236,245,239,.13); border-color:rgba(237,244,240,.5); }
+    .icon-button svg { width:16px; height:16px; }
+    [data-tip]:after { content:attr(data-tip); pointer-events:none; position:absolute; top:calc(100% + 11px); right:0; white-space:nowrap; padding:7px 10px; color:#edf2ed; background:#1e333de8; font-size:10px; border:1px solid var(--line); border-radius:5px; opacity:0; transform:translateY(-3px); transition:opacity .2s,transform .2s; }
+    [data-tip]:hover:after,[data-tip]:focus-visible:after { opacity:1; transform:translateY(0); }
+    .intro { position:absolute; left:58px; top:calc(37.2% - 210px); pointer-events:none; z-index:1; }
+    .intro h1 { font-family:Georgia,"Times New Roman",serif; font-size:clamp(46px,4.5vw,72px); line-height:1.09; font-weight:400; letter-spacing:-2.1px; margin:0; text-shadow:0 2px 25px #344a4f15; }
+    .intro p { margin:23px 0 0 2px; font-size:12px; line-height:1.8; color:#e2e9e8; letter-spacing:.15px; }
+    .conditions { position:absolute; width:312px; right:52px; top:50%; transform:translateY(-43%); z-index:3; padding:25px 24px 19px; background:linear-gradient(135deg,rgba(28,48,56,.76),rgba(19,38,46,.68)); border:1px solid rgba(225,237,233,.2); border-radius:18px; backdrop-filter:blur(25px); -webkit-backdrop-filter:blur(25px); box-shadow:0 20px 70px #09232b25,inset 0 1px 0 #ffffff05; }
+    .panel-heading { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+    .panel-heading h2 { font-size:16px; font-weight:500; letter-spacing:-.35px; margin:0; }
+    .reset { width:26px; height:26px; display:grid; place-items:center; color:#b9c8cb; border-radius:50%; background:transparent; margin-right:-6px; }
+    .reset:hover { color:white; background:#ffffff0d; }
+    .reset svg { width:15px; height:15px; }
+    .panel-note { font-size:10px; color:#b7c7ca; margin:0; }
+    .presets { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; padding:5px; margin:24px 0 25px; border:1px solid #dbeae90b; background:#0a222b42; border-radius:9px; }
+    .preset { background:transparent; color:#b7c6c9; border-radius:6px; height:34px; font-size:12px; display:flex; gap:7px; align-items:center; justify-content:center; transition:background .2s,color .2s; }
+    .preset svg { width:16px; height:16px; stroke-width:1.3; }
+    .preset:hover { color:#fff; background:#ffffff08; }
+    .preset[aria-pressed="true"] { color:#eff4ed; background:#687c7e57; box-shadow:0 1px 4px #10242d20,inset 0 0 0 1px #cbded11a; }
+    .control { margin:0 0 25px; }
+    .control-label { display:flex; justify-content:space-between; align-items:center; font-size:12px; line-height:20px; }
+    .control-name { display:flex; align-items:center; gap:8px; color:#e0e7e6; }
+    .control-name svg { width:15px; height:15px; color:#a7bec3; }
+    output { font-size:13px; color:#f0f3ed; font-variant-numeric:tabular-nums; }
+    output span { color:#9eb2b8; font-size:9px; margin-left:3px; }
+    input[type="range"] { --fill:30%; display:block; appearance:none; -webkit-appearance:none; width:100%; margin:7px 0 -8px; height:20px; border-radius:5px; background:linear-gradient(to right,var(--sage) 0%,var(--sage) var(--fill),#a8c3ca30 var(--fill),#a8c3ca30 100%); background-size:100% 4px; background-position:center; background-repeat:no-repeat; cursor:pointer; }
+    input[type="range"]::-webkit-slider-thumb { appearance:none; -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:#e2e8de; border:2px solid #eaf0e6; box-shadow:0 0 0 4px #d8e5da0a,0 1px 5px #142a3977; transition:box-shadow .2s; }
+    input[type="range"]::-moz-range-thumb { width:9px; height:9px; border:2px solid #eaf0e6; border-radius:50%; background:#e2e8de; box-shadow:0 1px 5px #142a3977; }
+    input[type="range"]:hover::-webkit-slider-thumb { box-shadow:0 0 0 5px #d8e5da20; }
+    .range-ends { display:flex; justify-content:space-between; margin-top:10px; font-size:8px; color:#94abb2; }
+    .lighting { margin-top:0; }
+    .light-value { font-size:10px; color:#dbd1b7; }
+    .light-options { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; margin-top:12px; }
+    .light-option { height:64px; border:1px solid #bcd2d216; border-radius:8px; color:#9eb4bc; background:#10293425; display:flex; align-items:center; flex-direction:column; justify-content:center; gap:7px; transition:all .25s; }
+    .light-option svg { width:21px; height:21px; stroke-width:1.25; }
+    .light-option span { font-size:10px; }
+    .light-option:hover { background:#b9cdd510; color:#e2e9e5; }
+    .light-option[aria-pressed="true"] { background:#dbca9f12; border-color:#d7c8a75c; color:#e1d5ba; }
+    .sound-row { display:flex; justify-content:space-between; align-items:center; padding-top:19px; margin-top:22px; border-top:1px solid #cfdfdd16; }
+    .sound-label { display:flex; align-items:center; gap:9px; }
+    .sound-label svg { width:16px; height:16px; color:#a9c0c6; }
+    .sound-title { font-size:11px; }
+    .sound-sub { font-size:8px; color:#92abb2; margin-top:4px; }
+    .switch { width:30px; height:17px; border-radius:20px; padding:3px; background:#87a1ab30; border:1px solid #b9d1d51f; display:flex; align-items:center; transition:background .3s; }
+    .switch:before { content:""; display:block; width:9px; height:9px; border-radius:50%; background:#8fa9b1; transition:transform .25s,background .25s; }
+    .switch[aria-checked="true"] { background:#a1b9a85e; border-color:#b1cbb261; }
+    .switch[aria-checked="true"]:before { transform:translateX(12px); background:#e2ebdc; }
+    .scene-caption { position:absolute; left:58px; bottom:48px; display:flex; align-items:center; gap:15px; z-index:1; }
+    .compass { width:39px; height:39px; border:1px solid #daede327; border-radius:50%; display:grid; place-items:center; }
+    .compass svg { width:24px; height:24px; color:#c7d7d4; stroke-width:1; }
+    .caption-title { font-size:11px; color:#e4ece7; margin-bottom:6px; }
+    .caption-sub { font-size:9px; color:#a4bdc4; letter-spacing:.15px; }
+    .bottom-bar { position:absolute; bottom:43px; left:50%; transform:translateX(-50%); display:flex; align-items:center; height:43px; gap:0; padding:4px 6px; border:1px solid #dfede329; background:#18344066; backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-radius:25px; z-index:4; box-shadow:0 4px 20px #0725300d; }
+    .play-button { width:33px; height:33px; display:grid; place-items:center; background:none; border-radius:50%; }
+    .play-button:hover { background:#ffffff0c; }
+    .play-button svg { width:14px; height:14px; }
+    .toolbar-divider { height:14px; width:1px; background:#cadfd22b; margin:0 10px 0 7px; }
+    .immerse-button { display:flex; align-items:center; gap:8px; padding:7px 12px 7px 2px; white-space:nowrap; font-size:10px; background:transparent; color:#d8e5df; }
+    .immerse-button svg { width:14px; height:14px; color:#bdcfc9; }
+    .credit { position:absolute; right:55px; bottom:53px; font-size:9px; color:#a8bfc3; letter-spacing:.1px; text-align:right; line-height:1.8; }
+    .credit span { display:block; color:#d7e1dc; font-family:Georgia,serif; font-style:italic; font-size:13px; }
+    .fadeable { transition:opacity .5s,visibility .5s; }
+    body.immersive .fadeable { opacity:0; visibility:hidden; pointer-events:none; }
+    .toast { position:absolute; bottom:108px; left:50%; transform:translate(-50%,8px); background:#213b44e8; border:1px solid #d2e7dc33; backdrop-filter:blur(12px); padding:11px 18px; border-radius:30px; color:#e8eee6; font-size:11px; opacity:0; transition:opacity .25s,transform .25s; pointer-events:none; z-index:10; white-space:nowrap; }
+    .toast.visible { opacity:1; transform:translate(-50%,0); }
+    .fallback-note { display:none; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); padding:14px 20px; border-radius:10px; background:#1b3641cf; text-align:center; font-size:12px; color:#d8e4e5; max-width:300px; }
+    @media(min-width:1600px) { .conditions { right:68px; width:334px; padding:28px; } .topbar { left:66px; right:66px; top:42px; } .intro { left:72px; } .scene-caption { left:72px; } .credit { right:70px; } }
+    @media(max-height:760px) and (min-width:761px) { .conditions { top:50%; transform:translateY(-45%); padding:20px; width:294px; } .presets { margin:18px 0 20px; } .control { margin-bottom:19px; } .sound-row { margin-top:17px; padding-top:15px; } .light-option { height:57px; } .intro { top:100px; } .intro h1 { font-size:52px; } .intro p { margin-top:16px; } .scene-caption { bottom:30px; } .bottom-bar { bottom:28px; } .credit { bottom:35px; } }
+    @media(max-width:1000px) { .topbar { left:30px; right:30px; top:27px; } .intro { left:34px; } .intro h1 { font-size:53px; } .intro p { font-size:11px; max-width:260px; } .conditions { right:30px; width:290px; padding:22px; } .scene-caption { left:34px; } .credit { right:32px; } }
+    @media(max-width:760px) {
+      .topbar { top:23px; left:23px; right:23px; } .brand { gap:10px; } .brand-mark { width:34px; height:34px; } .brand-mark svg { width:22px; } .brand-name { font-size:19px; } .brand-sub { font-size:8px; margin-top:3px; }
+      .top-actions { gap:8px; } .top-actions .live { display:none; } .icon-button { width:33px; height:33px; } #save-view { display:none; }
+      .intro { top:15%; left:27px; right:27px; } .intro h1 { font-size:clamp(37px,7vw,53px); letter-spacing:-1.3px; } .intro p { margin:12px 0 0; font-size:10px; max-width:none; }
+      .conditions { top:auto; transform:none; right:20px; left:20px; bottom:89px; width:auto; padding:19px 20px 16px; border-radius:15px; max-width:490px; margin:auto; }
+      .panel-heading h2 { font-size:14px; } .panel-note { font-size:9px; } .presets { margin:15px 0 17px; padding:3px; } .preset { height:29px; font-size:10px; }
+      .sliders { display:grid; grid-template-columns:1fr 1fr; gap:23px; } .control { margin-bottom:17px; } .control-label { font-size:10px; } .control-name { gap:6px; } .control-name svg { width:13px; height:13px; } output { font-size:11px; } output span { font-size:8px; margin-left:2px; } .range-ends { margin-top:9px; font-size:7px; }
+      input[type="range"] { margin-top:5px; } .lighting { display:grid; grid-template-columns:76px 1fr; align-items:center; gap:12px; } .lighting .control-label { display:block; } .light-value { margin-top:3px; display:block; font-size:8px; } .light-options { margin:0; gap:6px; } .light-option { height:49px; gap:4px; } .light-option svg { width:17px; height:17px; } .light-option span { font-size:8px; }
+      .sound-row { padding-top:13px; margin-top:15px; } .sound-sub { display:none; } .scene-caption,.credit { display:none; } .bottom-bar { bottom:26px; height:40px; } .toast { bottom:78px; font-size:10px; }
+    }
+    @media(max-width:380px) { .topbar { left:18px; right:18px; } .intro { left:22px; } .intro h1 { font-size:34px; } .conditions { left:14px; right:14px; padding:17px; } .sliders { gap:16px; } .control-name { gap:4px; } }
+    @media(max-height:690px) and (max-width:760px) { .intro { top:16%; } .intro h1 { font-size:34px; } .intro p { display:none; } .conditions { bottom:75px; padding:15px 18px 13px; } .panel-note { display:none; } .presets { margin:10px 0 12px; } .control { margin-bottom:12px; } .light-option { height:43px; } .sound-row { margin-top:11px; padding-top:10px; } .bottom-bar { bottom:19px; height:37px; } }
+    @media(prefers-reduced-motion:reduce) { *,*:before,*:after { transition:none!important; } }
+  </style>
+</head>
+<body>
+  <svg style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="i-waves" viewBox="0 0 24 24"><path d="M2 8c3-4 5 4 9 0s6 4 11 0M2 13c3-4 5 4 9 0s6 4 11 0M2 18c3-4 5 4 9 0s6 4 11 0"/></symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h12c5 0 5-6 1-6-2 0-3 1-3 2M2 12h17c4 0 4 6 0 6-1 0-2-.5-2-1M5 16h5c4 0 4 6 0 6-1.5 0-2.5-.8-2.5-2"/></symbol>
+      <symbol id="i-calm" viewBox="0 0 24 24"><path d="M3 9h18M3 15c4-2 5 2 9 0s5 2 9 0"/></symbol>
+      <symbol id="i-swell" viewBox="0 0 24 24"><path d="M2 17c4 0 3-11 8-11 6 0 6 11 12 11M2 21c4-3 6 3 10 0s6 3 10 0"/></symbol>
+      <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.5 1.5m11.2 11.2 1.5 1.5M4.9 19.1l1.5-1.5M17.6 6.4l1.5-1.5"/></symbol>
+      <symbol id="i-sunset" viewBox="0 0 24 24"><path d="M2 16h20M4 20h16M7 16a5 5 0 1 1 10 0M12 2v3M3.5 7.5l2 2m13-2-2 2M1 12h2m18 0h2"/></symbol>
+      <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.8 14a8.8 8.8 0 0 1-11-11 9 9 0 1 0 11 11Z"/><path d="M18 3v4m-2-2h4"/></symbol>
+      <symbol id="i-reset" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></symbol>
+      <symbol id="i-sound" viewBox="0 0 24 24"><path d="M4 9H2v6h4l5 4V5L6 9H4ZM15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+      <symbol id="i-muted" viewBox="0 0 24 24"><path d="M6 9H3v6h3l5 4V5L6 9ZM16 9l6 6m0-6-6 6"/></symbol>
+      <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M8 6l2-3h4l2 3h4a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/><circle cx="12" cy="13" r="4"/></symbol>
+      <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke-width="2.5"/></symbol>
+      <symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8Z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z"/><circle cx="12" cy="12" r="2.5"/></symbol>
+    </defs>
+  </svg>
+  <canvas id="ocean" aria-label="An animated open ocean. Drag to look around."></canvas>
+  <div class="shade"></div>
+  <header class="topbar fadeable">
+    <div class="brand" aria-label="Stillwater, Ocean Wave Simulation">
+      <div class="brand-mark"><svg><use href="#i-waves"/></svg></div>
+      <div><div class="brand-name">stillwater</div><div class="brand-sub">Ocean Wave Simulation</div></div>
+    </div>
+    <div class="top-actions">
+      <div class="live" id="live-status"><span class="live-dot"></span><span id="live-text">A living ocean</span></div>
+      <button class="icon-button" id="sound-button" aria-label="Turn ocean sound on" aria-pressed="false" data-tip="Ocean sound · M"><svg><use href="#i-muted"/></svg></button>
+      <button class="icon-button" id="save-view" aria-label="Save ocean image" data-tip="Save this view"><svg><use href="#i-camera"/></svg></button>
+      <button class="icon-button" id="fullscreen-button" aria-label="Enter fullscreen" data-tip="Fullscreen · F"><svg><use href="#i-expand"/></svg></button>
+    </div>
+  </header>
+  <main>
+    <div class="intro fadeable"><h1>A little closer<br> to the ocean.</h1><p>Find your own rhythm in the waves.</p></div>
+    <section class="conditions fadeable" aria-labelledby="conditions-title">
+      <div class="panel-heading"><h2 id="conditions-title">Make it your ocean</h2><button class="reset" id="reset" aria-label="Reset ocean conditions" title="Reset conditions"><svg><use href="#i-reset"/></svg></button></div>
+      <p class="panel-note">A change of pace. A different kind of calm.</p>
+      <div class="presets" role="group" aria-label="Ocean presets">
+        <button class="preset" data-preset="calm" aria-pressed="false"><svg><use href="#i-calm"/></svg>Calm</button>
+        <button class="preset" data-preset="breeze" aria-pressed="true"><svg><use href="#i-wind"/></svg>Breeze</button>
+        <button class="preset" data-preset="swell" aria-pressed="false"><svg><use href="#i-swell"/></svg>Swell</button>
+      </div>
+      <div class="sliders">
+        <div class="control">
+          <div class="control-label"><label class="control-name" for="wind"><svg><use href="#i-wind"/></svg>Wind speed</label><output id="wind-value" for="wind">12<span>km/h</span></output></div>
+          <input id="wind" type="range" min="0" max="40" step="1" value="12" aria-valuetext="12 kilometers per hour">
+          <div class="range-ends" aria-hidden="true"><span>Still</span><span>Strong</span></div>
+        </div>
+        <div class="control">
+          <div class="control-label"><label class="control-name" for="height"><svg><use href="#i-waves"/></svg>Wave height</label><output id="height-value" for="height">1.2<span>m</span></output></div>
+          <input id="height" type="range" min="0.2" max="4" step="0.1" value="1.2" aria-valuetext="1.2 meters">
+          <div class="range-ends" aria-hidden="true"><span>Gentle</span><span>Rolling</span></div>
+        </div>
+      </div>
+      <div class="lighting">
+        <div class="control-label"><span class="control-name"><svg><use href="#i-sun"/></svg>Lighting</span><span class="light-value" id="light-value">Golden hour</span></div>
+        <div class="light-options" role="group" aria-label="Lighting">
+          <button class="light-option" data-light="0" aria-pressed="false"><svg><use href="#i-sun"/></svg><span>Daylight</span></button>
+          <button class="light-option" data-light="1" aria-pressed="true"><svg><use href="#i-sunset"/></svg><span>Golden hour</span></button>
+          <button class="light-option" data-light="2" aria-pressed="false"><svg><use href="#i-moon"/></svg><span>Moonlight</span></button>
+        </div>
+      </div>
+      <div class="sound-row"><div class="sound-label"><svg><use href="#i-sound"/></svg><div><div class="sound-title">Ocean ambience</div><div class="sound-sub">A little more here. A little less elsewhere.</div></div></div><button class="switch" id="sound-switch" role="switch" aria-checked="false" aria-label="Ocean ambience"></button></div>
+    </section>
+    <div class="scene-caption fadeable"><div class="compass"><svg viewBox="0 0 24 24"><path d="m15.5 5.5-2 8-8 2 2-8Z"/><path d="m7.5 7.5 6 6M12 1v2m0 18v2M1 12h2m18 0h2"/></svg></div><div><div class="caption-title" id="condition-name">Gentle breeze</div><div class="caption-sub">Open water. Endless possibilities.</div></div></div>
+    <div class="bottom-bar" aria-label="Scene controls"><button class="play-button" id="play" aria-label="Pause simulation" title="Pause · Space"><svg><use href="#i-pause"/></svg></button><span class="toolbar-divider"></span><button class="immerse-button" id="immerse" aria-pressed="false" title="Hide or show controls · H"><svg><use href="#i-eye"/></svg><span>Just the ocean</span></button></div>
+    <div class="credit fadeable"><span>Take a breath. Stay a while.</span>Drag the water to look around</div>
+    <div class="fallback-note" id="fallback-note">Your browser is showing a simplified ocean view.</div>
+    <div class="toast" role="status" id="toast"></div>
+  </main>
+  <script>
+  (() => {
+    'use strict';
+    const $ = (s) => document.querySelector(s);
+    const canvas = $('#ocean');
+    const state = { wind:12, height:1.2, light:1, playing:!matchMedia('(prefers-reduced-motion: reduce)').matches, sound:false, immersive:false, yaw:0, pitch:0 };
+    const current = { wind:12, height:1.2, light:1, yaw:0, pitch:0 };
+    const presets = { calm:[4,.5], breeze:[12,1.2], swell:[28,2.8] };
+    let toastTimer, audio, simTime = 31, previousTime = 0;
+    function toast(message) { $('#toast').textContent=message; $('#toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('#toast').classList.remove('visible'),2800); }
+    function refreshConditions() {
+      for (const key of ['wind','height']) {
+        const input=$('#'+key); input.value=state[key];
+        input.style.setProperty('--fill',((state[key]-Number(input.min))/(Number(input.max)-Number(input.min))*100)+'%');
+      }
+      $('#wind-value').innerHTML=state.wind+'<span>km/h</span>';
+      $('#height-value').innerHTML=state.height.toFixed(1)+'<span>m</span>';
+      $('#wind').setAttribute('aria-valuetext',state.wind+' kilometers per hour');
+      $('#height').setAttribute('aria-valuetext',state.height.toFixed(1)+' meters');
+      document.querySelectorAll('[data-preset]').forEach(button=>{const p=presets[button.dataset.preset]; button.setAttribute('aria-pressed',state.wind===p[0] && Math.abs(state.height-p[1])<.01);});
+      $('#condition-name').textContent=state.wind<2?'Still waters':state.wind<8?'A soft breath of wind':state.wind<20?'Gentle breeze':state.wind<30?'Rolling swells':'Wild and wonderful';
+    }
+    function setLight(light) {
+      state.light=light;
+      document.querySelectorAll('[data-light]').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.light)===light));
+      $('#light-value').textContent=['Daylight','Golden hour','Moonlight'][light];
+      $('#light-value').style.color=['#c9dfe0','#dbd1b7','#bac7e8'][light];
+    }
+    for (const key of ['wind','height']) $('#'+key).addEventListener('input',e=>{state[key]=Number(e.target.value);refreshConditions();});
+    document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{[state.wind,state.height]=presets[b.dataset.preset];refreshConditions();}));
+    document.querySelectorAll('[data-light]').forEach(b=>b.addEventListener('click',()=>setLight(Number(b.dataset.light))));
+    $('#reset').addEventListener('click',()=>{state.wind=12;state.height=1.2;state.yaw=0;state.pitch=0;setLight(1);refreshConditions();toast('Back to a gentle breeze.');});
+    function refreshPlay() { $('#play use').setAttribute('href',state.playing?'#i-pause':'#i-play'); $('#play').setAttribute('aria-label',state.playing?'Pause simulation':'Resume simulation'); $('#play').title=state.playing?'Pause · Space':'Resume · Space'; $('#live-status').classList.toggle('paused',!state.playing); $('#live-text').textContent=state.playing?'A living ocean':'A moment, held'; }
+    function togglePlay() { state.playing=!state.playing;refreshPlay(); }
+    $('#play').addEventListener('click',togglePlay);
+    function toggleImmersive() { state.immersive=!state.immersive;document.body.classList.toggle('immersive',state.immersive);$('#immerse').setAttribute('aria-pressed',state.immersive);$('#immerse span').textContent=state.immersive?'Show controls':'Just the ocean'; }
+    $('#immerse').addEventListener('click',toggleImmersive);
+    async function fullscreen() {
+      try { if(document.fullscreenElement) await document.exitFullscreen(); else if(document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen(); else {toggleImmersive();} } catch(e) { toggleImmersive(); }
+    }
+    $('#fullscreen-button').addEventListener('click',fullscreen);
+    document.addEventListener('fullscreenchange',()=>$('#fullscreen-button').setAttribute('aria-label',document.fullscreenElement?'Exit fullscreen':'Enter fullscreen'));
+    async function toggleSound() {
+      try {
+        if (!audio) {
+          const Audio=window.AudioContext||window.webkitAudioContext;
+          if (!Audio) {toast('Ocean sound is unavailable in this browser.');return;}
+          const ctx=new Audio();
+          const buffer=ctx.createBuffer(2,ctx.sampleRate*9,ctx.sampleRate);
+          for(let c=0;c<2;c++) {
+            const data=buffer.getChannelData(c);let b0=0,b1=0,b2=0,b3=0,b4=0,b5=0,b6=0;
+            for(let i=0;i<data.length;i++) {const white=Math.random()*2-1;b0=.99886*b0+white*.0555179;b1=.99332*b1+white*.0750759;b2=.969*b2+white*.153852;b3=.8665*b3+white*.3104856;b4=.55*b4+white*.5329522;b5=-.7616*b5-white*.016898;data[i]=(b0+b1+b2+b3+b4+b5+b6+white*.5362)*.095;b6=white*.115926;}
+          }
+          const source=ctx.createBufferSource();source.buffer=buffer;source.loop=true;
+          const filter=ctx.createBiquadFilter();filter.type='lowpass';filter.frequency.value=1100;filter.Q.value=.35;
+          const gain=ctx.createGain();gain.gain.value=0;source.connect(filter);filter.connect(gain);gain.connect(ctx.destination);source.start();audio={ctx,filter,gain};
+        }
+        await audio.ctx.resume();state.sound=!state.sound;
+        $('#sound-switch').setAttribute('aria-checked',state.sound);$('#sound-button').setAttribute('aria-pressed',state.sound);$('#sound-button').setAttribute('aria-label',state.sound?'Turn ocean sound off':'Turn ocean sound on');$('#sound-button use').setAttribute('href',state.sound?'#i-sound':'#i-muted');
+      } catch(e) { toast('Sound could not start. Try again.'); }
+    }
+    $('#sound-switch').addEventListener('click',toggleSound);$('#sound-button').addEventListener('click',toggleSound);
+    document.addEventListener('keydown',e=>{if(e.target.matches('input,button,select,textarea')||e.ctrlKey||e.metaKey||e.altKey)return;if(e.code==='Space'){e.preventDefault();togglePlay();}else if(e.key.toLowerCase()==='h')toggleImmersive();else if(e.key.toLowerCase()==='m')toggleSound();else if(e.key.toLowerCase()==='f')fullscreen();else if(e.key==='Escape'&&state.immersive)toggleImmersive();});
+    let dragging=false,lastX=0,lastY=0;
+    canvas.addEventListener('pointerdown',e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;canvas.setPointerCapture(e.pointerId);});
+    canvas.addEventListener('pointermove',e=>{if(!dragging)return;state.yaw=Math.max(-.75,Math.min(.75,state.yaw+(e.clientX-lastX)*.002));state.pitch=Math.max(-.13,Math.min(.13,state.pitch+(e.clientY-lastY)*.001));lastX=e.clientX;lastY=e.clientY;});
+    canvas.addEventListener('pointerup',()=>dragging=false);canvas.addEventListener('pointercancel',()=>dragging=false);
+    refreshConditions();refreshPlay();
+
+    // The sky and water share an environment, so every change in light is reflected in the sea.
+    const environment = `
+      precision highp float;
+      uniform float uTime,uWind,uHeight,uLight,uAspect,uYaw,uPitch;
+      uniform vec2 uResolution;
+      const float PI=3.14159265359;
+      vec3 palette(vec3 day,vec3 gold,vec3 night){return day*max(1.-uLight,0.)+night*max(uLight-1.,0.)+gold*(1.-abs(uLight-1.));}
+      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+      float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
+      float fbm(vec2 p){float v=.5*noise(p);p=mat2(.8,-.6,.6,.8)*p*2.03;v+=.25*noise(p);p=p*2.07;v+=.125*noise(p);return v;}
+      vec3 lightDir(){float spread=min(uAspect,1.);return normalize(palette(vec3(-.5*spread,.65,-.8),vec3(.26*spread,.115,-1.),vec3(.24*spread,.30,-1.)));}
+      vec3 lightColor(){return palette(vec3(1.,.97,.85),vec3(1.,.79,.47),vec3(.60,.73,1.));}
+      vec3 sky(vec3 dir){
+        float elevation=max(dir.y,0.);
+        vec3 horizon=palette(vec3(.70,.82,.86),vec3(.80,.73,.62),vec3(.105,.16,.245));
+        vec3 zenith=palette(vec3(.20,.43,.63),vec3(.29,.445,.55),vec3(.018,.038,.09));
+        vec3 col=mix(horizon,zenith,pow(elevation,.48));
+        float facing=max(dot(dir,lightDir()),0.);
+        float night=max(uLight-1.,0.);
+        col+=lightColor()*pow(facing,8.)*.075*(1.-night*.75);
+        col+=lightColor()*pow(facing,110.)*.11*(1.-night*.7);
+        float disk=smoothstep(cos(.0105),cos(.0074),facing);
+        col+=lightColor()*pow(facing,1500.)*.12*(1.-night*.8);
+        col=mix(col,mix(lightColor(),vec3(1.),.5)*1.28,disk*.97);
+        if(dir.y>.018){
+          vec2 p=dir.xz/(dir.y+.28);p.x*=.70;p.y*=3.8;
+          float cloud=fbm(p*1.65+vec2(uTime*.0018,0.));
+          cloud=smoothstep(.45,.76,cloud)*smoothstep(.02,.16,dir.y);
+          col=mix(col,palette(vec3(.91,.95,.97),vec3(.9,.83,.74),vec3(.15,.21,.31)),cloud*.34);
+          vec2 s=vec2(atan(dir.x,-dir.z),asin(clamp(dir.y,-1.,1.)))*240.;
+          vec2 cell=floor(s);vec2 st=fract(s)-vec2(hash(cell),hash(cell+13.));
+          float stars=smoothstep(.075,0.,length(st))*step(.993,hash(cell+41.));
+          col+=vec3(stars)*night*smoothstep(.03,.25,dir.y)*.72;
+        }
+        return col;
+      }
+      vec3 cameraRay(vec2 uv){
+        vec3 d=normalize(vec3(uv.x*uAspect,uv.y-.255+uPitch,-1.75));
+        return vec3(cos(uYaw)*d.x-sin(uYaw)*d.z,d.y,sin(uYaw)*d.x+cos(uYaw)*d.z);
+      }
+      vec3 swells(vec2 p){
+        float h=0.;vec2 g=vec2(0.);float a;
+        a=dot(p,vec2(.832,.555))*.195+uTime*.73; h+=.32*sin(a);g+=.0624*cos(a)*vec2(.832,.555);
+        a=dot(p,vec2(-.52,.854))*.31+uTime*.94+1.4;h+=.20*sin(a);g+=.062*cos(a)*vec2(-.52,.854);
+        a=dot(p,vec2(.21,.978))*.48+uTime*1.12+2.7;h+=.11*sin(a);g+=.0528*cos(a)*vec2(.21,.978);
+        a=dot(p,vec2(-.89,.456))*.79+uTime*1.38+.2;h+=.055*sin(a);g+=.04345*cos(a)*vec2(-.89,.456);
+        a=dot(p,vec2(.945,.327))*1.18+uTime*1.7+4.1;h+=.028*sin(a);g+=.03304*cos(a)*vec2(.945,.327);
+        a=dot(p,vec2(-.35,.937))*1.74+uTime*2.05+1.1;h+=.014*sin(a);g+=.02436*cos(a)*vec2(-.35,.937);
+        return vec3(h,g);
+      }
+    `;
+    const skyVS=`attribute vec2 aPosition;varying vec2 vUv;void main(){vUv=aPosition;gl_Position=vec4(aPosition,0.,1.);}`;
+    const skyFS=environment+`
+      varying vec2 vUv;
+      void main(){vec3 rd=cameraRay(vUv);vec3 col=sky(rd);
+        if(rd.y<0.){vec3 base=palette(vec3(.26,.44,.51),vec3(.35,.43,.43),vec3(.045,.095,.16));col=mix(sky(vec3(rd.x,0.,rd.z)),base,smoothstep(0.,.12,-rd.y));}
+        gl_FragColor=vec4(col,1.);
+      }`;
+    const seaVS=environment+`
+      attribute vec2 aPosition;
+      varying vec3 vWorld;
+      void main(){
+        float z=.7+pow(aPosition.y,3.)*3200.;
+        float x=(aPosition.x*2.-1.)*(z*.79*uAspect+15.);
+        vec2 p=vec2(cos(uYaw)*x+sin(uYaw)*z,sin(uYaw)*x-cos(uYaw)*z);
+        float height=swells(p).x*uHeight;
+        vWorld=vec3(p.x,height,p.y);
+        vec3 relative=vWorld-vec3(0.,3.7,0.);
+        float cx=cos(uYaw)*relative.x+sin(uYaw)*relative.z;
+        float cz=-sin(uYaw)*relative.x+cos(uYaw)*relative.z;
+        float cy=relative.y;
+        gl_Position=vec4(cx*1.75/uAspect,cy+(-cz)*(.255-uPitch),(-cz)*1.0000625-.2,-cz);
+      }`;
+    const seaFS=environment+`
+      varying vec3 vWorld;
+      void main(){
+        float dist=length(vWorld.xz);
+        vec3 wave=swells(vWorld.xz);
+        vec2 grad=wave.yz*uHeight;
+        vec2 p=vWorld.xz+vec2(sin(vWorld.z*.17+uTime*.12),sin(vWorld.x*.21))*1.2;
+        float frequency=1.35;
+        float amplitude=.053*(.55+uWind*.036)*(.65+uHeight*.25);
+        float angle=.7;
+        for(int i=0;i<11;i++){
+          vec2 direction=vec2(cos(angle),sin(angle));
+          float phase=dot(p,direction)*frequency+uTime*(1.1+float(i)*.31);
+          float crest=exp(sin(phase)-1.);
+          float attenuation=exp(-frequency*dist*.00038);
+          grad+=direction*(crest*cos(phase))*frequency*amplitude*attenuation;
+          p+=direction*cos(phase)*.10;
+          frequency*=1.57;amplitude*=.56;angle+=2.39996;
+        }
+        vec3 n=normalize(vec3(-grad.x,1.,-grad.y));
+        vec3 v=normalize(vec3(0.,3.7,0.)-vWorld);
+        vec3 reflected=reflect(-v,n);
+        reflected.y=max(.015,reflected.y);
+        float fresnel=.025+.975*pow(1.-max(dot(n,v),0.),5.);
+        vec3 deep=palette(vec3(.018,.135,.174),vec3(.028,.125,.145),vec3(.008,.028,.055));
+        vec3 scatter=palette(vec3(.045,.26,.29),vec3(.065,.235,.23),vec3(.018,.065,.105));
+        float lift=smoothstep(-.5,.65,wave.x)*.50;
+        vec3 body=mix(deep,scatter,lift);
+        body*=.85+.25*max(dot(n,lightDir()),0.);
+        vec3 col=mix(body,sky(reflected),clamp(fresnel+.13,0.,1.));
+        vec3 halfVector=normalize(lightDir()+v);
+        float ndh=max(dot(n,halfVector),0.);
+        float glitter=pow(ndh,650.)*2.0+pow(ndh,65.)*.055;
+        col+=lightColor()*glitter*(1.-max(uLight-1.,0.)*.72);
+        float foam=smoothstep(.35,.61,wave.x)*smoothstep(19.,40.,uWind);
+        foam*=smoothstep(.51,.75,fbm(vWorld.xz*1.7));
+        col=mix(col,palette(vec3(.66,.78,.77),vec3(.65,.72,.65),vec3(.21,.31,.38)),foam*.45);
+        float fog=1.-exp(-dist*.0013);
+        vec3 horizon=sky(normalize(vec3(vWorld.x,1.,vWorld.z)));
+        col=mix(col,horizon,fog*.93);
+        col=pow(max(col,vec3(0.)),vec3(.94));
+        gl_FragColor=vec4(col,1.);
+      }`;
+    let gl,skyProgram,seaProgram,indexCount;
+    let skyBuffer,seaBuffer,indexBuffer;
+    const uniforms=new Map();
+    function shader(type,source){const s=gl.createShader(type);gl.shaderSource(s,source);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw new Error(gl.getShaderInfoLog(s));return s;}
+    function program(vs,fs){const p=gl.createProgram();const v=shader(gl.VERTEX_SHADER,vs),f=shader(gl.FRAGMENT_SHADER,fs);gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);gl.deleteShader(v);gl.deleteShader(f);if(!gl.getProgramParameter(p,gl.LINK_STATUS))throw new Error(gl.getProgramInfoLog(p));const u={};for(const name of ['uTime','uWind','uHeight','uLight','uAspect','uYaw','uPitch','uResolution'])u[name]=gl.getUniformLocation(p,name);uniforms.set(p,u);return p;}
+    function initGL(){
+      gl=canvas.getContext('webgl',{alpha:false,antialias:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+      if(!gl)throw new Error('WebGL unavailable');
+      skyProgram=program(skyVS,skyFS);seaProgram=program(seaVS,seaFS);
+      skyBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,skyBuffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+      const nx=190,ny=290,vertices=new Float32Array((nx+1)*(ny+1)*2),indices=new Uint16Array(nx*ny*6);
+      let vi=0,ii=0;for(let y=0;y<=ny;y++)for(let x=0;x<=nx;x++){vertices[vi++]=x/nx;vertices[vi++]=y/ny;}
+      for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){const a=y*(nx+1)+x,b=a+nx+1;indices[ii++]=a;indices[ii++]=b;indices[ii++]=a+1;indices[ii++]=b;indices[ii++]=b+1;indices[ii++]=a+1;}
+      indexCount=indices.length;seaBuffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,seaBuffer);gl.bufferData(gl.ARRAY_BUFFER,vertices,gl.STATIC_DRAW);
+      indexBuffer=gl.createBuffer();gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,indices,gl.STATIC_DRAW);
+      gl.disable(gl.CULL_FACE);gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);
+    }
+    function updateUniforms(p){gl.useProgram(p);const u=uniforms.get(p);gl.uniform1f(u.uTime,simTime);gl.uniform1f(u.uWind,current.wind);gl.uniform1f(u.uHeight,current.height);gl.uniform1f(u.uLight,current.light);gl.uniform1f(u.uAspect,canvas.width/canvas.height);gl.uniform1f(u.uYaw,current.yaw);gl.uniform1f(u.uPitch,current.pitch);gl.uniform2f(u.uResolution,canvas.width,canvas.height);}
+    function attributes(p,buffer){gl.bindBuffer(gl.ARRAY_BUFFER,buffer);const a=gl.getAttribLocation(p,'aPosition');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);}
+    function resize(){const ratio=Math.min(window.devicePixelRatio||1,1.5);const scale=innerWidth<761?1:.95;canvas.width=Math.floor(innerWidth*ratio*scale);canvas.height=Math.floor(innerHeight*ratio*scale);if(gl)gl.viewport(0,0,canvas.width,canvas.height);}
+    let fallback=false,ctx2d;
+    function initFallback(){fallback=true;gl=null;const replacement=canvas.cloneNode();canvas.replaceWith(replacement);replacement.id='fallback-ocean';replacement.style.cssText=canvas.style.cssText;replacement.style.position='fixed';replacement.style.inset='0';replacement.style.width='100%';replacement.style.height='100%';ctx2d=replacement.getContext('2d');$('#save-view').disabled=true;$('#fallback-note').style.display='block';setTimeout(()=>$('#fallback-note').style.display='none',4500);}
+    function renderFallback(){const c=ctx2d.canvas;c.width=innerWidth;c.height=innerHeight;const w=c.width,h=c.height;const night=current.light>1.5;const g=ctx2d.createLinearGradient(0,0,0,h);g.addColorStop(0,night?'#10243c':'#7c9ead');g.addColorStop(.37,night?'#284662':'#d9c8a8');g.addColorStop(.38,night?'#18394b':'#719392');g.addColorStop(1,night?'#071d2a':'#123e4a');ctx2d.fillStyle=g;ctx2d.fillRect(0,0,w,h);for(let i=0;i<65;i++){const z=i/65,y=h*.38+Math.pow(z,2)*h*.65;ctx2d.beginPath();for(let x=0;x<=w;x+=8){const yy=y+Math.sin(x*.015+i*2+simTime)*z*current.height*5+Math.sin(x*.041+i+simTime*.7)*z*2;if(x===0)ctx2d.moveTo(x,yy);else ctx2d.lineTo(x,yy);}ctx2d.strokeStyle=`rgba(180,210,207,${.03+z*.11})`;ctx2d.lineWidth=.5+z;ctx2d.stroke();}}
+    try {initGL();resize();} catch(e){console.warn('Simplified ocean renderer:',e.message);initFallback();}
+    window.addEventListener('resize',resize);
+    canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();state.playing=false;refreshPlay();toast('Ocean paused. Restoring your view…');});
+    canvas.addEventListener('webglcontextrestored',()=>{try{initGL();resize();state.playing=true;refreshPlay();}catch(e){initFallback();}});
+    $('#save-view').addEventListener('click',()=>{if(fallback)return;try{const a=document.createElement('a');a.download='stillwater-ocean.png';a.href=canvas.toDataURL('image/png');a.click();toast('A little piece of the ocean, saved.');}catch(e){toast('This browser could not save the view.');}});
+    function frame(now){
+      requestAnimationFrame(frame);
+      const dt=previousTime?Math.min((now-previousTime)/1000,.05):.016;previousTime=now;
+      const smooth=1.-Math.exp(-dt*2.5);
+      for(const key of ['wind','height','light','yaw','pitch'])current[key]+=(state[key]-current[key])*smooth;
+      if(state.playing&&!document.hidden)simTime+=dt*(.45+current.wind*.037);
+      if(audio){const loudness=state.sound?(.30+current.wind*.004)*(.74+.26*Math.sin(simTime*.52)*Math.sin(simTime*.19+.8)):0;audio.gain.gain.setTargetAtTime(document.hidden?0:loudness,audio.ctx.currentTime,.4);audio.filter.frequency.setTargetAtTime(650+current.wind*24+Math.sin(simTime*.4)*180,audio.ctx.currentTime,.8);}
+      if(document.hidden)return;
+      if(fallback){renderFallback();return;}
+      gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      gl.disable(gl.DEPTH_TEST);updateUniforms(skyProgram);attributes(skyProgram,skyBuffer);gl.drawArrays(gl.TRIANGLES,0,6);
+      gl.enable(gl.DEPTH_TEST);updateUniforms(seaProgram);attributes(seaProgram,seaBuffer);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,indexBuffer);gl.drawElements(gl.TRIANGLES,indexCount,gl.UNSIGNED_SHORT,0);
+    }
+    requestAnimationFrame(frame);
+  })();
+  </script>
+</body>
+</html>
