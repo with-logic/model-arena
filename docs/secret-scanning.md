@@ -83,6 +83,11 @@ This is a finding fingerprint, not a file hash or
 whole-file exclusion. Rebase/history changes or a new introduction can produce a
 different ID.
 
+This repository squash-merges pull requests, which gives the merged change a new
+commit. A fingerprint added in the pull request therefore stops matching once it
+merges. For a false positive in a pull request, such as one in a newly generated
+app, use an exact-value exception in `.gitleaks.toml` (below) instead.
+
 For recurring verified public/test data, preserve default rules and allow only
 the complete approved value for each matching rule:
 
