@@ -4,6 +4,12 @@ See [README.md](README.md) for the project and the generation scripts, and [docs
 
 ## Required local review
 
+This step needs read access to `with-logic/skills`, which is private to Logic. If
+you do not have that access (Crew reports that it cannot reach
+`with-logic/skills`), skip the local review. This is not a failed preparation: do
+not ask the user about it, and say in the pull request that the local review was
+skipped.
+
 This section applies to local coding-agent sessions only. A hosted CI review
 gets its instructions from the workflow. In hosted CI, do not run Crew and do not
 treat missing Crew as a failed review. Run the local review before you open a
@@ -22,11 +28,11 @@ review supports Codex and Claude Code; with another agent, report the local
 review as not run.
 
 Failed preparation stops required review. A timeout is a failed preparation. If
-you cannot recover the preparation, report the local review as not run and ask the
-user before you open the pull request. `npm install` does not run Crew, so it does
-not prove readiness; neither does a `no_agents` result or another agent's install.
-Do not use stale or personal skills as a fallback. See
-[Shared local review](#shared-local-review) for setup and recovery.
+you cannot recover the preparation for any other reason, report the local review
+as not run and ask the user before you open the pull request. `npm install` does
+not run Crew, so it does not prove readiness; neither does a `no_agents` result
+or another agent's install. Do not use stale or personal skills as a fallback.
+See [Shared local review](#shared-local-review) for setup and recovery.
 
 The shared procedure includes proposed PR title and body text from the separately
 installed pull-request-description helper. This local step does not edit the PR
